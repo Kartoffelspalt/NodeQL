@@ -47,8 +47,6 @@ jobs:
     needs: check-version
     if: needs.check-version.outputs.should-release == 'true'
     runs-on: ubuntu-latest
-    name: Build Linux (Debian)
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -85,7 +83,7 @@ jobs:
         run: flutter pub get
 
       - name: Build macOS
-        uses: oberhauser-dev/flutter-release-action@v0
+        uses: Oberhauser-Dev/flutter-release-action@v0
         with:
           token: ${{ github.token }}
           dry-run: false
@@ -110,7 +108,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        uses: oberhauser-dev/flutter-release-action@v0
+        uses: Oberhauser-Dev/flutter-release-action@v0
         with:
           token: ${{ github.token }}
           dry-run: false
@@ -135,7 +133,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        uses: oberhauser-dev/flutter-release-action@v0
+        uses: Oberhauser-Dev/flutter-release-action@v0
         with:
           token: ${{ github.token }}
           dry-run: false
