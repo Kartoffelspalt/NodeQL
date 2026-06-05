@@ -1,0 +1,17 @@
+{
+  "@@locale": "es",
+  "appName": "ScratchQL Creator",
+  "blockLibrary": "Biblioteca de bloques",
+  "workspace": "Espacio de trabajo",
+  "stage": "Escenario",
+  "workspaceHint": "Arrastra bloques aquí para crear tu script.",
+  "stageHint": "Ejecuta scripts e interactúa con sprites.",
+  "blockWhenFlagClicked": "al hacer clic en la bandera verde",
+  "blockMoveSteps": "mover {steps} pasos",
+  "@blockMoveSteps": {"placeholders": {"steps": {"type": "int"}}},
+  "blockRepeatTimes": "repetir {times}",
+  "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
+  "blockTurnDegrees": "girar {degrees} grados",
+  "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
+  "blockForever": "por siempre"
+}

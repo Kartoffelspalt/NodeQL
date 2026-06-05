@@ -1,0 +1,17 @@
+{
+  "@@locale": "ar",
+  "appName": "ScratchQL Creator",
+  "blockLibrary": "مكتبة الكتل",
+  "workspace": "مساحة العمل",
+  "stage": "المنصة",
+  "workspaceHint": "اسحب الكتل إلى هنا لبناء البرنامج.",
+  "stageHint": "شغّل البرامج وتفاعل مع الكائنات.",
+  "blockWhenFlagClicked": "عند النقر على العلم الأخضر",
+  "blockMoveSteps": "تحرك {steps} خطوات",
+  "@blockMoveSteps": {"placeholders": {"steps": {"type": "int"}}},
+  "blockRepeatTimes": "كرر {times}",
+  "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
+  "blockTurnDegrees": "استدر {degrees} درجة",
+  "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
+  "blockForever": "إلى الأبد"
+}

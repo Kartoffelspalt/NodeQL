@@ -1,0 +1,17 @@
+{
+  "@@locale": "ko",
+  "appName": "ScratchQL Creator",
+  "blockLibrary": "블록 라이브러리",
+  "workspace": "작업 공간",
+  "stage": "무대",
+  "workspaceHint": "스크립트를 만들 블록을 여기로 드래그하세요.",
+  "stageHint": "스크립트를 실행하고 스프라이트와 상호작용하세요.",
+  "blockWhenFlagClicked": "초록 깃발을 클릭했을 때",
+  "blockMoveSteps": "{steps} 만큼 움직이기",
+  "@blockMoveSteps": {"placeholders": {"steps": {"type": "int"}}},
+  "blockRepeatTimes": "{times}번 반복",
+  "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
+  "blockTurnDegrees": "{degrees}도 회전",
+  "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
+  "blockForever": "계속 반복"
+}

@@ -1,0 +1,17 @@
+{
+  "@@locale": "ja",
+  "appName": "ScratchQL Creator",
+  "blockLibrary": "ブロックライブラリ",
+  "workspace": "ワークスペース",
+  "stage": "ステージ",
+  "workspaceHint": "ブロックをここにドラッグしてスクリプトを作成します。",
+  "stageHint": "スクリプトを実行してスプライトを操作します。",
+  "blockWhenFlagClicked": "緑の旗が押されたとき",
+  "blockMoveSteps": "{steps}歩動かす",
+  "@blockMoveSteps": {"placeholders": {"steps": {"type": "int"}}},
+  "blockRepeatTimes": "{times}回繰り返す",
+  "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
+  "blockTurnDegrees": "{degrees}度回す",
+  "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
+  "blockForever": "ずっと"
+}

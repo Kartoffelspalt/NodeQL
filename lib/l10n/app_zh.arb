@@ -1,0 +1,17 @@
+{
+  "@@locale": "zh",
+  "appName": "ScratchQL Creator",
+  "blockLibrary": "积木库",
+  "workspace": "工作区",
+  "stage": "舞台",
+  "workspaceHint": "将积木拖到这里来构建脚本。",
+  "stageHint": "运行脚本并与角色互动。",
+  "blockWhenFlagClicked": "当绿旗被点击",
+  "blockMoveSteps": "移动 {steps} 步",
+  "@blockMoveSteps": {"placeholders": {"steps": {"type": "int"}}},
+  "blockRepeatTimes": "重复 {times} 次",
+  "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
+  "blockTurnDegrees": "旋转 {degrees} 度",
+  "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
+  "blockForever": "重复执行"
+}

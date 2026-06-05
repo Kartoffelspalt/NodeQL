@@ -1,0 +1,17 @@
+{
+  "@@locale": "tr",
+  "appName": "ScratchQL Creator",
+  "blockLibrary": "Blok Kütüphanesi",
+  "workspace": "Çalışma Alanı",
+  "stage": "Sahne",
+  "workspaceHint": "Betiği oluşturmak için blokları buraya sürükle.",
+  "stageHint": "Betikleri çalıştır ve kuklalarla etkileşime gir.",
+  "blockWhenFlagClicked": "yeşil bayrak tıklanınca",
+  "blockMoveSteps": "{steps} adım git",
+  "@blockMoveSteps": {"placeholders": {"steps": {"type": "int"}}},
+  "blockRepeatTimes": "{times} kez tekrarla",
+  "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
+  "blockTurnDegrees": "{degrees} derece dön",
+  "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
+  "blockForever": "sürekli"
+}
