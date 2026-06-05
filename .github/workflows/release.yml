@@ -1,0 +1,154 @@
+name: Flutter Release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'pubspec.yaml'
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    name: Check Version Update
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should-release: ${{ steps.check.outputs.should-release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Check if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          if gh release view "v$VERSION" 2>/dev/null; then
+            echo "Release v$VERSION already exists, skipping build"
+            echo "should-release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Release v$VERSION is new, starting build"
+            echo "should-release=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-linux:
+    name: Build Linux (Debian)
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    name: Build Linux (Debian)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux Debian
+        uses: oberhauser-dev/flutter-release-action@v0
+        with:
+          token: ${{ github.token }}
+          dry-run: false
+          app-name: 'scratchql-creator'
+          app-version: ${{ needs.check-version.outputs.version }}
+          tag: v${{ needs.check-version.outputs.version }}
+          build-type: 'debian'
+
+  build-macos:
+    name: Build macOS
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        uses: oberhauser-dev/flutter-release-action@v0
+        with:
+          token: ${{ github.token }}
+          dry-run: false
+          app-name: 'scratchql-creator'
+          app-version: ${{ needs.check-version.outputs.version }}
+          tag: v${{ needs.check-version.outputs.version }}
+          build-type: 'macos'
+
+  build-windows:
+    name: Build Windows
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        uses: oberhauser-dev/flutter-release-action@v0
+        with:
+          token: ${{ github.token }}
+          dry-run: false
+          app-name: 'scratchql-creator'
+          app-version: ${{ needs.check-version.outputs.version }}
+          tag: v${{ needs.check-version.outputs.version }}
+          build-type: 'windows'
+
+  build-web:
+    name: Build Web
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Web
+        uses: oberhauser-dev/flutter-release-action@v0
+        with:
+          token: ${{ github.token }}
+          dry-run: false
+          app-name: 'scratchql-creator'
+          app-version: ${{ needs.check-version.outputs.version }}
+          tag: v${{ needs.check-version.outputs.version }}
+          build-type: 'web'
+
+  verify-builds:
+    name: Verify All Builds Complete
+    needs: [check-version, build-linux, build-macos, build-windows, build-web]
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release v${{ needs.check-version.outputs.version }} completed
+        run: echo "All platform builds for v${{ needs.check-version.outputs.version }} completed and uploaded to GitHub release"
