@@ -60,7 +60,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Linux Debian
-        uses: oberhauser-dev/flutter-release-action@v0
+        uses: Oberhauser-Dev/flutter-release-action@v0
         with:
           token: ${{ github.token }}
           dry-run: false
