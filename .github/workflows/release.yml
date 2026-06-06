@@ -42,6 +42,58 @@ jobs:
             echo "should-release=true" >> $GITHUB_OUTPUT
           fi
 
+  build-linux:
+    name: Build Linux (Debian)
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux Release
+        run: flutter build linux --release
+
+      - name: Generate Debian control file
+        uses: Nightwind-Developments/debian-control-file-builder@latest
+        id: deb_control
+        with:
+          config-file: 'linux/debian/control_config.json'
+          deps-file: 'linux/debian/dependencies.txt'
+          output-path: 'linux/debian/'
+          case-sensitive-keys: 'false'
+
+      - name: Update Debian control file version
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
+          sed -i "1s/^/Version: $VERSION\n/" linux/debian/control
+
+      - name: Create Debian package directory structure
+        run: |
+          mkdir -p debian/DEBIAN
+          cp linux/debian/control debian/DEBIAN/
+          mkdir -p debian/usr/local/bin
+          cp -r build/linux/x64/release/bundle/* debian/usr/local/bin/scratchql-creater/
+
+      - name: Build Debian package
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
+          dpkg-deb --build --root-owner-group debian scratchql-creater_${VERSION}_amd64.deb
+
+      - name: Upload Debian package to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
+          gh release upload "v$VERSION" scratchql-creater_${VERSION}_amd64.deb
+
   build-macos:
     name: Build macOS
     needs: check-version
@@ -122,7 +174,7 @@ jobs:
 
   verify-builds:
     name: Verify All Builds Complete
-    needs: [check-version, build-macos, build-windows, build-web]
+    needs: [check-version, build-linux, build-macos, build-windows, build-web]
     if: needs.check-version.outputs.should-release == 'true'
     runs-on: ubuntu-latest
     steps:
