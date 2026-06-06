@@ -1,6 +1,6 @@
 {
   "Version": "1.0.0",
-  "Package": "Paul Bodach.ScratchQL_Creater",
+  "Package": "scratchqlcreater",
   "Architecture": "amd64",
   "Maintainer": "CodeSpire-Solutions <mail@codespiresolutions.digital>",
   "Homepage": "https://github.com/Kartoffelspalt/scratchql_creater",
