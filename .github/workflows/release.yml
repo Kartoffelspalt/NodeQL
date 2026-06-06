@@ -78,7 +78,7 @@ jobs:
       - name: Update Debian control file version
         run: |
           VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
-          sed -i "1s/^/Version: $VERSION\n/" linux/debian/control
+          sed -i "s/^Version: .*/Version: $VERSION/" linux/debian/control
 
       - name: Create Debian package directory structure
         run: |
