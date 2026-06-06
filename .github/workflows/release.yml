@@ -97,18 +97,8 @@ jobs:
           VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
           dpkg-deb --build --root-owner-group debian scratchql-creater_${VERSION}_amd64.deb
 
-      # 🆕 CREATE RELEASE (NEU)
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
-
-          MESSAGE=$(git log -1 --pretty=%B)
-
-          gh release create "v$VERSION" \
-            --title "Version: $VERSION" \
-            --notes "$MESSAGE"
+      
+        
 
       - name: Upload Debian package to release
         env:
