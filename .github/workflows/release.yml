@@ -58,6 +58,15 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate Debian control file
+        uses: Nightwind-Developments/debian-control-file-builder@latest
+        id: deb_control
+        with:
+          config-file: 'linux/debian/control_config.json'
+          deps-file: 'linux/debian/dependencies.txt'
+          output-path: 'linux/debian/control'
+          case-sensitive-keys: 'false'
+
       - name: Update Debian control file version
         run: |
           VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')

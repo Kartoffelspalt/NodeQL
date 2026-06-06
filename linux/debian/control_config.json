@@ -1,0 +1,10 @@
+{
+  "Package": "scratchql-creater",
+  "Architecture": "amd64",
+  "Maintainer": "ScratchQL Team <mail@codespiresolutions.digital>",
+  "Homepage": "https://github.com/Kartoffelspalt/scratchql_creater",
+  "Section": "graphics",
+  "Priority": "optional",
+  "Description": "Scratch-inspired multilingual visual programming desktop platform",
+  "Extended-Description": "A visual programming platform with Scratch-like blocks for educational use. Supports multiple languages and runs on Linux, Windows, macOS, and Web."
+}
