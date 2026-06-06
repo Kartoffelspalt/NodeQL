@@ -1,7 +1,7 @@
 name: scratchql_creater
 description: Scratch-inspired multilingual visual programming desktop platform.
 publish_to: 'none'
-version: 0.1.2+3
+version: 0.1.3+4
 
 environment:
   sdk: ^3.9.0
