@@ -1,12 +1,10 @@
 Source: scratchql-creater
 Binary: scratchql-creater
 Architecture: amd64
-Version: 0.1.5+6
 Maintainer: ScratchQL Team <mail@codespiresolutions.digital>
 Homepage: https://github.com/Kartoffelspalt/scratchql_creater
 Section: graphics
 Priority: optional
-Depends: libc6 (>= 2.2.1), libstdc++6 (>= 5.2), libx11-6
 Description: Scratch-inspired multilingual visual programming desktop platform
  A visual programming platform with Scratch-like blocks for educational use.
  Supports multiple languages and runs on Linux, Windows, macOS, and Web.
