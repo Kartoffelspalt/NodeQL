@@ -1,6 +1,6 @@
-# ScratchQL Creator
+# NodeQL
 
-ScratchQL Creator is a multilingual, desktop-first visual programming platform inspired by Scratch workflows, implemented with original code and assets.
+NodeQL is a multilingual, desktop-first visual programming platform inspired by Scratch workflows, implemented with original code and assets.
 
 ## Current Iteration Scope
 

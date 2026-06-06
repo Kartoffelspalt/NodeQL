@@ -1,4 +1,4 @@
-name: scratchql_creater
+name: nodeql
 description: Scratch-inspired multilingual visual programming desktop platform.
 publish_to: 'none'
 version: 0.1.31+31
