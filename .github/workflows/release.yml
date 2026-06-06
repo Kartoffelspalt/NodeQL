@@ -83,8 +83,8 @@ jobs:
       - name: Create Debian package directory structure
         run: |
           mkdir -p debian/DEBIAN
+          mkdir -p debian/usr/local/bin/scratchql-creater
           cp linux/debian/control debian/DEBIAN/
-          mkdir -p debian/usr/local/bin
           cp -r build/linux/x64/release/bundle/* debian/usr/local/bin/scratchql-creater/
 
       - name: Build Debian package
