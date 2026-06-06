@@ -75,6 +75,10 @@ jobs:
           output-path: 'linux/debian/'
           case-sensitive-keys: 'false'
 
+      - name: Fix control file formatting
+        run: |
+          sed -i 's/)\(Homepage:\)/)\n\1/' linux/debian/control
+
       - name: Update Debian control file version
         run: |
           VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
@@ -85,6 +89,7 @@ jobs:
           echo "=== CONTROL FILE ==="
           cat linux/debian/control
           echo "===================="
+      
 
       - name: Create Debian package directory structure
         run: |
