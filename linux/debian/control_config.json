@@ -1,4 +1,5 @@
 {
+  "Version": "0.0.0",
   "Package": "scratchql-creater",
   "Architecture": "amd64",
   "Maintainer": "ScratchQL Team <mail@codespiresolutions.digital>",
