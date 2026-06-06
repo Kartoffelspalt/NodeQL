@@ -64,7 +64,7 @@ jobs:
         with:
           config-file: 'linux/debian/control_config.json'
           deps-file: 'linux/debian/dependencies.txt'
-          output-path: 'linux/debian/control'
+          output-path: 'linux/debian/'
           case-sensitive-keys: 'false'
 
       - name: Update Debian control file version
