@@ -58,6 +58,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Update Debian control file version
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
+          sed -i "s/^Version: .*/Version: $VERSION/" linux/debian/control
+
       - name: Build Linux Debian
         uses: Oberhauser-Dev/flutter-release-action@v0
         with:
