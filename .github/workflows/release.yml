@@ -67,18 +67,23 @@ jobs:
         run: flutter build linux --release
 
       - name: Generate Debian control file
-        uses: Nightwind-Developments/debian-control-file-builder@latest
-        id: deb_control
-        with:
-          config-file: 'linux/debian/control_config.json'
-          deps-file: 'linux/debian/dependencies.txt'
-          output-path: 'linux/debian/'
-          case-sensitive-keys: 'false'
-
-      - name: Update Debian control file version
         run: |
           VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
-          sed -i "s/^Version: .*/Version: $VERSION/" linux/debian/control
+          mkdir -p linux/debian
+          cat > linux/debian/control << 'EOF'
+Package: scratchql-creater
+Version: $VERSION
+Priority: optional
+Section: dev
+Source: scratchql.com
+Maintainer: Paul <paul@scratchql.com>
+Description: The official ScratchQL creator tool
+Depends: libglib2.0-0 (>= 2.68.0-18), libütz-dev (>= 1.0.0)
+EOF
+
+      - name: Ensure LF line endings
+        run: |
+          sed -i 's/\r$//' linux/debian/control
 
       - name: Create Debian package directory structure
         run: |
