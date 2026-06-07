@@ -63,19 +63,25 @@ class StageRuntimeState {
 
 final stageRuntimeProvider =
     StateNotifierProvider<StageRuntimeController, StageRuntimeState>(
-  (ref) => StageRuntimeController(),
-);
+      (ref) => StageRuntimeController(),
+    );
 
 class StageRuntimeController extends StateNotifier<StageRuntimeState> {
   StageRuntimeController()
-      : super(
-          const StageRuntimeState(
-            sprites: <Sprite>[
-              Sprite(id: 'sprite_1', x: 120, y: 90, direction: 90, visibility: true),
-            ],
-            activeSpriteId: 'sprite_1',
-          ),
-        );
+    : super(
+        const StageRuntimeState(
+          sprites: <Sprite>[
+            Sprite(
+              id: 'sprite_1',
+              x: 120,
+              y: 90,
+              direction: 90,
+              visibility: true,
+            ),
+          ],
+          activeSpriteId: 'sprite_1',
+        ),
+      );
 
   void setRunning(bool value) => state = state.copyWith(running: value);
 

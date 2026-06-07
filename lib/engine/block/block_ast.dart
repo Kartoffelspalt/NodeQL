@@ -6,11 +6,7 @@ abstract class BlockNode {
 }
 
 class EventBlockNode extends BlockNode {
-  const EventBlockNode({
-    required super.id,
-    required this.event,
-    super.next,
-  });
+  const EventBlockNode({required super.id, required this.event, super.next});
 
   final String event;
 }

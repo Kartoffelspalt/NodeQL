@@ -115,7 +115,12 @@ class _PuzzleBlockPainter extends CustomPainter {
 
     path.quadraticBezierTo(size.width, topY, size.width, topY + radius);
     path.lineTo(size.width, size.height - radius);
-    path.quadraticBezierTo(size.width, size.height, size.width - radius, size.height);
+    path.quadraticBezierTo(
+      size.width,
+      size.height,
+      size.width - radius,
+      size.height,
+    );
 
     path.lineTo(notchInset + notchW, size.height);
     path.lineTo(notchInset + notchW - 4, size.height + notchH);
@@ -131,8 +136,9 @@ class _PuzzleBlockPainter extends CustomPainter {
     canvas.drawPath(path, paint);
 
     final overlay = Paint()
-      ..color = (highlight ? Colors.white : Colors.black)
-          .withValues(alpha: highlight ? 0.20 : 0.10)
+      ..color = (highlight ? Colors.white : Colors.black).withValues(
+        alpha: highlight ? 0.20 : 0.10,
+      )
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 

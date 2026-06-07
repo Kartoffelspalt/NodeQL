@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scratchql_creater/engine/runtime/runtime_models.dart';
-import 'package:scratchql_creater/engine/runtime/runtime_scheduler.dart';
+import 'package:nodeql/engine/runtime/runtime_models.dart';
+import 'package:nodeql/engine/runtime/runtime_scheduler.dart';
 
 void main() {
   test('scheduler executes enqueued script and emits clone events', () async {

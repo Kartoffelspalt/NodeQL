@@ -1,4 +1,4 @@
-import 'package:scratchql_creater/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_node.dart';
 
 class SqlCompiler {
   const SqlCompiler();
@@ -182,7 +182,7 @@ class SqlCompiler {
       case BlockType.sqlSetTransaction:
         return 'SET TRANSACTION ISOLATION LEVEL ${node.inputs['level'] as String? ?? 'READ COMMITTED'}';
       case BlockType.sqlLoop:
-        // ScratchQL loop compiles contained statements as transaction body.
+        // NodeQL loop compiles contained statements as transaction body.
         return 'BEGIN; ${_compileChildren(node.children)}; COMMIT';
     }
   }

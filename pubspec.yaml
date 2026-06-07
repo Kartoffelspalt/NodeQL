@@ -16,8 +16,11 @@ dependencies:
   freezed_annotation: ^2.4.4
   json_annotation: ^4.9.0
   go_router: ^14.8.1
+  http: ^1.6.0
   file_picker: ^8.3.7
+  package_info_plus: ^8.3.0
   path_provider: ^2.1.5
+  url_launcher: ^6.3.2
   window_manager: ^0.4.3
 
 dev_dependencies:
@@ -25,9 +28,28 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   build_runner: ^2.5.4
+  flutter_launcher_icons: ^0.14.4
   freezed: ^2.5.8
   json_serializable: ^6.9.3
 
 flutter:
   uses-material-design: true
   generate: true
+
+flutter_launcher_icons:
+  image_path: assets/appicon/icon.png
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  macos:
+    generate: true
+    image_path: assets/appicon/icon.png
+  web:
+    generate: true
+    image_path: assets/appicon/icon.png
+    background_color: "#0175C2"
+    theme_color: "#0175C2"
+  windows:
+    generate: true
+    image_path: assets/appicon/icon.png
+    icon_size: 256

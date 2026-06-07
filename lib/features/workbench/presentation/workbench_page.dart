@@ -4,28 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scratchql_creater/engine/block/block_node.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/sql_compiler.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/sql_labels.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/sql_mode.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/plugin_registry.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/sql_runtime.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/workspace_engine.dart';
-import 'package:scratchql_creater/features/workbench/presentation/scratch_style.dart';
-import 'package:scratchql_creater/features/workbench/presentation/widgets/block_shape_painter.dart';
-import 'package:scratchql_creater/core/theme/theme_controller.dart';
+import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
+import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
+import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
+import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:scratchql_creater/localization/generated/app_localizations.dart';
-import 'package:scratchql_creater/localization/locale_controller.dart';
-import 'package:scratchql_creater/localization/supported_languages.dart';
+import 'package:nodeql/localization/generated/app_localizations.dart';
+import 'package:nodeql/localization/locale_controller.dart';
+import 'package:nodeql/localization/supported_languages.dart';
 import 'dart:io';
 
-// ------------------------------------------------------------------
-//  Global limit for column selections (max number of columns a user can pick)
-// ------------------------------------------------------------------
-const int _maxSelectableColumns = 3;
-
+const int _maxVisibleColumnSelections = 3;
 
 class WorkbenchPage extends ConsumerStatefulWidget {
   const WorkbenchPage({super.key});
@@ -35,7 +31,7 @@ class WorkbenchPage extends ConsumerStatefulWidget {
 }
 
 class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
-  static const _menuChannel = MethodChannel('scratchql/menu');
+  static const _menuChannel = MethodChannel('nodeql/menu');
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlCompiler _compiler = const SqlCompiler();
@@ -192,7 +188,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _autosaveDebounce = Timer(const Duration(milliseconds: 550), () async {
       final support = await getApplicationSupportDirectory();
       final autosave = File(
-        '${support.path}/scratchql_autosave_${_activeProjectId}.scratchql',
+        '${support.path}/nodeql_autosave_${_activeProjectId}.nodeql',
       );
       await autosave.writeAsString(jsonEncode(_projectEnvelope()), flush: true);
     });
@@ -221,14 +217,26 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
     final support = await getApplicationSupportDirectory();
     final autosave = File(
+      '${support.path}/nodeql_autosave_${_activeProjectId}.nodeql',
+    );
+    final legacySqpAutosave = File(
+      '${support.path}/nodeql_autosave_${_activeProjectId}.sqp',
+    );
+    final legacyScratchQlAutosave = File(
       '${support.path}/scratchql_autosave_${_activeProjectId}.scratchql',
     );
-    final legacyAutosave = File(
+    final legacyScratchQlSqpAutosave = File(
       '${support.path}/scratchql_autosave_${_activeProjectId}.sqp',
     );
     final sourceFile = await autosave.exists()
         ? autosave
-        : (await legacyAutosave.exists() ? legacyAutosave : null);
+        : (await legacySqpAutosave.exists()
+              ? legacySqpAutosave
+              : (await legacyScratchQlAutosave.exists()
+                    ? legacyScratchQlAutosave
+                    : (await legacyScratchQlSqpAutosave.exists()
+                          ? legacyScratchQlSqpAutosave
+                          : null)));
     if (sourceFile == null) return;
     final source = await sourceFile.readAsString();
     if (source.trim().isEmpty) return;
@@ -238,7 +246,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _newProject(BuildContext context) async {
     final createDb = ValueNotifier<bool>(false);
-    final dbName = TextEditingController(text: 'scratchql_project');
+    final dbName = TextEditingController(text: 'nodeql_project');
     final yes = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -309,10 +317,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _saveProjectAs(BuildContext context) async {
     final path = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save ScratchQL project',
-      fileName: 'project.scratchql',
+      dialogTitle: 'Save NodeQL project',
+      fileName: 'project.nodeql',
       type: FileType.custom,
-      allowedExtensions: <String>['scratchql'],
+      allowedExtensions: <String>['nodeql'],
     );
     if (path == null) return;
     await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
@@ -327,11 +335,24 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     await _syncRecentProjectsToNativeMenu();
   }
 
+  Future<void> _saveProject(BuildContext context) async {
+    final path = _activeProjectPath;
+    if (path == null) {
+      await _saveProjectAs(context);
+      return;
+    }
+
+    await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+    _upsertRecentProject();
+    await _saveProjectRegistry();
+    await _syncRecentProjectsToNativeMenu();
+  }
+
   Future<void> _openProject(BuildContext context) async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Open ScratchQL project',
+      dialogTitle: 'Open NodeQL project',
       type: FileType.custom,
-      allowedExtensions: <String>['scratchql', 'sqlq', 'sqp'],
+      allowedExtensions: <String>['nodeql', 'scratchql', 'sqlq', 'sqp'],
     );
     final path = result?.files.single.path;
     if (path == null) return;
@@ -360,29 +381,29 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         title: const Text('Settings'),
         content: Consumer(
           builder: (context, ref, _) {
-            final current = ref.watch(scratchQlThemeProvider);
+            final current = ref.watch(nodeQlThemeProvider);
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                RadioListTile<ScratchQlTheme>(
-                  value: ScratchQlTheme.dark,
+                RadioListTile<NodeQlTheme>(
+                  value: NodeQlTheme.dark,
                   groupValue: current,
                   onChanged: (v) =>
-                      ref.read(scratchQlThemeProvider.notifier).setTheme(v!),
+                      ref.read(nodeQlThemeProvider.notifier).setTheme(v!),
                   title: const Text('Dark Mode'),
                 ),
-                RadioListTile<ScratchQlTheme>(
-                  value: ScratchQlTheme.midnight,
+                RadioListTile<NodeQlTheme>(
+                  value: NodeQlTheme.midnight,
                   groupValue: current,
                   onChanged: (v) =>
-                      ref.read(scratchQlThemeProvider.notifier).setTheme(v!),
+                      ref.read(nodeQlThemeProvider.notifier).setTheme(v!),
                   title: const Text('Midnight Tech'),
                 ),
-                RadioListTile<ScratchQlTheme>(
-                  value: ScratchQlTheme.matrix,
+                RadioListTile<NodeQlTheme>(
+                  value: NodeQlTheme.matrix,
                   groupValue: current,
                   onChanged: (v) =>
-                      ref.read(scratchQlThemeProvider.notifier).setTheme(v!),
+                      ref.read(nodeQlThemeProvider.notifier).setTheme(v!),
                   title: const Text('Matrix/Hacker'),
                 ),
                 const SizedBox(height: 8),
@@ -402,6 +423,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   String _projectNameFromPath(String path) {
     final chunks = path.split(Platform.pathSeparator);
     final file = chunks.isEmpty ? path : chunks.last;
+    if (file.endsWith('.nodeql')) {
+      return file.substring(0, file.length - '.nodeql'.length);
+    }
     if (file.endsWith('.scratchql')) {
       return file.substring(0, file.length - '.scratchql'.length);
     }
@@ -412,7 +436,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<String> _cacheProjectForSandbox(String sourcePath) async {
     final support = await getApplicationSupportDirectory();
-    final dir = Directory('${support.path}/scratchql_projects');
+    final dir = Directory('${support.path}/nodeql_projects');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -429,9 +453,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final runtime = ref.read(sqlRuntimeProvider);
     final mode = ref.read(sqlModeProvider);
     final locale = ref.read(localeControllerProvider);
-    final theme = ref.read(scratchQlThemeProvider);
+    final theme = ref.read(nodeQlThemeProvider);
     return <String, dynamic>{
-      'format': 'scratchql_project_v2',
+      'format': 'nodeql_project_v2',
       'version': 2,
       'workspace': workspace,
       'runtime': <String, dynamic>{'dbPath': runtime.dbPath},
@@ -449,7 +473,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       decoded = jsonDecode(source) as Map<String, dynamic>;
     } catch (_) {}
 
-    if (decoded == null || decoded['format'] != 'scratchql_project_v2') {
+    if (decoded == null || !_isProjectEnvelopeFormat(decoded['format'])) {
       ref.read(workspaceProvider.notifier).loadFromJsonString(source);
       return;
     }
@@ -465,6 +489,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (dbPath != null && dbPath.trim().isNotEmpty) {
       await ref.read(sqlRuntimeProvider.notifier).attachDatabasePath(dbPath);
     }
+  }
+
+  bool _isProjectEnvelopeFormat(Object? format) {
+    return format == 'nodeql_project_v2' || format == 'scratchql_project_v2';
   }
 
   void _upsertRecentProject() {
@@ -484,7 +512,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<File> _registryFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/scratchql_projects.json');
+    return File('${support.path}/nodeql_projects.json');
   }
 
   Future<void> _loadProjectRegistry() async {
@@ -517,7 +545,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final path = target.first['path'] as String?;
     if (path == null || !await File(path).exists()) return;
     final source = await File(path).readAsString();
-    ref.read(workspaceProvider.notifier).loadFromJsonString(source);
+    await _loadProjectPayload(source);
     setState(() {
       _activeProjectId = projectId;
       _activeProjectName = '${target.first['name']}';
@@ -545,8 +573,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       case 'openProject':
         await _openProject(context);
         break;
+      case 'saveProject':
+        await _saveProject(context);
+        break;
       case 'saveProjectAs':
         await _saveProjectAs(context);
+        break;
+      case 'undo':
+        ref.read(workspaceProvider.notifier).undo();
+        break;
+      case 'redo':
+        ref.read(workspaceProvider.notifier).redo();
+        break;
+      case 'deleteSelected':
+        await _handleDeleteWithRootConfirmation(context, ref);
         break;
       case 'recentProject':
         final args = call.arguments as Map?;
@@ -1525,6 +1565,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
           workspace: workspace,
           transform: transform,
           paletteWidth: paletteWidth,
+          focusNode: focusNode,
           child: Container(
             color: ScratchPalette.workspace,
             child: ClipRect(
@@ -1628,12 +1669,14 @@ class _PointerWorkspaceLayer extends ConsumerStatefulWidget {
     required this.workspace,
     required this.transform,
     required this.paletteWidth,
+    required this.focusNode,
     required this.child,
   });
 
   final WorkspaceState workspace;
   final TransformationController transform;
   final double paletteWidth;
+  final FocusNode focusNode;
   final Widget child;
 
   @override
@@ -1655,6 +1698,8 @@ class _PointerWorkspaceLayerState
   Offset? _secondaryDownGlobal;
   bool _marqueeSelecting = false;
   Rect? _marqueeRectLocal;
+  double? _panZoomStartScale;
+  double? _scaleGestureStartScale;
 
   @override
   Widget build(BuildContext context) {
@@ -1664,11 +1709,30 @@ class _PointerWorkspaceLayerState
       behavior: HitTestBehavior.opaque,
       onPointerSignal: (event) {
         if (event is! PointerScrollEvent) return;
+        if (event.kind == PointerDeviceKind.trackpad) return;
         final workspace = ref.read(workspaceProvider);
         final factor = (1 - event.scrollDelta.dy * 0.001).clamp(0.8, 1.2);
         engine.zoomAt(event.localPosition, workspace.scale * factor);
       },
+      onPointerPanZoomStart: (event) {
+        widget.focusNode.requestFocus();
+        _panZoomStartScale = ref.read(workspaceProvider).scale;
+      },
+      onPointerPanZoomUpdate: (event) {
+        final startScale =
+            _panZoomStartScale ?? ref.read(workspaceProvider).scale;
+        if ((event.scale - 1.0).abs() > 0.001) {
+          engine.zoomAt(event.localPosition, startScale * event.scale);
+        }
+        if (event.panDelta.distanceSquared > 0) {
+          engine.panBy(event.panDelta);
+        }
+      },
+      onPointerPanZoomEnd: (_) {
+        _panZoomStartScale = null;
+      },
       onPointerDown: (event) {
+        widget.focusNode.requestFocus();
         final world = _toWorld(event.localPosition);
         if (event.kind == PointerDeviceKind.mouse &&
             (event.buttons & kSecondaryMouseButton) != 0) {
@@ -1791,26 +1855,51 @@ class _PointerWorkspaceLayerState
           _primaryDownLocal = null;
         }
       },
-      child: Stack(
-        children: [
-          widget.child,
-          if (_marqueeRectLocal != null)
-            Positioned.fromRect(
-              rect: _marqueeRectLocal!,
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0x334C97FF),
-                    border: Border.all(
-                      color: const Color(0xFF4C97FF),
-                      width: 1.5,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        trackpadScrollCausesScale: true,
+        trackpadScrollToScaleFactor: const Offset(0.001, 0.001),
+        onScaleStart: (details) {
+          widget.focusNode.requestFocus();
+          _scaleGestureStartScale = ref.read(workspaceProvider).scale;
+        },
+        onScaleUpdate: (details) {
+          final pointerCount = details.pointerCount;
+          final isZooming =
+              pointerCount > 1 || (details.scale - 1).abs() > 0.001;
+          if (!isZooming) return;
+
+          final startScale =
+              _scaleGestureStartScale ?? ref.read(workspaceProvider).scale;
+          engine.zoomAt(details.localFocalPoint, startScale * details.scale);
+          if (details.focalPointDelta.distanceSquared > 0) {
+            engine.panBy(details.focalPointDelta);
+          }
+        },
+        onScaleEnd: (_) {
+          _scaleGestureStartScale = null;
+        },
+        child: Stack(
+          children: [
+            widget.child,
+            if (_marqueeRectLocal != null)
+              Positioned.fromRect(
+                rect: _marqueeRectLocal!,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0x334C97FF),
+                      border: Border.all(
+                        color: const Color(0xFF4C97FF),
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2072,7 +2161,11 @@ class _NodeView extends ConsumerWidget {
       var extraBeforeNextText = 0.0;
       if (inputKey == 'columns') {
         final columnItems = _selectedColumns('${values[inputKey] ?? ''}');
-        dynamicReduction = (columnItems.length * 6.0).clamp(0.0, 12.0);
+        final visibleColumnCount = columnItems.length.clamp(
+          0,
+          _maxVisibleColumnSelections,
+        );
+        dynamicReduction = (visibleColumnCount * 6.0).clamp(0.0, 12.0);
         // Small breathing room before trailing static text like "FROM".
         extraBeforeNextText = 8.0;
       }
@@ -2188,7 +2281,17 @@ class _NodeView extends ConsumerWidget {
     if (_slotInputKey(rawKey) == 'join_type') {
       return _localizedJoinLabel(_normalizeJoinValue(text), localeCode);
     }
+    if (_slotInputKey(rawKey) == 'columns') {
+      return _compactColumnSelectionDisplay(text);
+    }
     return text;
+  }
+
+  String _compactColumnSelectionDisplay(String value) {
+    final selected = _selectedColumns(value);
+    if (selected.length <= _maxVisibleColumnSelections) return value;
+    final visible = selected.take(_maxVisibleColumnSelections).join(', ');
+    return '$visible, ...';
   }
 
   String _slotDefaultDisplay(String rawKey) {
@@ -2553,30 +2656,33 @@ class _NodeView extends ConsumerWidget {
                                     vertical: 10,
                                   ),
                                   child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    // Column name (or any non‑remove option)
-                                    Text(
-                                      _localizedOptionLabel(
-                                        options[i],
-                                        localeCode,
-                                      ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                      ),
+                                    alignment: Alignment.centerLeft,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        // Column name (or any non‑remove option)
+                                        Text(
+                                          _localizedOptionLabel(
+                                            options[i],
+                                            localeCode,
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        // If this is a removal entry, show a small remove‑icon.
+                                        if (options[i].startsWith(
+                                          '__REMOVE__:',
+                                        ))
+                                          const Icon(
+                                            Icons.remove_circle,
+                                            size: 16,
+                                            color: Colors.redAccent,
+                                          ),
+                                      ],
                                     ),
-                                    // If this is a removal entry, show a small remove‑icon.
-                                    if (options[i].startsWith('__REMOVE__:'))
-                                      const Icon(
-                                        Icons.remove_circle,
-                                        size: 16,
-                                        color: Colors.redAccent,
-                                      ),
-                                  ],
-                                ),
-                              ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -2850,15 +2956,8 @@ class _NodeView extends ConsumerWidget {
         .where((e) => e.isNotEmpty && e != '*')
         .toList(growable: true);
 
-    // Enforce the global max column limit.
     if (!existing.any((e) => e.toLowerCase() == next.toLowerCase())) {
-      if (existing.length < _maxSelectableColumns) {
-        existing.add(next);
-      } else {
-        // If we already have the maximum, we simply ignore the extra selection.
-        // The UI already shows a Snackbar, but this guard prevents accidental state corruption.
-        return current; // keep the original column list unchanged.
-      }
+      existing.add(next);
     }
     return existing.isEmpty ? next : existing.join(', ');
   }

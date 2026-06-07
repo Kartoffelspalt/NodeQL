@@ -1,4 +1,4 @@
-import 'package:scratchql_creater/domain/models/block_models.dart';
+import 'package:nodeql/domain/models/block_models.dart';
 
 const defaultBlockCatalog = <BlockMetadata>[
   BlockMetadata(

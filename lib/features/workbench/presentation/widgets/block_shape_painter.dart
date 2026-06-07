@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:scratchql_creater/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_node.dart';
 
 class BlockShape extends StatelessWidget {
   const BlockShape({

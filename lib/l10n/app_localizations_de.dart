@@ -9,7 +9,7 @@ class AppLocalizationsDe extends AppLocalizations {
   AppLocalizationsDe([String locale = 'de']) : super(locale);
 
   @override
-  String get appName => 'ScratchQL Creator';
+  String get appName => 'NodeQL';
 
   @override
   String get blockLibrary => 'Block-Bibliothek';

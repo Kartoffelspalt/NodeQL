@@ -119,7 +119,7 @@ abstract class AppLocalizations {
   /// No description provided for @appName.
   ///
   /// In en, this message translates to:
-  /// **'ScratchQL Creator'**
+  /// **'NodeQL'**
   String get appName;
 
   /// No description provided for @blockLibrary.

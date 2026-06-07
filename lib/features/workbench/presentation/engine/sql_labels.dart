@@ -1,5 +1,5 @@
-import 'package:scratchql_creater/engine/block/block_node.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 
 String sqlLabelFor(
   BlockType type,

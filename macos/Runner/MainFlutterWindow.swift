@@ -15,7 +15,7 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     let channel = FlutterMethodChannel(
-      name: "scratchql/security_scope",
+      name: "nodeql/security_scope",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     channel.setMethodCallHandler { [weak self] call, result in
@@ -41,7 +41,7 @@ class MainFlutterWindow: NSWindow {
     }
 
     let menuChannel = FlutterMethodChannel(
-      name: "scratchql/menu",
+      name: "nodeql/menu",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     self.menuChannel = menuChannel
@@ -86,6 +86,11 @@ class MainFlutterWindow: NSWindow {
     openItem.target = self
     submenu.addItem(openItem)
 
+    let saveItem = NSMenuItem(title: "Save Project", action: #selector(handleSaveProject), keyEquivalent: "s")
+    saveItem.keyEquivalentModifierMask = [.command]
+    saveItem.target = self
+    submenu.addItem(saveItem)
+
     let saveAsItem = NSMenuItem(title: "Save Project As…", action: #selector(handleSaveAsProject), keyEquivalent: "s")
     saveAsItem.keyEquivalentModifierMask = [.command, .shift]
     saveAsItem.target = self
@@ -127,6 +132,10 @@ class MainFlutterWindow: NSWindow {
 
   @objc private func handleOpenProject() {
     menuChannel?.invokeMethod("openProject", arguments: nil)
+  }
+
+  @objc private func handleSaveProject() {
+    menuChannel?.invokeMethod("saveProject", arguments: nil)
   }
 
   @objc private func handleSaveAsProject() {

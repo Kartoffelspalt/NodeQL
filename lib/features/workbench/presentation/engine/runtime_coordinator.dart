@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scratchql_creater/engine/block/block_node.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/stage_engine.dart';
-import 'package:scratchql_creater/features/workbench/presentation/engine/workspace_engine.dart';
+import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/workbench/presentation/engine/stage_engine.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 
 final runtimeCoordinatorProvider = Provider<RuntimeCoordinator>((ref) {
   return RuntimeCoordinator(ref);

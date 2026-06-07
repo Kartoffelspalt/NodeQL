@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scratchql_creater/engine/stage/stage_state.dart';
+import 'package:nodeql/engine/stage/stage_state.dart';
 
 class StageState {
   const StageState({
@@ -32,19 +32,19 @@ class StageState {
 
 final stageControllerProvider =
     StateNotifierProvider<StageController, StageState>((ref) {
-  return StageController();
-});
+      return StageController();
+    });
 
 class StageController extends StateNotifier<StageState> {
   StageController()
-      : super(
-          const StageState(
-            sprites: <StageSpriteState>[
-              StageSpriteState(id: 'sprite-1', x: 120, y: 120),
-            ],
-            selectedSpriteId: 'sprite-1',
-          ),
-        );
+    : super(
+        const StageState(
+          sprites: <StageSpriteState>[
+            StageSpriteState(id: 'sprite-1', x: 120, y: 120),
+          ],
+          selectedSpriteId: 'sprite-1',
+        ),
+      );
 
   void setRunning(bool value) {
     state = state.copyWith(isRunning: value);

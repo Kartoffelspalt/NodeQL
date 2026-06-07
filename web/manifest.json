@@ -1,6 +1,6 @@
 {
-    "name": "scratchql_creater",
-    "short_name": "scratchql_creater",
+    "name": "NodeQL",
+    "short_name": "NodeQL",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

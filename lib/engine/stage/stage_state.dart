@@ -32,10 +32,7 @@ class StageSpriteState {
 
   StageSpriteState moved(double steps) {
     final angle = direction * pi / 180;
-    return copyWith(
-      x: x + cos(angle) * steps,
-      y: y - sin(angle) * steps,
-    );
+    return copyWith(x: x + cos(angle) * steps, y: y - sin(angle) * steps);
   }
 
   StageSpriteState turned(double degrees) =>

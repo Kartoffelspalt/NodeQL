@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scratchql_creater/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_node.dart';
 
 enum SnapZone { topOuter, bottomOuter, innerTop, innerBottom }
 
@@ -310,13 +310,13 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   }
 
   void deleteSelected() {
-    _pushUndoSnapshot();
     final ids = state.selectedBlockIds.isNotEmpty
         ? state.selectedBlockIds.toList(growable: false)
         : (state.selectedBlockId == null
               ? const <String>[]
               : <String>[state.selectedBlockId!]);
     if (ids.isEmpty) return;
+    _pushUndoSnapshot();
     for (final id in ids) {
       purgeSelectedNode(id);
     }
@@ -330,6 +330,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     for (var i = 0; i < state.roots.length; i++) {
       final root = state.roots[i];
       if (root.id != targetId) continue;
+
+      if (root.type == BlockType.eventGreenFlag) {
+        final updated = [...state.roots]..removeAt(i);
+        state = state.copyWith(roots: updated, clearSelected: true);
+        _relayoutAll();
+        _touch();
+        return;
+      }
 
       final successor = _successorAfterDeleting(target);
       if (successor != null) {
@@ -735,6 +743,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     final draggedBottom = _bottomTabPoint(dragged);
 
     for (final slot in _buildSlotTargets(excludedIds: excludedIds)) {
+      if (!_canSnap(dragged, slot.target, slot.zone)) continue;
       final anchor = switch (slot.zone) {
         SnapZone.bottomOuter => draggedBottom,
         _ => draggedTop,
@@ -749,6 +758,17 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     }
 
     return best;
+  }
+
+  bool _canSnap(BlockNode dragged, BlockNode target, SnapZone zone) {
+    if (dragged.type == BlockType.eventGreenFlag) {
+      return false;
+    }
+    if (target.type == BlockType.eventGreenFlag &&
+        zone == SnapZone.bottomOuter) {
+      return false;
+    }
+    return true;
   }
 
   List<_SlotTarget> _buildSlotTargets({required Set<String> excludedIds}) {
@@ -955,7 +975,11 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
     for (final root in state.roots) {
       if (root.id == node.id) {
-        if (healParent && root.next != null) roots.add(root.next!);
+        if (healParent &&
+            root.next != null &&
+            root.type != BlockType.eventGreenFlag) {
+          roots.add(root.next!);
+        }
         continue;
       }
 

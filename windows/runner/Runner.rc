@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "scratchql_creater" "\0"
+            VALUE "CompanyName", "digital.codespiresolutions" "\0"
+            VALUE "FileDescription", "NodeQL" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "scratchql_creater" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "scratchql_creater.exe" "\0"
-            VALUE "ProductName", "scratchql_creater" "\0"
+            VALUE "InternalName", "nodeql" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 digital.codespiresolutions. All rights reserved." "\0"
+            VALUE "OriginalFilename", "nodeql.exe" "\0"
+            VALUE "ProductName", "NodeQL" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

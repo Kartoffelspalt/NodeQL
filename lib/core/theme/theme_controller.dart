@@ -5,19 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-enum ScratchQlTheme { dark, midnight, matrix }
+enum NodeQlTheme { dark, midnight, matrix }
 
-final scratchQlThemeProvider =
-    StateNotifierProvider<ScratchQlThemeController, ScratchQlTheme>(
-      (_) => ScratchQlThemeController(),
+final nodeQlThemeProvider =
+    StateNotifierProvider<NodeQlThemeController, NodeQlTheme>(
+      (_) => NodeQlThemeController(),
     );
 
-class ScratchQlThemeController extends StateNotifier<ScratchQlTheme> {
-  ScratchQlThemeController() : super(ScratchQlTheme.dark) {
+class NodeQlThemeController extends StateNotifier<NodeQlTheme> {
+  NodeQlThemeController() : super(NodeQlTheme.dark) {
     _restore();
   }
 
-  Future<void> setTheme(ScratchQlTheme theme) async {
+  Future<void> setTheme(NodeQlTheme theme) async {
     if (state == theme) return;
     state = theme;
     await _persist(theme);
@@ -31,14 +31,14 @@ class ScratchQlThemeController extends StateNotifier<ScratchQlTheme> {
       if (raw.trim().isEmpty) return;
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
       final name = '${decoded['theme'] ?? ''}';
-      final matched = ScratchQlTheme.values.where((t) => t.name == name);
+      final matched = NodeQlTheme.values.where((t) => t.name == name);
       if (matched.isNotEmpty) {
         state = matched.first;
       }
     } catch (_) {}
   }
 
-  Future<void> _persist(ScratchQlTheme theme) async {
+  Future<void> _persist(NodeQlTheme theme) async {
     try {
       final file = await _storageFile();
       final payload = <String, dynamic>{
@@ -51,13 +51,13 @@ class ScratchQlThemeController extends StateNotifier<ScratchQlTheme> {
 
   Future<File> _storageFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/scratchql_theme.json');
+    return File('${support.path}/nodeql_theme.json');
   }
 }
 
-ThemeData themeFor(ScratchQlTheme theme) {
+ThemeData themeFor(NodeQlTheme theme) {
   switch (theme) {
-    case ScratchQlTheme.dark:
+    case NodeQlTheme.dark:
       return ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -74,7 +74,7 @@ ThemeData themeFor(ScratchQlTheme theme) {
           displayColor: const Color(0xFFF8FAFC),
         ),
       );
-    case ScratchQlTheme.midnight:
+    case NodeQlTheme.midnight:
       return ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -86,7 +86,7 @@ ThemeData themeFor(ScratchQlTheme theme) {
           onSurface: Color(0xFFF0F9FF),
         ),
       );
-    case ScratchQlTheme.matrix:
+    case NodeQlTheme.matrix:
       return ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,

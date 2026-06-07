@@ -14,22 +14,25 @@ class ProjectModel {
   final Map<String, Object?> variables;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'version': version,
-        'name': name,
-        'stage': stage.toJson(),
-        'sprites': sprites.map((sprite) => sprite.toJson()).toList(),
-        'variables': variables,
-      };
+    'version': version,
+    'name': name,
+    'stage': stage.toJson(),
+    'sprites': sprites.map((sprite) => sprite.toJson()).toList(),
+    'variables': variables,
+  };
 
   factory ProjectModel.fromJson(Map<String, Object?> json) {
-    final rawSprites =
-        (json['sprites'] as List<Object?>? ?? <Object?>[]).cast<Map<String, Object?>>();
+    final rawSprites = (json['sprites'] as List<Object?>? ?? <Object?>[])
+        .cast<Map<String, Object?>>();
     return ProjectModel(
       version: json['version'] as String? ?? '1.0.0',
       name: json['name'] as String? ?? 'Untitled',
-      stage: StageModel.fromJson(json['stage'] as Map<String, Object?>? ?? <String, Object?>{}),
+      stage: StageModel.fromJson(
+        json['stage'] as Map<String, Object?>? ?? <String, Object?>{},
+      ),
       sprites: rawSprites.map(SpriteModel.fromJson).toList(),
-      variables: (json['variables'] as Map<String, Object?>?) ?? <String, Object?>{},
+      variables:
+          (json['variables'] as Map<String, Object?>?) ?? <String, Object?>{},
     );
   }
 }
@@ -46,16 +49,16 @@ class StageModel {
   final String backdrop;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'width': width,
-        'height': height,
-        'backdrop': backdrop,
-      };
+    'width': width,
+    'height': height,
+    'backdrop': backdrop,
+  };
 
   factory StageModel.fromJson(Map<String, Object?> json) => StageModel(
-        width: json['width'] as int? ?? 480,
-        height: json['height'] as int? ?? 360,
-        backdrop: json['backdrop'] as String? ?? 'default',
-      );
+    width: json['width'] as int? ?? 480,
+    height: json['height'] as int? ?? 360,
+    backdrop: json['backdrop'] as String? ?? 'default',
+  );
 }
 
 class SpriteModel {
@@ -74,18 +77,18 @@ class SpriteModel {
   final bool visible;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'id': id,
-        'name': name,
-        'x': x,
-        'y': y,
-        'visible': visible,
-      };
+    'id': id,
+    'name': name,
+    'x': x,
+    'y': y,
+    'visible': visible,
+  };
 
   factory SpriteModel.fromJson(Map<String, Object?> json) => SpriteModel(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        x: (json['x'] as num?)?.toDouble() ?? 0,
-        y: (json['y'] as num?)?.toDouble() ?? 0,
-        visible: json['visible'] as bool? ?? true,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    x: (json['x'] as num?)?.toDouble() ?? 0,
+    y: (json['y'] as num?)?.toDouble() ?? 0,
+    visible: json['visible'] as bool? ?? true,
+  );
 }

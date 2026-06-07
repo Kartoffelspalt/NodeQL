@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:scratchql_creater/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_node.dart';
 
 class PluginPaletteEntry {
   const PluginPaletteEntry({
@@ -30,7 +30,7 @@ class PluginPaletteController extends StateNotifier<List<PluginPaletteEntry>> {
 
   Future<void> reload() async {
     final support = await getApplicationSupportDirectory();
-    final pluginsDir = Directory(p.join(support.path, 'scratchql_plugins'));
+    final pluginsDir = Directory(p.join(support.path, 'nodeql_plugins'));
     if (!await pluginsDir.exists()) {
       state = const <PluginPaletteEntry>[];
       return;

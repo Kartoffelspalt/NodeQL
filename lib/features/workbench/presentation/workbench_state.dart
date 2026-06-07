@@ -85,19 +85,19 @@ class WorkbenchState {
 
 final workbenchStateProvider =
     StateNotifierProvider<WorkbenchController, WorkbenchState>(
-  (ref) => WorkbenchController(),
-);
+      (ref) => WorkbenchController(),
+    );
 
 class WorkbenchController extends StateNotifier<WorkbenchState> {
   WorkbenchController()
-      : super(
-          const WorkbenchState(
-            activeCategory: ScratchCategory.motion,
-            blocks: <WorkspaceBlock>[],
-            workspaceScale: 1,
-            workspacePan: Offset.zero,
-          ),
-        );
+    : super(
+        const WorkbenchState(
+          activeCategory: ScratchCategory.motion,
+          blocks: <WorkspaceBlock>[],
+          workspaceScale: 1,
+          workspacePan: Offset.zero,
+        ),
+      );
 
   static const _snapThreshold = 24.0;
   static const _blockHeight = 42.0;
@@ -142,10 +142,7 @@ class WorkbenchController extends StateNotifier<WorkbenchState> {
               : block,
         )
         .toList();
-    state = state.copyWith(
-      blocks: updated,
-      clearSnapPreview: true,
-    );
+    state = state.copyWith(blocks: updated, clearSnapPreview: true);
   }
 
   Offset? _findSnapPosition(String movingId, Offset proposed) {
@@ -153,7 +150,10 @@ class WorkbenchController extends StateNotifier<WorkbenchState> {
     var bestDistance = double.infinity;
     for (final block in state.blocks) {
       if (block.id == movingId) continue;
-      final expected = Offset(block.position.dx, block.position.dy + _blockHeight);
+      final expected = Offset(
+        block.position.dx,
+        block.position.dy + _blockHeight,
+      );
       final distance = (expected - proposed).distance;
       if (distance < _snapThreshold && distance < bestDistance) {
         bestDistance = distance;
@@ -165,7 +165,8 @@ class WorkbenchController extends StateNotifier<WorkbenchState> {
     return Offset(best.position.dx, best.position.dy + _blockHeight);
   }
 
-  String nextId() => 'b_${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(9999)}';
+  String nextId() =>
+      'b_${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(9999)}';
 
   void setBlockNumberValue(String id, double value) {
     state = state.copyWith(

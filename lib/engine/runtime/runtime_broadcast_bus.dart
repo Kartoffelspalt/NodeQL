@@ -1,7 +1,8 @@
 import 'dart:async';
 
 class RuntimeBroadcastBus {
-  final StreamController<String> _controller = StreamController<String>.broadcast();
+  final StreamController<String> _controller =
+      StreamController<String>.broadcast();
 
   Stream<String> get stream => _controller.stream;
 

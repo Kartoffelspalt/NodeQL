@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scratchql_creater/localization/supported_languages.dart';
+import 'package:nodeql/localization/supported_languages.dart';
 
 final localeControllerProvider =
     StateNotifierProvider<LocaleController, Locale>((ref) {

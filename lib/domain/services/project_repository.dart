@@ -1,4 +1,4 @@
-import 'package:scratchql_creater/domain/models/project_models.dart';
+import 'package:nodeql/domain/models/project_models.dart';
 
 abstract class ProjectRepository {
   Future<ProjectModel> createEmptyProject();

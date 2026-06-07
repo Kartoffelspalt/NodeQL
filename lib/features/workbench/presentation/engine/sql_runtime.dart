@@ -54,7 +54,7 @@ final sqlRuntimeProvider =
 
 class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   SqlRuntimeController() : super(const SqlRuntimeState());
-  static const _securityChannel = MethodChannel('scratchql/security_scope');
+  static const _securityChannel = MethodChannel('nodeql/security_scope');
   static const int _maxPreviewRows = 500;
 
   Future<void> pickDatabase() async {
@@ -104,7 +104,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
 
   Future<String> createEmptyDatabase({String? preferredName}) async {
     final supportDir = await getApplicationSupportDirectory();
-    final dbDir = Directory(p.join(supportDir.path, 'scratchql_db'));
+    final dbDir = Directory(p.join(supportDir.path, 'nodeql_db'));
     if (!await dbDir.exists()) {
       await dbDir.create(recursive: true);
     }
@@ -143,7 +143,11 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       final message = rows.length > _maxPreviewRows
           ? 'OK (${rows.length} rows, showing first $_maxPreviewRows)'
           : 'OK';
-      state = state.copyWith(lastSql: sql, lastRows: clipped, lastMessage: message);
+      state = state.copyWith(
+        lastSql: sql,
+        lastRows: clipped,
+        lastMessage: message,
+      );
     } catch (e) {
       if (snapshot != null) {
         await _restoreSnapshot(dbPath, snapshot);
@@ -260,7 +264,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     Uint8List? bytes,
   }) async {
     final supportDir = await getApplicationSupportDirectory();
-    final dbDir = Directory(p.join(supportDir.path, 'scratchql_db'));
+    final dbDir = Directory(p.join(supportDir.path, 'nodeql_db'));
     if (!await dbDir.exists()) {
       await dbDir.create(recursive: true);
     }

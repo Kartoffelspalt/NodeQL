@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scratchql_creater/domain/models/block_models.dart';
+import 'package:nodeql/domain/models/block_models.dart';
 
 void main() {
   test('block node encodes and decodes deterministically', () {

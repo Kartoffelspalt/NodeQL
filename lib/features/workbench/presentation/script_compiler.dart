@@ -1,5 +1,5 @@
-import 'package:scratchql_creater/engine/block/block_ast.dart';
-import 'package:scratchql_creater/features/workbench/presentation/workbench_state.dart';
+import 'package:nodeql/engine/block/block_ast.dart';
+import 'package:nodeql/features/workbench/presentation/workbench_state.dart';
 
 class ScriptCompiler {
   const ScriptCompiler();
@@ -14,7 +14,9 @@ class ScriptCompiler {
         return byX;
       });
 
-    final hats = sorted.where((block) => block.type == 'events.when_flag').toList();
+    final hats = sorted
+        .where((block) => block.type == 'events.when_flag')
+        .toList();
     final scripts = <BlockNode>[];
 
     for (final hat in hats) {
@@ -30,24 +32,26 @@ class ScriptCompiler {
     WorkspaceBlock anchor, {
     required double indent,
   }) {
-    final candidates = all
-        .where(
-          (block) =>
-              block.id != anchor.id &&
-              (block.position.dy - anchor.position.dy) > 10 &&
-              (block.position.dx - indent).abs() < 16,
-        )
-        .toList()
-      ..sort((a, b) => a.position.dy.compareTo(b.position.dy));
+    final candidates =
+        all
+            .where(
+              (block) =>
+                  block.id != anchor.id &&
+                  (block.position.dy - anchor.position.dy) > 10 &&
+                  (block.position.dx - indent).abs() < 16,
+            )
+            .toList()
+          ..sort((a, b) => a.position.dy.compareTo(b.position.dy));
 
-    final next = candidates.isEmpty ? null : _chainFromList(all, candidates, indent: indent);
+    final next = candidates.isEmpty
+        ? null
+        : _chainFromList(all, candidates, indent: indent);
     return next;
   }
 
   BlockNode? _chainFromList(
     List<WorkspaceBlock> all,
-    List<WorkspaceBlock> chain,
-    {
+    List<WorkspaceBlock> chain, {
     required double indent,
   }) {
     BlockNode? next;
@@ -91,17 +95,22 @@ class ScriptCompiler {
     return next;
   }
 
-  BlockNode? _buildNested(List<WorkspaceBlock> all, WorkspaceBlock parent, {required double indent}) {
-    final nested = all
-        .where(
-          (block) =>
-              block.id != parent.id &&
-              block.position.dy > parent.position.dy + 8 &&
-              block.position.dy < parent.position.dy + 180 &&
-              (block.position.dx - indent).abs() < 18,
-        )
-        .toList()
-      ..sort((a, b) => a.position.dy.compareTo(b.position.dy));
+  BlockNode? _buildNested(
+    List<WorkspaceBlock> all,
+    WorkspaceBlock parent, {
+    required double indent,
+  }) {
+    final nested =
+        all
+            .where(
+              (block) =>
+                  block.id != parent.id &&
+                  block.position.dy > parent.position.dy + 8 &&
+                  block.position.dy < parent.position.dy + 180 &&
+                  (block.position.dx - indent).abs() < 18,
+            )
+            .toList()
+          ..sort((a, b) => a.position.dy.compareTo(b.position.dy));
 
     if (nested.isEmpty) return null;
     return _chainFromList(all, nested, indent: indent);

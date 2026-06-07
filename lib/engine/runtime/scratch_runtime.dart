@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:scratchql_creater/engine/block/block_ast.dart';
+import 'package:nodeql/engine/block/block_ast.dart';
 
 class RuntimeBindings {
   const RuntimeBindings({

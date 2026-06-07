@@ -30,12 +30,12 @@ class BlockNode {
   final BlockNode? next;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'id': id,
-        'type': type,
-        'arguments': arguments,
-        'children': children.map((child) => child.toJson()).toList(),
-        'next': next?.toJson(),
-      };
+    'id': id,
+    'type': type,
+    'arguments': arguments,
+    'children': children.map((child) => child.toJson()).toList(),
+    'next': next?.toJson(),
+  };
 
   factory BlockNode.fromJson(Map<String, Object?> json) {
     final rawChildren = (json['children'] as List<Object?>? ?? <Object?>[])

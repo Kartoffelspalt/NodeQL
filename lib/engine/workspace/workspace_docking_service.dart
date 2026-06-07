@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-import 'package:scratchql_creater/engine/workspace/workspace_models.dart';
+import 'package:nodeql/engine/workspace/workspace_models.dart';
 
 class WorkspaceDockingService {
   const WorkspaceDockingService({this.magneticDistance = 18});

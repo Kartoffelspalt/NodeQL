@@ -1,14 +1,14 @@
 import 'dart:async';
 
-import 'package:scratchql_creater/engine/runtime/runtime_broadcast_bus.dart';
-import 'package:scratchql_creater/engine/runtime/runtime_models.dart';
+import 'package:nodeql/engine/runtime/runtime_broadcast_bus.dart';
+import 'package:nodeql/engine/runtime/runtime_models.dart';
 
 class RuntimeScheduler {
   RuntimeScheduler({
     Duration tickDuration = const Duration(milliseconds: 16),
     RuntimeBroadcastBus? broadcastBus,
-  })  : _tickDuration = tickDuration,
-        _broadcastBus = broadcastBus ?? RuntimeBroadcastBus();
+  }) : _tickDuration = tickDuration,
+       _broadcastBus = broadcastBus ?? RuntimeBroadcastBus();
 
   final Duration _tickDuration;
   final RuntimeBroadcastBus _broadcastBus;

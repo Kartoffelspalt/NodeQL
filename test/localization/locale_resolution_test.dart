@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scratchql_creater/localization/locale_controller.dart';
-import 'package:scratchql_creater/localization/supported_languages.dart';
+import 'package:nodeql/localization/locale_controller.dart';
+import 'package:nodeql/localization/supported_languages.dart';
 
 void main() {
   test('resolves exact locale and falls back to english', () {
