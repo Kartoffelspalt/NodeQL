@@ -1,7 +1,7 @@
 name: nodeql
 description: Scratch-inspired multilingual visual programming desktop platform.
 publish_to: 'none'
-version: 0.1.32+32
+version: 0.1.33+33
 
 environment:
   sdk: ^3.9.0
