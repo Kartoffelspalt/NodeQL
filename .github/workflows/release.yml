@@ -180,7 +180,7 @@ jobs:
         with:
           token: ${{ github.token }}
           dry-run: false
-          app-name: 'scratchql-creator'
+          app-name: 'nodeql'
           app-version: ${{ needs.check-version.outputs.version }}
           tag: v${{ needs.check-version.outputs.version }}
           build-type: 'web'
