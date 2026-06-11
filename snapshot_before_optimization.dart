@@ -1,1 +1,0 @@
-This snapshot file will preserve the current state before implementing touch gestures and Windows optimization. Key changes will be documented here.

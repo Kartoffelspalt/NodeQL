@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nodeql.dev/schemas/plugin-v1.json",
+  "title": "NodeQL Plugin Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "version", "blocks"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": 1},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+$"
+    },
+    "name": {"type": "string", "minLength": 1},
+    "version": {"$ref": "#/$defs/version"},
+    "minNodeQlVersion": {"$ref": "#/$defs/version"},
+    "author": {"type": "string", "minLength": 1},
+    "description": {"$ref": "#/$defs/localizedText"},
+    "homepage": {"type": "string", "format": "uri", "pattern": "^https?://"},
+    "license": {"type": "string", "minLength": 1},
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"const": "sql.compile"}
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/block"}
+    }
+  },
+  "$defs": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+([+-][0-9A-Za-z.-]+)?$"
+    },
+    "localizedText": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      ]
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "default"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "not": {"enum": ["children"]}
+        },
+        "type": {
+          "enum": ["sql", "identifier", "number", "string"]
+        },
+        "default": {}
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "inputs", "sql"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "shape": {
+          "enum": ["statement", "value", "container"],
+          "default": "statement"
+        },
+        "label": {"$ref": "#/$defs/localizedText"},
+        "description": {"$ref": "#/$defs/localizedText"},
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/input"}
+        },
+        "sql": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

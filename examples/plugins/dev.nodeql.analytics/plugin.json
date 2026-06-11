@@ -1,0 +1,90 @@
+{
+  "$schema": "../../../docs/plugins/plugin.schema.json",
+  "schemaVersion": 1,
+  "id": "dev.nodeql.analytics",
+  "name": "Analytics Lab",
+  "version": "1.0.0",
+  "minNodeQlVersion": "0.1.32",
+  "author": "NodeQL Examples",
+  "description": {
+    "en": "Window functions for rankings, trends, and cumulative metrics.",
+    "de": "Fensterfunktionen für Rankings, Trends und kumulative Kennzahlen."
+  },
+  "license": "MIT",
+  "capabilities": ["sql.compile"],
+  "blocks": [
+    {
+      "id": "rank",
+      "shape": "value",
+      "label": {
+        "en": "rank by [order] within [partition]",
+        "de": "Rang nach [order] innerhalb [partition]"
+      },
+      "description": {
+        "en": "Returns a gap-free dense rank inside each group.",
+        "de": "Erzeugt einen lückenlosen Rang innerhalb jeder Gruppe."
+      },
+      "color": "#2563EB",
+      "inputs": [
+        {"name": "order", "type": "sql", "default": "score DESC"},
+        {"name": "partition", "type": "sql", "default": "category"}
+      ],
+      "sql": "DENSE_RANK() OVER (PARTITION BY {{partition}} ORDER BY {{order}})"
+    },
+    {
+      "id": "running-total",
+      "shape": "value",
+      "label": {
+        "en": "running total of [value] ordered by [order]",
+        "de": "laufende Summe von [value] sortiert nach [order]"
+      },
+      "description": {
+        "en": "Calculates a cumulative sum from the first row to the current row.",
+        "de": "Berechnet eine kumulative Summe bis zur aktuellen Zeile."
+      },
+      "color": "#0EA5E9",
+      "inputs": [
+        {"name": "value", "type": "sql", "default": "amount"},
+        {"name": "order", "type": "sql", "default": "created_at"}
+      ],
+      "sql": "SUM({{value}}) OVER (ORDER BY {{order}} ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+    },
+    {
+      "id": "moving-average",
+      "shape": "value",
+      "label": {
+        "en": "[window] row moving average of [value] by [order]",
+        "de": "gleitender [window]-Zeilen-Mittelwert von [value] nach [order]"
+      },
+      "description": {
+        "en": "Smooths a metric over the current and preceding rows.",
+        "de": "Glättet eine Kennzahl über die aktuelle und vorherige Zeilen."
+      },
+      "color": "#0891B2",
+      "inputs": [
+        {"name": "window", "type": "number", "default": 7},
+        {"name": "value", "type": "sql", "default": "amount"},
+        {"name": "order", "type": "sql", "default": "created_at"}
+      ],
+      "sql": "AVG({{value}}) OVER (ORDER BY {{order}} ROWS BETWEEN {{window}} PRECEDING AND CURRENT ROW)"
+    },
+    {
+      "id": "previous-value",
+      "shape": "value",
+      "label": {
+        "en": "previous [value] ordered by [order]",
+        "de": "vorheriger Wert von [value] sortiert nach [order]"
+      },
+      "description": {
+        "en": "Reads the previous row value for trend comparisons.",
+        "de": "Liest den vorherigen Zeilenwert für Trendvergleiche."
+      },
+      "color": "#4F46E5",
+      "inputs": [
+        {"name": "value", "type": "sql", "default": "amount"},
+        {"name": "order", "type": "sql", "default": "created_at"}
+      ],
+      "sql": "LAG({{value}}) OVER (ORDER BY {{order}})"
+    }
+  ]
+}

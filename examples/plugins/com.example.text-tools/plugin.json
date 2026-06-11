@@ -1,0 +1,51 @@
+{
+  "$schema": "../../../docs/plugins/plugin.schema.json",
+  "schemaVersion": 1,
+  "id": "dev.nodeql.example.text-tools",
+  "name": "Text Tools",
+  "version": "1.0.0",
+  "minNodeQlVersion": "0.1.32",
+  "author": "Example Developer",
+  "description": {
+    "en": "Additional SQL text comparison blocks.",
+    "de": "Zusätzliche SQL-Blöcke für Textvergleiche."
+  },
+  "homepage": "https://example.com/nodeql-text-tools",
+  "license": "MIT",
+  "capabilities": ["sql.compile"],
+  "blocks": [
+    {
+      "id": "ilike",
+      "shape": "statement",
+      "label": {
+        "en": "[column] contains [pattern]",
+        "de": "[column] enthält [pattern]"
+      },
+      "description": {
+        "en": "Case-insensitive text comparison.",
+        "de": "Textvergleich ohne Beachtung der Groß-/Kleinschreibung."
+      },
+      "color": "#7C3AED",
+      "inputs": [
+        {"name": "column", "type": "identifier", "default": "name"},
+        {"name": "pattern", "type": "string", "default": "%node%"}
+      ],
+      "sql": "{{column}} ILIKE {{pattern}}"
+    },
+    {
+      "id": "transaction",
+      "shape": "container",
+      "label": {
+        "en": "transaction",
+        "de": "Transaktion"
+      },
+      "description": {
+        "en": "Wraps nested blocks in a transaction.",
+        "de": "Fasst enthaltene Blöcke in einer Transaktion zusammen."
+      },
+      "color": "#0F766E",
+      "inputs": [],
+      "sql": "BEGIN; {{children}}; COMMIT"
+    }
+  ]
+}

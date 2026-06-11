@@ -1,0 +1,92 @@
+{
+  "$schema": "../../../docs/plugins/plugin.schema.json",
+  "schemaVersion": 1,
+  "id": "dev.nodeql.sqlite-power",
+  "name": "SQLite Power Pack",
+  "version": "1.0.0",
+  "minNodeQlVersion": "0.1.32",
+  "author": "NodeQL Examples",
+  "description": {
+    "en": "Advanced SQLite helpers for plans, upserts, CTEs, and date series.",
+    "de": "Fortgeschrittene SQLite-Helfer für Pläne, Upserts, CTEs und Datumsreihen."
+  },
+  "license": "MIT",
+  "capabilities": ["sql.compile"],
+  "blocks": [
+    {
+      "id": "explain",
+      "shape": "statement",
+      "label": {
+        "en": "explain query plan for [query]",
+        "de": "erkläre Abfrageplan für [query]"
+      },
+      "description": {
+        "en": "Shows how SQLite intends to execute a query.",
+        "de": "Zeigt, wie SQLite eine Abfrage ausführen will."
+      },
+      "color": "#059669",
+      "inputs": [
+        {"name": "query", "type": "sql", "default": "SELECT * FROM users"}
+      ],
+      "sql": "EXPLAIN QUERY PLAN {{query}}"
+    },
+    {
+      "id": "upsert",
+      "shape": "statement",
+      "label": {
+        "en": "upsert into [table] columns [columns] values [values] on [key] set [update]",
+        "de": "Upsert in [table] Spalten [columns] Werte [values] bei [key] setze [update]"
+      },
+      "description": {
+        "en": "Inserts a row or updates it when the key already exists.",
+        "de": "Fügt eine Zeile ein oder aktualisiert sie bei vorhandenem Schlüssel."
+      },
+      "color": "#047857",
+      "inputs": [
+        {"name": "table", "type": "identifier", "default": "users"},
+        {"name": "columns", "type": "sql", "default": "id, name"},
+        {"name": "values", "type": "sql", "default": "1, 'Ada'"},
+        {"name": "key", "type": "identifier", "default": "id"},
+        {"name": "update", "type": "sql", "default": "name = excluded.name"}
+      ],
+      "sql": "INSERT INTO {{table}} ({{columns}}) VALUES ({{values}}) ON CONFLICT({{key}}) DO UPDATE SET {{update}}"
+    },
+    {
+      "id": "date-series",
+      "shape": "statement",
+      "label": {
+        "en": "dates from [start] for [days] days",
+        "de": "Datumsreihe ab [start] für [days] Tage"
+      },
+      "description": {
+        "en": "Generates a consecutive date series using a recursive CTE.",
+        "de": "Erzeugt eine fortlaufende Datumsreihe mit einer rekursiven CTE."
+      },
+      "color": "#0D9488",
+      "inputs": [
+        {"name": "start", "type": "string", "default": "2026-01-01"},
+        {"name": "days", "type": "number", "default": 30}
+      ],
+      "sql": "WITH RECURSIVE dates(day, n) AS (SELECT date({{start}}), 1 UNION ALL SELECT date(day, '+1 day'), n + 1 FROM dates WHERE n < {{days}}) SELECT day FROM dates"
+    },
+    {
+      "id": "with-query",
+      "shape": "statement",
+      "label": {
+        "en": "CTE [name] as [source] then [query]",
+        "de": "CTE [name] als [source] dann [query]"
+      },
+      "description": {
+        "en": "Builds a common table expression for readable multi-step queries.",
+        "de": "Erstellt eine CTE für lesbare mehrstufige Abfragen."
+      },
+      "color": "#0F766E",
+      "inputs": [
+        {"name": "name", "type": "identifier", "default": "filtered"},
+        {"name": "source", "type": "sql", "default": "SELECT * FROM users WHERE active = 1"},
+        {"name": "query", "type": "sql", "default": "SELECT * FROM filtered"}
+      ],
+      "sql": "WITH {{name}} AS ({{source}}) {{query}}"
+    }
+  ]
+}

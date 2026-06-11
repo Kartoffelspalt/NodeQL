@@ -12,6 +12,7 @@ This iteration provides a production-oriented foundation with:
 - stage state core
 - JSON project model + repository contract
 - extension registration contract
+- external manifest-based plugin SDK
 - full `gen_l10n` setup for 11 languages (including Arabic RTL)
 - baseline tests for runtime, serialization, localization, and workspace logic
 
@@ -37,6 +38,8 @@ flowchart LR
 - `lib/features`: feature-level presentation and state wiring
 - `lib/ui`: shell-level entry widgets
 - `test`: unit and widget tests per subsystem
+- `docs/plugins`: external plugin SDK, JSON schema, and format reference
+- `examples/plugins`: installable example plugins
 
 ## Internationalization
 
@@ -64,12 +67,18 @@ flutter test
 flutter run -d macos   # or windows/linux
 ```
 
+## External Plugins
+
+NodeQL loads independent JSON plugin packages at runtime; plugin developers do
+not need Dart or Flutter. Plugins can define localized visual blocks, typed
+inputs, colors, container behavior, and SQL templates. See
+[`docs/plugins/README.md`](docs/plugins/README.md).
+
 ## Next TODO Iterations
 
 - implement block drag/drop graph editor + snapping visuals
 - runtime coroutine model with deterministic scheduling slices
 - stage renderer with costumes/sounds/input events
 - autosave, crash recovery, backup versions
-- plugin loader and extension discovery
 - desktop menus, shortcuts, dockable/resizable panels
 - performance profiling for thousands of blocks

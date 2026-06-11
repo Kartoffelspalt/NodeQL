@@ -1,0 +1,90 @@
+{
+  "$schema": "../../../docs/plugins/plugin.schema.json",
+  "schemaVersion": 1,
+  "id": "dev.nodeql.data-quality",
+  "name": "Data Quality Inspector",
+  "version": "1.0.0",
+  "minNodeQlVersion": "0.1.32",
+  "author": "NodeQL Examples",
+  "description": {
+    "en": "Find duplicates, missing values, and suspicious ranges.",
+    "de": "Duplikate, fehlende Werte und auffällige Wertebereiche finden."
+  },
+  "license": "MIT",
+  "capabilities": ["sql.compile"],
+  "blocks": [
+    {
+      "id": "duplicate-report",
+      "shape": "statement",
+      "label": {
+        "en": "find duplicates of [column] in [table]",
+        "de": "finde Duplikate von [column] in [table]"
+      },
+      "description": {
+        "en": "Lists duplicate values and their occurrence count.",
+        "de": "Listet doppelte Werte und deren Häufigkeit auf."
+      },
+      "color": "#DC2626",
+      "inputs": [
+        {"name": "column", "type": "identifier", "default": "email"},
+        {"name": "table", "type": "identifier", "default": "users"}
+      ],
+      "sql": "SELECT {{column}}, COUNT(*) AS duplicate_count FROM {{table}} GROUP BY {{column}} HAVING COUNT(*) > 1 ORDER BY duplicate_count DESC"
+    },
+    {
+      "id": "null-profile",
+      "shape": "statement",
+      "label": {
+        "en": "profile missing [column] values in [table]",
+        "de": "prüfe fehlende [column]-Werte in [table]"
+      },
+      "description": {
+        "en": "Returns row count, null count, and null percentage.",
+        "de": "Liefert Zeilenanzahl, NULL-Anzahl und NULL-Prozentsatz."
+      },
+      "color": "#B91C1C",
+      "inputs": [
+        {"name": "column", "type": "identifier", "default": "email"},
+        {"name": "table", "type": "identifier", "default": "users"}
+      ],
+      "sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN {{column}} IS NULL THEN 1 ELSE 0 END) AS null_rows, ROUND(100.0 * SUM(CASE WHEN {{column}} IS NULL THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 2) AS null_percent FROM {{table}}"
+    },
+    {
+      "id": "range-violations",
+      "shape": "statement",
+      "label": {
+        "en": "find [column] outside [minimum] to [maximum] in [table]",
+        "de": "finde [column] außerhalb [minimum] bis [maximum] in [table]"
+      },
+      "description": {
+        "en": "Finds rows whose numeric value is outside an expected range.",
+        "de": "Findet Zeilen außerhalb eines erwarteten Zahlenbereichs."
+      },
+      "color": "#E11D48",
+      "inputs": [
+        {"name": "column", "type": "identifier", "default": "age"},
+        {"name": "minimum", "type": "number", "default": 0},
+        {"name": "maximum", "type": "number", "default": 120},
+        {"name": "table", "type": "identifier", "default": "users"}
+      ],
+      "sql": "SELECT * FROM {{table}} WHERE {{column}} < {{minimum}} OR {{column}} > {{maximum}}"
+    },
+    {
+      "id": "completeness-score",
+      "shape": "value",
+      "label": {
+        "en": "completeness percent of [column]",
+        "de": "Vollständigkeit von [column] in Prozent"
+      },
+      "description": {
+        "en": "Calculates the percentage of non-null values.",
+        "de": "Berechnet den Prozentsatz nicht-leerer Werte."
+      },
+      "color": "#BE123C",
+      "inputs": [
+        {"name": "column", "type": "identifier", "default": "email"}
+      ],
+      "sql": "ROUND(100.0 * COUNT({{column}}) / NULLIF(COUNT(*), 0), 2)"
+    }
+  ]
+}

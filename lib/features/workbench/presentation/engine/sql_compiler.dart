@@ -1,9 +1,14 @@
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 
 class SqlCompiler {
   const SqlCompiler();
 
-  SqlCompileResult compileWorkspace(List<BlockNode> roots) {
+  SqlCompileResult compileWorkspace(
+    List<BlockNode> roots, {
+    Map<String, NodeQlPluginBlock> pluginBlocks =
+        const <String, NodeQlPluginBlock>{},
+  }) {
     final statements = <String>[];
     final warnings = <String>[];
     final floatingRoots = roots.where(
@@ -17,7 +22,11 @@ class SqlCompiler {
 
     for (final root in roots.where((n) => n.type == BlockType.eventGreenFlag)) {
       if (root.next == null) continue;
-      final sql = _compileNode(root.next!).trim();
+      final sql = _compileNode(
+        root.next!,
+        pluginBlocks: pluginBlocks,
+        warnings: warnings,
+      ).trim();
       if (sql.isNotEmpty) {
         statements.add(sql.endsWith(';') ? sql : '$sql;');
       }
@@ -25,13 +34,60 @@ class SqlCompiler {
     return SqlCompileResult(sql: statements.join('\n'), warnings: warnings);
   }
 
-  String _compileNode(BlockNode node) {
-    final current = _compileSingle(node);
-    final next = node.next == null ? '' : ' ${_compileNode(node.next!)}';
+  String _compileNode(
+    BlockNode node, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+  }) {
+    final current = _compileSingle(
+      node,
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+    );
+    final next = node.next == null
+        ? ''
+        : ' ${_compileNode(node.next!, pluginBlocks: pluginBlocks, warnings: warnings)}';
     return '$current$next'.trim();
   }
 
-  String _compileSingle(BlockNode node) {
+  String _compileSingle(
+    BlockNode node, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+  }) {
+    final pluginBlockId = node.inputs[pluginBlockKeyInput] as String?;
+    if (pluginBlockId != null) {
+      final pluginBlock = pluginBlocks[pluginBlockId];
+      if (pluginBlock == null) {
+        warnings.add(
+          'Plugin block "$pluginBlockId" is unavailable. Install or enable its plugin.',
+        );
+        return '';
+      }
+      final savedVersion = node.inputs[pluginVersionInput] as String?;
+      if (savedVersion != null && savedVersion != pluginBlock.pluginVersion) {
+        warnings.add(
+          'Plugin block "$pluginBlockId" was created with version '
+          '$savedVersion and is running with ${pluginBlock.pluginVersion}.',
+        );
+      }
+      if (pluginBlock.sqlTemplate != null) {
+        try {
+          return pluginBlock.renderSql(
+            node.inputs,
+            childrenSql: _compileChildren(
+              node.children,
+              pluginBlocks: pluginBlocks,
+              warnings: warnings,
+            ),
+          );
+        } on Object catch (error) {
+          warnings.add('Plugin block "$pluginBlockId" failed: $error');
+          return '';
+        }
+      }
+    }
+
     switch (node.type) {
       case BlockType.eventGreenFlag:
         return '';
@@ -41,7 +97,7 @@ class SqlCompiler {
         return 'ORDER BY ${(node.inputs['degrees'] ?? 15)}';
       case BlockType.controlRepeat:
       case BlockType.controlForever:
-        return 'BEGIN; ${_compileChildren(node.children)}; COMMIT';
+        return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings)}; COMMIT';
       case BlockType.operatorAdd:
         return node.inputs['expr'] as String? ?? 'id';
       case BlockType.variableSet:
@@ -51,7 +107,11 @@ class SqlCompiler {
         final colsFromInput = (configuredCols == null || configuredCols.isEmpty)
             ? '*'
             : configuredCols;
-        final colsFromChildren = _compileChildren(node.children).trim();
+        final colsFromChildren = _compileChildren(
+          node.children,
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+        ).trim();
         final cols = colsFromChildren.isNotEmpty
             ? colsFromChildren
             : colsFromInput;
@@ -183,14 +243,20 @@ class SqlCompiler {
         return 'SET TRANSACTION ISOLATION LEVEL ${node.inputs['level'] as String? ?? 'READ COMMITTED'}';
       case BlockType.sqlLoop:
         // NodeQL loop compiles contained statements as transaction body.
-        return 'BEGIN; ${_compileChildren(node.children)}; COMMIT';
+        return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings)}; COMMIT';
     }
   }
 
-  String _compileChildren(List<BlockNode> children) {
+  String _compileChildren(
+    List<BlockNode> children, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+  }) {
     final parts = <String>[];
     for (final head in children) {
-      parts.add(_compileNode(head));
+      parts.add(
+        _compileNode(head, pluginBlocks: pluginBlocks, warnings: warnings),
+      );
     }
     return parts.where((p) => p.trim().isNotEmpty).join(', ');
   }

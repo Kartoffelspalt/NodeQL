@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
@@ -72,8 +73,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final workspaceRoots = ref.read(workspaceProvider).roots;
     final runtime = ref.watch(sqlRuntimeProvider);
     final mode = ref.watch(sqlModeProvider);
-    final pluginEntries = ref.watch(pluginPaletteProvider);
-    final compileResult = _compiler.compileWorkspace(workspaceRoots);
+    final pluginState = ref.watch(pluginPaletteProvider);
+    final compileResult = _compiler.compileWorkspace(
+      workspaceRoots,
+      pluginBlocks: pluginState.blocksByQualifiedId,
+    );
     final sql = compileResult.sql;
     _maybeAutosave(workspaceRevision);
 
@@ -120,7 +124,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                 children: [
                   _CategoryRail(
                     active: _activeCategory,
-                    hasPlugins: pluginEntries.isNotEmpty,
+                    hasPlugins: pluginState.entries.isNotEmpty,
                     onSelect: (next) => setState(() => _activeCategory = next),
                   ),
                   _Palette(
@@ -129,7 +133,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     mode: mode,
                     localeCode: locale.languageCode,
                     width: _paletteWidth,
-                    pluginEntries: pluginEntries,
+                    pluginEntries: pluginState.entries,
                     onAdd: (type, defaults) => ref
                         .read(workspaceProvider.notifier)
                         .addTemplate(
@@ -408,9 +412,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                 ),
                 const SizedBox(height: 8),
                 FilledButton.tonal(
-                  onPressed: () =>
-                      ref.read(pluginPaletteProvider.notifier).reload(),
-                  child: const Text('Reload Plugins'),
+                  onPressed: () => _openPluginManager(context),
+                  child: const Text('Manage Plugins'),
                 ),
               ],
             );
@@ -418,6 +421,125 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openPluginManager(BuildContext context) async {
+    await ref.read(pluginPaletteProvider.notifier).reload();
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('NodeQL Plugins'),
+        content: SizedBox(
+          width: 620,
+          height: 430,
+          child: Consumer(
+            builder: (context, ref, _) {
+              final plugins = ref.watch(pluginPaletteProvider);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    plugins.pluginsDirectory ?? 'Loading plugin directory...',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: plugins.loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : ListView(
+                            children: [
+                              if (plugins.manifests.isEmpty)
+                                const ListTile(
+                                  leading: Icon(Icons.extension_off),
+                                  title: Text('No external plugins installed'),
+                                  subtitle: Text(
+                                    'Install a plugin.json manifest to add blocks.',
+                                  ),
+                                ),
+                              for (final manifest in plugins.manifests)
+                                ListTile(
+                                  leading: const Icon(Icons.extension),
+                                  title: Text(manifest.name),
+                                  subtitle: Text(
+                                    '${manifest.id}  •  ${manifest.version}\n'
+                                    '${manifest.blocks.length} block(s)',
+                                  ),
+                                  isThreeLine: true,
+                                  trailing: IconButton(
+                                    tooltip: 'Uninstall',
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () async {
+                                      await ref
+                                          .read(pluginPaletteProvider.notifier)
+                                          .uninstall(manifest.id);
+                                    },
+                                  ),
+                                ),
+                              for (final issue in plugins.issues)
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.warning_amber,
+                                    color: Colors.orange,
+                                  ),
+                                  title: Text(issue.message),
+                                  subtitle: Text(issue.path),
+                                ),
+                            ],
+                          ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () => ref.read(pluginPaletteProvider.notifier).reload(),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reload'),
+          ),
+          FilledButton.icon(
+            onPressed: () => _installPluginManifest(dialogContext),
+            icon: const Icon(Icons.add),
+            label: const Text('Install plugin.json'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _installPluginManifest(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Select a NodeQL plugin.json manifest',
+      type: FileType.custom,
+      allowedExtensions: const <String>['json'],
+      allowMultiple: false,
+    );
+    final path = result?.files.single.path;
+    if (path == null) return;
+    try {
+      final manifest = await ref
+          .read(pluginPaletteProvider.notifier)
+          .installManifest(File(path));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Installed ${manifest.name} ${manifest.version}'),
+        ),
+      );
+    } on Object catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Plugin installation failed: $error')),
+      );
+    }
   }
 
   String _projectNameFromPath(String path) {
@@ -731,6 +853,31 @@ class _TopBar extends StatelessWidget {
 
 enum SqlPaletteCategory { dql, dml, ddl, dcl, txn, plugins }
 
+class _PaletteItem {
+  const _PaletteItem({
+    required this.key,
+    required this.type,
+    required this.label,
+    required this.description,
+    required this.color,
+    this.defaults,
+  });
+
+  final String key;
+  final BlockType type;
+  final String label;
+  final String description;
+  final Color color;
+  final Map<String, dynamic>? defaults;
+}
+
+class _PaletteDragData {
+  const _PaletteDragData(this.type, this.defaults);
+
+  final BlockType type;
+  final Map<String, dynamic>? defaults;
+}
+
 class _CategoryRail extends StatelessWidget {
   const _CategoryRail({
     required this.active,
@@ -809,9 +956,6 @@ class _PaletteState extends State<_Palette> {
   @override
   Widget build(BuildContext context) {
     final tileWidth = (widget.width - 32).clamp(160.0, 500.0);
-    final pluginByType = <BlockType, PluginPaletteEntry>{
-      for (final p in widget.pluginEntries) p.blockType: p,
-    };
     final query = _query.trim().toLowerCase();
     final sourceBlocks = query.isEmpty
         ? _blocksForCategory(widget.category)
@@ -820,10 +964,9 @@ class _PaletteState extends State<_Palette> {
         ? sourceBlocks
         : sourceBlocks
               .where((block) {
-                final description = _commandHelp(block.$1, widget.localeCode);
-                return block.$2.toLowerCase().contains(query) ||
-                    description.toLowerCase().contains(query) ||
-                    block.$1.name.toLowerCase().contains(query);
+                return block.label.toLowerCase().contains(query) ||
+                    block.description.toLowerCase().contains(query) ||
+                    block.key.toLowerCase().contains(query);
               })
               .toList(growable: false);
 
@@ -899,17 +1042,18 @@ class _PaletteState extends State<_Palette> {
                     (block) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: _PaletteCard(
-                        type: block.$1,
-                        label: block.$2,
-                        description: _commandHelp(block.$1, widget.localeCode),
-                        color: _colorForType(block.$1),
-                        node: _templateNode(block.$1),
+                        type: block.type,
+                        label: block.label,
+                        description: block.description,
+                        color: block.color,
+                        node: _templateNode(block.type, block.defaults),
                         width: tileWidth,
-                        onAdd: () => widget.onAdd(
-                          block.$1,
-                          pluginByType[block.$1]?.defaults,
+                        onAdd: () => widget.onAdd(block.type, block.defaults),
+                        onHelp: () => _showCommandHelp(
+                          context,
+                          block.label,
+                          block.description,
                         ),
-                        onHelp: () => _showCommandHelp(context, block.$1),
                       ),
                     ),
                   )
@@ -921,109 +1065,117 @@ class _PaletteState extends State<_Palette> {
     );
   }
 
-  List<(BlockType, String)> _blocksForCategory(SqlPaletteCategory category) {
+  List<_PaletteItem> _blocksForCategory(SqlPaletteCategory category) {
     String lbl(BlockType type) =>
         sqlLabelFor(type, widget.mode, const {}, widget.localeCode);
+    _PaletteItem native(BlockType type) => _PaletteItem(
+      key: type.name,
+      type: type,
+      label: lbl(type),
+      description: _commandHelp(type, widget.localeCode),
+      color: _colorForType(type),
+    );
     return switch (category) {
-      SqlPaletteCategory.dql => <(BlockType, String)>[
-        (BlockType.eventGreenFlag, lbl(BlockType.eventGreenFlag)),
-        (BlockType.sqlSelect, lbl(BlockType.sqlSelect)),
-        (BlockType.sqlWhere, lbl(BlockType.sqlWhere)),
-        (BlockType.sqlJoin, lbl(BlockType.sqlJoin)),
-        (BlockType.sqlGroupBy, lbl(BlockType.sqlGroupBy)),
-        (BlockType.sqlHaving, lbl(BlockType.sqlHaving)),
-        (BlockType.sqlOrderBy, lbl(BlockType.sqlOrderBy)),
-        (BlockType.sqlInnerJoin, lbl(BlockType.sqlInnerJoin)),
-        (BlockType.sqlLeftJoin, lbl(BlockType.sqlLeftJoin)),
-        (BlockType.sqlRightJoin, lbl(BlockType.sqlRightJoin)),
-        (BlockType.sqlFullJoin, lbl(BlockType.sqlFullJoin)),
-        (BlockType.sqlCrossJoin, lbl(BlockType.sqlCrossJoin)),
-        (BlockType.sqlNaturalJoin, lbl(BlockType.sqlNaturalJoin)),
-        (BlockType.sqlSubqueryIn, lbl(BlockType.sqlSubqueryIn)),
-        (BlockType.sqlSubqueryAny, lbl(BlockType.sqlSubqueryAny)),
-        (BlockType.sqlSubqueryAll, lbl(BlockType.sqlSubqueryAll)),
-        (BlockType.sqlCount, lbl(BlockType.sqlCount)),
-        (BlockType.sqlSum, lbl(BlockType.sqlSum)),
-        (BlockType.sqlAvg, lbl(BlockType.sqlAvg)),
-        (BlockType.sqlMin, lbl(BlockType.sqlMin)),
-        (BlockType.sqlMax, lbl(BlockType.sqlMax)),
-        (BlockType.sqlConcat, lbl(BlockType.sqlConcat)),
-        (BlockType.sqlSubstring, lbl(BlockType.sqlSubstring)),
-        (BlockType.sqlLength, lbl(BlockType.sqlLength)),
-        (BlockType.sqlUpper, lbl(BlockType.sqlUpper)),
-        (BlockType.sqlLower, lbl(BlockType.sqlLower)),
-        (BlockType.sqlTrim, lbl(BlockType.sqlTrim)),
-        (BlockType.sqlLeft, lbl(BlockType.sqlLeft)),
-        (BlockType.sqlRight, lbl(BlockType.sqlRight)),
-        (BlockType.sqlReplace, lbl(BlockType.sqlReplace)),
-        (BlockType.sqlCurrentDate, lbl(BlockType.sqlCurrentDate)),
-        (BlockType.sqlCurrentTime, lbl(BlockType.sqlCurrentTime)),
-        (BlockType.sqlCurrentTimestamp, lbl(BlockType.sqlCurrentTimestamp)),
-        (BlockType.sqlDatePart, lbl(BlockType.sqlDatePart)),
-        (BlockType.sqlDateAdd, lbl(BlockType.sqlDateAdd)),
-        (BlockType.sqlDateSub, lbl(BlockType.sqlDateSub)),
-        (BlockType.sqlExtract, lbl(BlockType.sqlExtract)),
-        (BlockType.sqlToChar, lbl(BlockType.sqlToChar)),
-        (BlockType.sqlTimestampDiff, lbl(BlockType.sqlTimestampDiff)),
-        (BlockType.sqlDateDiff, lbl(BlockType.sqlDateDiff)),
-        (BlockType.sqlCase, lbl(BlockType.sqlCase)),
-        (BlockType.sqlIf, lbl(BlockType.sqlIf)),
-        (BlockType.sqlCoalesce, lbl(BlockType.sqlCoalesce)),
-        (BlockType.sqlNullIf, lbl(BlockType.sqlNullIf)),
-        (BlockType.sqlFrom, lbl(BlockType.sqlFrom)),
+      SqlPaletteCategory.dql => <_PaletteItem>[
+        native(BlockType.eventGreenFlag),
+        native(BlockType.sqlSelect),
+        native(BlockType.sqlWhere),
+        native(BlockType.sqlJoin),
+        native(BlockType.sqlGroupBy),
+        native(BlockType.sqlHaving),
+        native(BlockType.sqlOrderBy),
+        native(BlockType.sqlInnerJoin),
+        native(BlockType.sqlLeftJoin),
+        native(BlockType.sqlRightJoin),
+        native(BlockType.sqlFullJoin),
+        native(BlockType.sqlCrossJoin),
+        native(BlockType.sqlNaturalJoin),
+        native(BlockType.sqlSubqueryIn),
+        native(BlockType.sqlSubqueryAny),
+        native(BlockType.sqlSubqueryAll),
+        native(BlockType.sqlCount),
+        native(BlockType.sqlSum),
+        native(BlockType.sqlAvg),
+        native(BlockType.sqlMin),
+        native(BlockType.sqlMax),
+        native(BlockType.sqlConcat),
+        native(BlockType.sqlSubstring),
+        native(BlockType.sqlLength),
+        native(BlockType.sqlUpper),
+        native(BlockType.sqlLower),
+        native(BlockType.sqlTrim),
+        native(BlockType.sqlLeft),
+        native(BlockType.sqlRight),
+        native(BlockType.sqlReplace),
+        native(BlockType.sqlCurrentDate),
+        native(BlockType.sqlCurrentTime),
+        native(BlockType.sqlCurrentTimestamp),
+        native(BlockType.sqlDatePart),
+        native(BlockType.sqlDateAdd),
+        native(BlockType.sqlDateSub),
+        native(BlockType.sqlExtract),
+        native(BlockType.sqlToChar),
+        native(BlockType.sqlTimestampDiff),
+        native(BlockType.sqlDateDiff),
+        native(BlockType.sqlCase),
+        native(BlockType.sqlIf),
+        native(BlockType.sqlCoalesce),
+        native(BlockType.sqlNullIf),
+        native(BlockType.sqlFrom),
       ],
-      SqlPaletteCategory.dml => <(BlockType, String)>[
-        (BlockType.sqlInsert, lbl(BlockType.sqlInsert)),
-        (BlockType.sqlUpdate, lbl(BlockType.sqlUpdate)),
-        (BlockType.sqlDelete, lbl(BlockType.sqlDelete)),
+      SqlPaletteCategory.dml => <_PaletteItem>[
+        native(BlockType.sqlInsert),
+        native(BlockType.sqlUpdate),
+        native(BlockType.sqlDelete),
       ],
-      SqlPaletteCategory.ddl => <(BlockType, String)>[
-        (BlockType.sqlCreateTable, lbl(BlockType.sqlCreateTable)),
-        (BlockType.sqlAlterTable, lbl(BlockType.sqlAlterTable)),
-        (BlockType.sqlTruncate, lbl(BlockType.sqlTruncate)),
-        (BlockType.sqlDropTable, lbl(BlockType.sqlDropTable)),
-        (BlockType.sqlGrant, lbl(BlockType.sqlGrant)),
-        (BlockType.sqlRevoke, lbl(BlockType.sqlRevoke)),
+      SqlPaletteCategory.ddl => <_PaletteItem>[
+        native(BlockType.sqlCreateTable),
+        native(BlockType.sqlAlterTable),
+        native(BlockType.sqlTruncate),
+        native(BlockType.sqlDropTable),
+        native(BlockType.sqlGrant),
+        native(BlockType.sqlRevoke),
       ],
-      SqlPaletteCategory.dcl => <(BlockType, String)>[
-        (BlockType.sqlGrant, lbl(BlockType.sqlGrant)),
-        (BlockType.sqlRevoke, lbl(BlockType.sqlRevoke)),
+      SqlPaletteCategory.dcl => <_PaletteItem>[
+        native(BlockType.sqlGrant),
+        native(BlockType.sqlRevoke),
       ],
-      SqlPaletteCategory.txn => <(BlockType, String)>[
-        (BlockType.sqlCommit, lbl(BlockType.sqlCommit)),
-        (BlockType.sqlRollback, lbl(BlockType.sqlRollback)),
-        (BlockType.sqlSavepoint, lbl(BlockType.sqlSavepoint)),
-        (
-          BlockType.sqlRollbackToSavepoint,
-          lbl(BlockType.sqlRollbackToSavepoint),
-        ),
-        (BlockType.sqlSetTransaction, lbl(BlockType.sqlSetTransaction)),
-        (BlockType.sqlUnion, lbl(BlockType.sqlUnion)),
-        (BlockType.sqlIntersect, lbl(BlockType.sqlIntersect)),
-        (BlockType.sqlExcept, lbl(BlockType.sqlExcept)),
+      SqlPaletteCategory.txn => <_PaletteItem>[
+        native(BlockType.sqlCommit),
+        native(BlockType.sqlRollback),
+        native(BlockType.sqlSavepoint),
+        native(BlockType.sqlRollbackToSavepoint),
+        native(BlockType.sqlSetTransaction),
+        native(BlockType.sqlUnion),
+        native(BlockType.sqlIntersect),
+        native(BlockType.sqlExcept),
       ],
       SqlPaletteCategory.plugins =>
         widget.pluginEntries
             .map(
-              (entry) => (
-                entry.blockType,
-                entry.labelOverride ?? lbl(entry.blockType),
+              (entry) => _PaletteItem(
+                key: entry.block.qualifiedId,
+                type: entry.blockType,
+                label: entry.block.uiTemplateFor(widget.localeCode),
+                description: entry.descriptionFor(widget.localeCode),
+                color: Color(entry.block.colorValue),
+                defaults: entry.defaults,
               ),
             )
             .toList(growable: false),
     };
   }
 
-  List<(BlockType, String)> _allSearchableBlocks() {
-    final seen = <BlockType>{};
-    final all = <(BlockType, String)>[];
+  List<_PaletteItem> _allSearchableBlocks() {
+    final seen = <String>{};
+    final all = <_PaletteItem>[];
     for (final category in SqlPaletteCategory.values) {
       if (category == SqlPaletteCategory.plugins &&
           widget.pluginEntries.isEmpty) {
         continue;
       }
       for (final block in _blocksForCategory(category)) {
-        if (seen.add(block.$1)) all.add(block);
+        if (seen.add(block.key)) all.add(block);
       }
     }
     return all;
@@ -1313,15 +1465,16 @@ class _PaletteState extends State<_Palette> {
     }
   }
 
-  Future<void> _showCommandHelp(BuildContext context, BlockType type) async {
-    final de = widget.localeCode == 'de';
+  Future<void> _showCommandHelp(
+    BuildContext context,
+    String label,
+    String description,
+  ) async {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          de ? 'Was macht dieser Block?' : 'What does this block do?',
-        ),
-        content: Text(_commandHelp(type, widget.localeCode)),
+        title: Text(label),
+        content: Text(description),
         actions: [
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -1345,36 +1498,35 @@ class _PaletteState extends State<_Palette> {
     };
   }
 
-  BlockNode _templateNode(BlockType type) {
-    switch (type) {
-      case BlockType.sqlSelect:
-        return OperatorBlock(
-          id: 'tpl_sel',
-          position: Offset.zero,
-          operatorType: type,
-        );
-      case BlockType.eventGreenFlag:
-        return EventBlock(id: 'tpl_evt', position: Offset.zero);
-      case BlockType.sqlWhere:
-      case BlockType.sqlOrderBy:
-        return MotionBlock(
-          id: 'tpl_mot',
-          position: Offset.zero,
-          motionType: type,
-        );
-      case BlockType.sqlLoop:
-        return ControlBlock(
-          id: 'tpl_ctl',
-          position: Offset.zero,
-          controlType: type,
-        );
-      default:
-        return OperatorBlock(
-          id: 'tpl_op',
-          position: Offset.zero,
-          operatorType: type,
-        );
-    }
+  BlockNode _templateNode(BlockType type, Map<String, dynamic>? defaults) {
+    final node = switch (type) {
+      BlockType.sqlSelect => OperatorBlock(
+        id: 'tpl_sel',
+        position: Offset.zero,
+        operatorType: type,
+      ),
+      BlockType.eventGreenFlag => EventBlock(
+        id: 'tpl_evt',
+        position: Offset.zero,
+      ),
+      BlockType.sqlWhere || BlockType.sqlOrderBy => MotionBlock(
+        id: 'tpl_mot',
+        position: Offset.zero,
+        motionType: type,
+      ),
+      BlockType.sqlLoop => ControlBlock(
+        id: 'tpl_ctl',
+        position: Offset.zero,
+        controlType: type,
+      ),
+      _ => OperatorBlock(
+        id: 'tpl_op',
+        position: Offset.zero,
+        operatorType: type,
+      ),
+    };
+    if (defaults != null) node.inputs.addAll(defaults);
+    return node;
   }
 
   Color _colorForType(BlockType type) {
@@ -1436,8 +1588,8 @@ class _PaletteCard extends StatelessWidget {
       label: label,
     );
 
-    return Draggable<BlockType>(
-      data: type,
+    return Draggable<_PaletteDragData>(
+      data: _PaletteDragData(type, node.inputs),
       feedback: Material(color: Colors.transparent, child: block),
       child: GestureDetector(
         onTap: onAdd,
@@ -1527,12 +1679,16 @@ class _WorkspaceCanvas extends ConsumerWidget {
       ..translate(workspace.pan.dx, workspace.pan.dy)
       ..scale(workspace.scale);
 
-    return DragTarget<BlockType>(
+    return DragTarget<_PaletteDragData>(
       onWillAcceptWithDetails: (_) => true,
       onAcceptWithDetails: (details) {
         final rb = context.findRenderObject() as RenderBox;
         final local = rb.globalToLocal(details.offset);
-        controller.addTemplate(details.data, _toWorld(local));
+        controller.addTemplate(
+          details.data.type,
+          _toWorld(local),
+          defaults: details.data.defaults,
+        );
       },
       builder: (context, _, __) => Focus(
         autofocus: true,
@@ -1952,61 +2108,18 @@ class _NodeView extends ConsumerWidget {
     final mode = ref.watch(sqlModeProvider);
     final runtime = ref.watch(sqlRuntimeProvider);
     final localeCode = ref.watch(localeControllerProvider).languageCode;
-
-    String label;
-    Color color;
-
-    switch (node.type) {
-      case BlockType.eventGreenFlag:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.events;
-      case BlockType.sqlSelect:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.motion;
-      case BlockType.sqlWhere:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.motion;
-      case BlockType.sqlOrderBy:
-        label = 'ORDER BY ${node.inputs['expr'] ?? 'id DESC'}';
-        color = ScratchPalette.motion;
-      case BlockType.sqlLoop:
-        label = 'FOREVER LOOP';
-        color = ScratchPalette.control;
-      case BlockType.sqlJoin:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.operators;
-      case BlockType.sqlGroupBy:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.operators;
-      case BlockType.sqlFrom:
-        label = 'FROM ${node.inputs['table'] ?? ''}'.trim();
-        color = ScratchPalette.operators;
-      case BlockType.sqlInsert:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.variables;
-      case BlockType.sqlUpdate:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.variables;
-      case BlockType.sqlDelete:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.variables;
-      case BlockType.sqlCreateTable:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.operators;
-      case BlockType.sqlDropTable:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.operators;
-      case BlockType.sqlColumn:
-        label = '${node.inputs['column'] ?? '*'}';
-        color = ScratchPalette.motion;
-      default:
-        label = _resolvedSqlLabel(node, mode, localeCode);
-        color = ScratchPalette.operators;
-    }
+    final pluginBlock = pluginBlockForNode(
+      node,
+      ref.watch(pluginPaletteProvider),
+    );
+    final color = pluginBlock == null
+        ? _colorForNodeType(node.type)
+        : Color(pluginBlock.colorValue);
 
     final height = engine.blockHeight(node);
+    final template = _templateForNode(node, mode, localeCode, pluginBlock);
     final measuredWidth = _computeBlockWidth(
-      template: _templateForNode(node, mode, localeCode),
+      template: template,
       values: node.inputs,
       localeCode: localeCode,
       style: const TextStyle(
@@ -2020,7 +2133,6 @@ class _NodeView extends ConsumerWidget {
       900.0,
     );
     engine.setRenderWidth(node, blockWidth);
-    final template = _templateForNode(node, mode, localeCode);
     final slotRects = _computeInlineSlots(
       template: template,
       values: node.inputs,
@@ -2130,11 +2242,27 @@ class _NodeView extends ConsumerWidget {
     BlockNode node,
     SqlAbstractionMode mode,
     String localeCode,
+    NodeQlPluginBlock? pluginBlock,
   ) {
-    if (node.type == BlockType.eventGreenFlag) {
-      return sqlLabelFor(node.type, mode, node.inputs, localeCode);
-    }
+    if (pluginBlock != null) return pluginBlock.uiTemplateFor(localeCode);
     return sqlLabelFor(node.type, mode, node.inputs, localeCode);
+  }
+
+  Color _colorForNodeType(BlockType type) {
+    return switch (type) {
+      BlockType.eventGreenFlag => ScratchPalette.events,
+      BlockType.sqlSelect ||
+      BlockType.sqlWhere ||
+      BlockType.sqlOrderBy ||
+      BlockType.sqlColumn => ScratchPalette.motion,
+      BlockType.sqlLoop ||
+      BlockType.controlRepeat ||
+      BlockType.controlForever => ScratchPalette.control,
+      BlockType.sqlInsert ||
+      BlockType.sqlUpdate ||
+      BlockType.sqlDelete => ScratchPalette.variables,
+      _ => ScratchPalette.operators,
+    };
   }
 
   String _labelMaskWithSlotSpacing({
@@ -2462,39 +2590,6 @@ class _NodeView extends ConsumerWidget {
       'privilege',
     };
     return dropdownRaw.contains(rawToken) || dropdownMapped.contains(mappedKey);
-  }
-
-  String _resolvedSqlLabel(
-    BlockNode node,
-    SqlAbstractionMode mode,
-    String localeCode,
-  ) {
-    var label = sqlLabelFor(node.type, mode, node.inputs, localeCode);
-    final replacements = <String, String>{
-      'table': '${node.inputs['table'] ?? ''}',
-      'table_name': '${node.inputs['table'] ?? ''}',
-      'columns': '${node.inputs['columns'] ?? '*'}',
-      'column_definitions':
-          '${node.inputs['definition'] ?? 'id INTEGER PRIMARY KEY'}',
-      'column': '${node.inputs['column'] ?? node.inputs['expr'] ?? 'id'}',
-      'condition': '${node.inputs['predicate'] ?? '1 = 1'}',
-      'join_condition': '${node.inputs['on'] ?? '1 = 1'}',
-      'JOIN_TYPE': '${node.inputs['join_type'] ?? 'INNER'}',
-      'value': '${node.inputs['value'] ?? 'value'}',
-      'result': '${node.inputs['result'] ?? 'result'}',
-      'default': '${node.inputs['default'] ?? 'default'}',
-      'column_name': '${node.inputs['column_name'] ?? 'new_column'}',
-      'datatype': '${node.inputs['datatype'] ?? 'TEXT'}',
-      'privilege': '${node.inputs['privilege'] ?? 'SELECT'}',
-      'user': '${node.inputs['user'] ?? 'user'}',
-      'name': '${node.inputs['name'] ?? 'sp1'}',
-      'sql': '${node.inputs['sql'] ?? 'SELECT 1'}',
-      'level': '${node.inputs['level'] ?? 'READ COMMITTED'}',
-    };
-    replacements.forEach((key, value) {
-      label = label.replaceAll('[$key]', value);
-    });
-    return label;
   }
 
   String _slotInputKey(String slotKey) {

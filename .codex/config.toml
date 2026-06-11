@@ -1,0 +1,8 @@
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+ANTHROPIC_BASE_URL = "https://openrouter.ai/api"
+ANTHROPIC_AUTH_TOKEN = "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"
+ANTHROPIC_API_KEY = ""
+ANTHROPIC_MODEL = "openrouter/free"

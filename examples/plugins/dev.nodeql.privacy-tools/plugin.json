@@ -1,0 +1,88 @@
+{
+  "$schema": "../../../docs/plugins/plugin.schema.json",
+  "schemaVersion": 1,
+  "id": "dev.nodeql.privacy-tools",
+  "name": "Privacy Tools",
+  "version": "1.0.0",
+  "minNodeQlVersion": "0.1.32",
+  "author": "NodeQL Examples",
+  "description": {
+    "en": "Mask personal data for previews, demos, and exports.",
+    "de": "Personenbezogene Daten für Vorschauen, Demos und Exporte maskieren."
+  },
+  "license": "MIT",
+  "capabilities": ["sql.compile"],
+  "blocks": [
+    {
+      "id": "mask-email",
+      "shape": "value",
+      "label": {
+        "en": "mask email [email]",
+        "de": "maskiere E-Mail [email]"
+      },
+      "description": {
+        "en": "Keeps the first character and domain while hiding the local part.",
+        "de": "Behält erstes Zeichen und Domain, verbirgt aber den lokalen Teil."
+      },
+      "color": "#7C3AED",
+      "inputs": [
+        {"name": "email", "type": "sql", "default": "email"}
+      ],
+      "sql": "CASE WHEN instr({{email}}, '@') > 1 THEN substr({{email}}, 1, 1) || '***' || substr({{email}}, instr({{email}}, '@')) ELSE '***' END"
+    },
+    {
+      "id": "mask-phone",
+      "shape": "value",
+      "label": {
+        "en": "show only last [visible] digits of [phone]",
+        "de": "zeige nur die letzten [visible] Ziffern von [phone]"
+      },
+      "description": {
+        "en": "Redacts a phone number except for its final digits.",
+        "de": "Maskiert eine Telefonnummer bis auf ihre letzten Ziffern."
+      },
+      "color": "#9333EA",
+      "inputs": [
+        {"name": "visible", "type": "number", "default": 4},
+        {"name": "phone", "type": "sql", "default": "phone"}
+      ],
+      "sql": "'***' || substr({{phone}}, -{{visible}})"
+    },
+    {
+      "id": "partial-mask",
+      "shape": "value",
+      "label": {
+        "en": "mask [value] after [visible] characters",
+        "de": "maskiere [value] nach [visible] Zeichen"
+      },
+      "description": {
+        "en": "Keeps a configurable prefix and replaces the rest.",
+        "de": "Behält einen konfigurierbaren Anfang und ersetzt den Rest."
+      },
+      "color": "#A855F7",
+      "inputs": [
+        {"name": "value", "type": "sql", "default": "customer_id"},
+        {"name": "visible", "type": "number", "default": 3}
+      ],
+      "sql": "substr(CAST({{value}} AS TEXT), 1, {{visible}}) || '***'"
+    },
+    {
+      "id": "anonymized-preview",
+      "shape": "statement",
+      "label": {
+        "en": "preview [limit] anonymized rows from [table]",
+        "de": "zeige [limit] anonymisierte Zeilen aus [table]"
+      },
+      "description": {
+        "en": "Creates a quick preview with masked email and phone columns.",
+        "de": "Erstellt eine Vorschau mit maskierten E-Mail- und Telefonspalten."
+      },
+      "color": "#6D28D9",
+      "inputs": [
+        {"name": "limit", "type": "number", "default": 25},
+        {"name": "table", "type": "identifier", "default": "users"}
+      ],
+      "sql": "SELECT *, CASE WHEN instr(email, '@') > 1 THEN substr(email, 1, 1) || '***' || substr(email, instr(email, '@')) ELSE '***' END AS masked_email, '***' || substr(phone, -4) AS masked_phone FROM {{table}} LIMIT {{limit}}"
+    }
+  ]
+}

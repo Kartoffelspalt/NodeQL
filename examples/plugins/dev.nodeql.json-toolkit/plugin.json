@@ -1,0 +1,89 @@
+{
+  "$schema": "../../../docs/plugins/plugin.schema.json",
+  "schemaVersion": 1,
+  "id": "dev.nodeql.json-toolkit",
+  "name": "JSON Toolkit",
+  "version": "1.0.0",
+  "minNodeQlVersion": "0.1.32",
+  "author": "NodeQL Examples",
+  "description": {
+    "en": "Explore and transform JSON stored in SQLite columns.",
+    "de": "JSON-Daten in SQLite-Spalten untersuchen und transformieren."
+  },
+  "license": "MIT",
+  "capabilities": ["sql.compile"],
+  "blocks": [
+    {
+      "id": "extract",
+      "shape": "value",
+      "label": {
+        "en": "JSON value from [document] at [path]",
+        "de": "JSON-Wert aus [document] an [path]"
+      },
+      "description": {
+        "en": "Extracts a scalar or object from a JSON document.",
+        "de": "Extrahiert einen Wert oder ein Objekt aus einem JSON-Dokument."
+      },
+      "color": "#F59E0B",
+      "inputs": [
+        {"name": "document", "type": "sql", "default": "payload"},
+        {"name": "path", "type": "string", "default": "$.user.name"}
+      ],
+      "sql": "json_extract({{document}}, {{path}})"
+    },
+    {
+      "id": "valid",
+      "shape": "value",
+      "label": {
+        "en": "[document] is valid JSON",
+        "de": "[document] ist gültiges JSON"
+      },
+      "description": {
+        "en": "Returns 1 for valid JSON and 0 for malformed JSON.",
+        "de": "Liefert 1 für gültiges und 0 für fehlerhaftes JSON."
+      },
+      "color": "#D97706",
+      "inputs": [
+        {"name": "document", "type": "sql", "default": "payload"}
+      ],
+      "sql": "json_valid({{document}})"
+    },
+    {
+      "id": "array-length",
+      "shape": "value",
+      "label": {
+        "en": "JSON array length of [document] at [path]",
+        "de": "Länge des JSON-Arrays in [document] an [path]"
+      },
+      "description": {
+        "en": "Counts elements in a JSON array.",
+        "de": "Zählt Elemente in einem JSON-Array."
+      },
+      "color": "#EA580C",
+      "inputs": [
+        {"name": "document", "type": "sql", "default": "payload"},
+        {"name": "path", "type": "string", "default": "$.items"}
+      ],
+      "sql": "json_array_length({{document}}, {{path}})"
+    },
+    {
+      "id": "set-value",
+      "shape": "value",
+      "label": {
+        "en": "set JSON [path] in [document] to [value]",
+        "de": "setze JSON [path] in [document] auf [value]"
+      },
+      "description": {
+        "en": "Returns a JSON document with one path replaced.",
+        "de": "Liefert ein JSON-Dokument mit einem ersetzten Pfad."
+      },
+      "color": "#C2410C",
+      "inputs": [
+        {"name": "path", "type": "string", "default": "$.status"},
+        {"name": "document", "type": "sql", "default": "payload"},
+        {"name": "value", "type": "string", "default": "processed"}
+      ],
+      "sql": "json_set({{document}}, {{path}}, {{value}})"
+    }
+  ]
+}
