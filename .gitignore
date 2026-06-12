@@ -44,7 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Claude Code related; Need to say that Codex isn't that good for this project.
+# Claude Code related; Need to say that Claude isn't that good for this project.
 .claude/
 ./claude/settings.local.json
 CLAUDE_API_KEY.txt
