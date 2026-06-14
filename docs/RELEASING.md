@@ -16,17 +16,16 @@ x64. Web, Android, and iOS are not release targets yet.
 1. Update `CHANGELOG.md`.
 2. Set `version: X.Y.Z+BUILD` in `pubspec.yaml`.
 3. Run the full local verification commands from `CONTRIBUTING.md`.
-4. Commit and merge the release changes.
-5. Create and push the matching tag:
+4. Commit the version change and merge it into `master` or `main`.
 
-```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
+The merged `pubspec.yaml` change starts the `Desktop Release` workflow. It
+validates that the version has not already been published, builds all three
+desktop targets, packages them, generates `SHA256SUMS.txt`, and creates the
+matching Git tag and GitHub release only after all quality and build jobs
+succeed.
 
-The `Desktop Release` workflow builds all three desktop targets, packages
-them, generates `SHA256SUMS.txt`, and creates the GitHub release only after all
-quality and build jobs succeed.
+Re-running the workflow for an already published version is safe: the release
+jobs are skipped until `pubspec.yaml` contains a new version.
 
 ## Signing
 
