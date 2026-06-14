@@ -6,6 +6,6 @@
   "Homepage": "https://github.com/Kartoffelspalt/NodeQL",
   "Section": "graphics",
   "Priority": "optional",
-  "Description": "Scratch-inspired multilingual visual programming desktop platform",
-  "Extended-Description": "A visual programming platform with Scratch-like blocks for educational use. Supports multiple languages and runs on Linux, Windows, macOS, and Web."
+  "Description": "Local-first visual SQL learning and development",
+  "Extended-Description": "Build and run SQL workflows with visual blocks. NodeQL stores projects locally and supports reviewed community translations and declarative plugins."
 }

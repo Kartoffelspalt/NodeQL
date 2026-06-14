@@ -44,15 +44,25 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Claude Code related; Need to say that Claude isn't that good for this project.
+# Local AI tool configuration
 .claude/
 ./claude/settings.local.json
 CLAUDE_API_KEY.txt
 CLAUDE.md
 
-# Codex related; Codex is even worse than Claude for this project, but here we are.
 .codex/
 ./codex/settings.local.json
 CODEX_API_KEY.txt
 CODEX.md
 AGENTS.md
+
+# Local secrets and signing material
+.env
+.env.*
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+key.properties

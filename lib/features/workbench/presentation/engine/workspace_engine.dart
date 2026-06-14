@@ -634,51 +634,6 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           position: worldPos,
           operatorType: type,
         )..inputs['table'] = 'table_name';
-      case BlockType.sqlHaving:
-      case BlockType.sqlUnion:
-      case BlockType.sqlIntersect:
-      case BlockType.sqlExcept:
-      case BlockType.sqlSubqueryIn:
-      case BlockType.sqlSubqueryAny:
-      case BlockType.sqlSubqueryAll:
-      case BlockType.sqlCount:
-      case BlockType.sqlSum:
-      case BlockType.sqlAvg:
-      case BlockType.sqlMin:
-      case BlockType.sqlMax:
-      case BlockType.sqlConcat:
-      case BlockType.sqlSubstring:
-      case BlockType.sqlLength:
-      case BlockType.sqlUpper:
-      case BlockType.sqlLower:
-      case BlockType.sqlTrim:
-      case BlockType.sqlLeft:
-      case BlockType.sqlRight:
-      case BlockType.sqlReplace:
-      case BlockType.sqlCurrentDate:
-      case BlockType.sqlCurrentTime:
-      case BlockType.sqlCurrentTimestamp:
-      case BlockType.sqlDatePart:
-      case BlockType.sqlDateAdd:
-      case BlockType.sqlDateSub:
-      case BlockType.sqlExtract:
-      case BlockType.sqlToChar:
-      case BlockType.sqlTimestampDiff:
-      case BlockType.sqlCase:
-      case BlockType.sqlIf:
-      case BlockType.sqlAlterTable:
-      case BlockType.sqlTruncate:
-      case BlockType.sqlGrant:
-      case BlockType.sqlRevoke:
-      case BlockType.sqlCommit:
-      case BlockType.sqlRollback:
-      case BlockType.sqlSavepoint:
-      case BlockType.sqlRollbackToSavepoint:
-        return OperatorBlock(
-          id: 'op_$suffix',
-          position: worldPos,
-          operatorType: type,
-        );
       case BlockType.sqlLoop:
         return ControlBlock(
           id: 'loop_$suffix',

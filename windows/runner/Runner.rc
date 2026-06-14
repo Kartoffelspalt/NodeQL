@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "digital.codespiresolutions" "\0"
+            VALUE "CompanyName", "NodeQL contributors" "\0"
             VALUE "FileDescription", "NodeQL" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "nodeql" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 digital.codespiresolutions. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 NodeQL contributors. MIT License." "\0"
             VALUE "OriginalFilename", "nodeql.exe" "\0"
             VALUE "ProductName", "NodeQL" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-14T12:00:00Z",
+  "minimumAppVersion": "0.1.33",
+  "languages": [
+    {
+      "locale": "de",
+      "nativeName": "Deutsch",
+      "direction": "ltr",
+      "revision": 1,
+      "completion": 100,
+      "downloadUrl": "https://kartoffelspalt.github.io/NodeQL/translations/de.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size": 42000
+    }
+  ]
+}

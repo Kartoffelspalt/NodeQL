@@ -6,6 +6,9 @@ import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/plugins/plugin_loader.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 const manifestJson = <String, dynamic>{
   'schemaVersion': 1,
@@ -95,15 +98,29 @@ void main() {
   });
 
   test('repository example is a valid installable plugin', () async {
+    final pluginDirectory = Directory(
+      'examples/plugins/com.example.text-tools',
+    );
     final source = await File(
-      'examples/plugins/com.example.text-tools/plugin.json',
+      p.join(pluginDirectory.path, 'plugin.json'),
     ).readAsString();
     final manifest = NodeQlPluginManifest.fromJson(
       Map<String, dynamic>.from(jsonDecode(source) as Map),
     );
 
-    expect(manifest.id, 'com.example.text-tools');
+    expect(manifest.id, p.basename(pluginDirectory.path));
     expect(manifest.blocks, hasLength(2));
+
+    final comparison = manifest.blocks.singleWhere(
+      (block) => block.id == 'ilike',
+    );
+    expect(
+      comparison.renderSql(<String, dynamic>{
+        'column': 'name',
+        'pattern': '%ADA%',
+      }, childrenSql: ''),
+      "LOWER(name) LIKE LOWER('%ADA%')",
+    );
   });
 
   test('all repository examples load together without conflicts', () async {
@@ -126,6 +143,64 @@ void main() {
         reason: block.qualifiedId,
       );
     }
+    for (final manifest in result.manifests) {
+      final directory = Directory(p.join('examples/plugins', manifest.id));
+      expect(
+        await directory.exists(),
+        isTrue,
+        reason: 'Plugin directory must match manifest ID ${manifest.id}.',
+      );
+    }
+  });
+
+  test('text and transaction example blocks execute on SQLite', () async {
+    final source = await File(
+      'examples/plugins/com.example.text-tools/plugin.json',
+    ).readAsString();
+    final manifest = NodeQlPluginManifest.fromJson(
+      Map<String, dynamic>.from(jsonDecode(source) as Map),
+    );
+    final tempDir = await Directory.systemTemp.createTemp('nodeql-plugin-sql-');
+    addTearDown(() => tempDir.delete(recursive: true));
+    final dbPath = p.join(tempDir.path, 'plugin.db');
+    final database = sqlite3.open(dbPath);
+    database.execute('''
+      CREATE TABLE people (name TEXT NOT NULL);
+      INSERT INTO people (name) VALUES ('Ada'), ('Grace');
+    ''');
+    database.close();
+
+    final comparison = manifest.blocks.singleWhere(
+      (block) => block.id == 'ilike',
+    );
+    final controller = SqlRuntimeController();
+    await controller.attachDatabasePath(dbPath);
+    await controller.executeWithSnapshot(
+      'SELECT name FROM people WHERE ${comparison.renderSql(<String, dynamic>{'column': 'name', 'pattern': '%ADA%'}, childrenSql: '')};',
+    );
+    expect(controller.state.lastRows, <Map<String, String>>[
+      <String, String>{'name': 'Ada'},
+    ]);
+
+    final transaction = manifest.blocks.singleWhere(
+      (block) => block.id == 'transaction',
+    );
+    await controller.executeWithSnapshot(
+      transaction.renderSql(
+        const <String, dynamic>{},
+        childrenSql: "INSERT INTO people (name) VALUES ('Lin')",
+      ),
+    );
+    expect(controller.state.lastMessage, 'OK');
+
+    await controller.executeWithSnapshot(
+      'SELECT name FROM people ORDER BY rowid;',
+    );
+    expect(controller.state.lastRows.map((row) => row['name']), <String>[
+      'Ada',
+      'Grace',
+      'Lin',
+    ]);
   });
 
   test('compiler executes plugin SQL and warns on version changes', () {

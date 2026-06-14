@@ -1,0 +1,44 @@
+name: Publish translations
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'assets/translations/**'
+      - 'translations/**'
+      - 'tool/build_translation_site.dart'
+      - 'tool/validate_translations.dart'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: translations-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart run tool/validate_translations.dart
+      - run: dart run tool/build_translation_site.dart
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/translation-site
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

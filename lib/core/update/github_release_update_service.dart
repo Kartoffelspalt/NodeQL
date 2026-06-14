@@ -4,8 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
-const githubReleaseOwner = 'Kartoffelspalt';
-const githubReleaseRepository = 'NodeQL';
+const githubReleaseOwner = String.fromEnvironment(
+  'NODEQL_RELEASE_OWNER',
+  defaultValue: 'Kartoffelspalt',
+);
+const githubReleaseRepository = String.fromEnvironment(
+  'NODEQL_RELEASE_REPOSITORY',
+  defaultValue: 'NodeQL',
+);
 
 enum ReleasePlatform { android, ios, linux, macos, windows, web }
 

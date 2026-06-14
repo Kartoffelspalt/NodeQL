@@ -17,9 +17,12 @@ import 'package:nodeql/features/workbench/presentation/widgets/block_shape_paint
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:nodeql/localization/generated/app_localizations.dart';
-import 'package:nodeql/localization/locale_controller.dart';
+import 'package:nodeql/localization/translation_catalog.dart';
+import 'package:nodeql/localization/translation_controller.dart';
+import 'package:nodeql/localization/translation_models.dart';
+import 'package:nodeql/localization/translation_repository.dart';
 import 'package:nodeql/localization/supported_languages.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
@@ -65,8 +68,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final locale = ref.watch(localeControllerProvider);
+    final translationState = ref.watch(translationControllerProvider);
+    final catalog = translationState.catalog;
+    final locale = translationState.locale;
     final workspaceRevision = ref.watch(
       workspaceProvider.select((s) => s.revision),
     );
@@ -87,11 +91,19 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         child: Column(
           children: [
             _TopBar(
-              l10n: l10n,
+              catalog: catalog,
+              languageChoices: <SupportedLanguage>[
+                ...supportedLanguages,
+                for (final package in translationState.installed.values)
+                  if (!supportedLanguages.any(
+                    (language) => language.code == package.locale,
+                  ))
+                    SupportedLanguage(package.locale, package.locale),
+              ],
               localeCode: locale.languageCode,
               onLocale: (code) => ref
-                  .read(localeControllerProvider.notifier)
-                  .setLanguageCode(code),
+                  .read(translationControllerProvider.notifier)
+                  .setLocaleTag(code),
               onPickDb: () =>
                   ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
               onExecuteGuarded: () {
@@ -100,7 +112,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       .read(sqlRuntimeProvider.notifier)
                       .setMessage(
                         compileResult.warnings.isEmpty
-                            ? 'No executable SQL chain found under EXECUTE QUERY.'
+                            ? catalog.text('runtime.noExecutable')
                             : compileResult.warnings.join('\n'),
                       );
                   return;
@@ -110,7 +122,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   ref
                       .read(sqlRuntimeProvider.notifier)
                       .setMessage(
-                        'Executed with warnings:\n${compileResult.warnings.join('\n')}',
+                        catalog.text('runtime.executedWithWarnings', {
+                          'warnings': compileResult.warnings.join('\n'),
+                        }),
                       );
                 }
               },
@@ -132,6 +146,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     runtime: runtime,
                     mode: mode,
                     localeCode: locale.languageCode,
+                    catalog: catalog,
                     width: _paletteWidth,
                     pluginEntries: pluginState.entries,
                     onAdd: (type, defaults) => ref
@@ -175,6 +190,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     sql: sql,
                     runtime: runtime,
                     localeCode: locale.languageCode,
+                    catalog: catalog,
                   ),
                 ],
               ),
@@ -192,7 +208,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _autosaveDebounce = Timer(const Duration(milliseconds: 550), () async {
       final support = await getApplicationSupportDirectory();
       final autosave = File(
-        '${support.path}/nodeql_autosave_${_activeProjectId}.nodeql',
+        '${support.path}/nodeql_autosave_$_activeProjectId.nodeql',
       );
       await autosave.writeAsString(jsonEncode(_projectEnvelope()), flush: true);
     });
@@ -221,16 +237,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
     final support = await getApplicationSupportDirectory();
     final autosave = File(
-      '${support.path}/nodeql_autosave_${_activeProjectId}.nodeql',
+      '${support.path}/nodeql_autosave_$_activeProjectId.nodeql',
     );
     final legacySqpAutosave = File(
-      '${support.path}/nodeql_autosave_${_activeProjectId}.sqp',
+      '${support.path}/nodeql_autosave_$_activeProjectId.sqp',
     );
     final legacyScratchQlAutosave = File(
-      '${support.path}/scratchql_autosave_${_activeProjectId}.scratchql',
+      '${support.path}/scratchql_autosave_$_activeProjectId.scratchql',
     );
     final legacyScratchQlSqpAutosave = File(
-      '${support.path}/scratchql_autosave_${_activeProjectId}.sqp',
+      '${support.path}/scratchql_autosave_$_activeProjectId.sqp',
     );
     final sourceFile = await autosave.exists()
         ? autosave
@@ -249,18 +265,19 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _newProject(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
     final createDb = ValueNotifier<bool>(false);
     final dbName = TextEditingController(text: 'nodeql_project');
     final yes = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('New Project'),
+        title: Text(catalog.text('project.new.title')),
         content: ValueListenableBuilder<bool>(
           valueListenable: createDb,
           builder: (context, value, _) => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Reset current canvas?'),
+              Text(catalog.text('project.new.reset')),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -268,15 +285,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     value: value,
                     onChanged: (v) => createDb.value = v ?? false,
                   ),
-                  const Expanded(child: Text('Create empty SQLite DB')),
+                  Expanded(
+                    child: Text(catalog.text('project.new.createDatabase')),
+                  ),
                 ],
               ),
               if (value)
                 TextField(
                   controller: dbName,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     isDense: true,
-                    labelText: 'Database name',
+                    labelText: catalog.text('project.new.databaseName'),
                   ),
                 ),
             ],
@@ -285,11 +304,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
+            child: Text(catalog.text('common.no')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Yes'),
+            child: Text(catalog.text('common.yes')),
           ),
         ],
       ),
@@ -304,13 +323,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         } catch (e) {
           ref
               .read(sqlRuntimeProvider.notifier)
-              .setMessage('Failed to create DB: $e');
+              .setMessage(
+                catalog.text('project.createDatabaseFailed', {'error': e}),
+              );
         }
       }
       setState(() {
         _activeProjectPath = null;
         _activeProjectId = 'project_${DateTime.now().millisecondsSinceEpoch}';
-        _activeProjectName = 'Untitled';
+        _activeProjectName = catalog.text('project.untitled');
       });
       await _saveProjectRegistry();
       await _syncRecentProjectsToNativeMenu();
@@ -320,8 +341,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _saveProjectAs(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
     final path = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save NodeQL project',
+      dialogTitle: catalog.text('project.saveDialog'),
       fileName: 'project.nodeql',
       type: FileType.custom,
       allowedExtensions: <String>['nodeql'],
@@ -353,8 +375,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _openProject(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Open NodeQL project',
+      dialogTitle: catalog.text('project.openDialog'),
       type: FileType.custom,
       allowedExtensions: <String>['nodeql', 'scratchql', 'sqlq', 'sqp'],
     );
@@ -379,43 +402,54 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _openSettings(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
     await showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Settings'),
+        title: Text(catalog.text('settings.title')),
         content: Consumer(
           builder: (context, ref, _) {
             final current = ref.watch(nodeQlThemeProvider);
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<NodeQlTheme>(
-                  value: NodeQlTheme.dark,
-                  groupValue: current,
-                  onChanged: (v) =>
-                      ref.read(nodeQlThemeProvider.notifier).setTheme(v!),
-                  title: const Text('Dark Mode'),
-                ),
-                RadioListTile<NodeQlTheme>(
-                  value: NodeQlTheme.midnight,
-                  groupValue: current,
-                  onChanged: (v) =>
-                      ref.read(nodeQlThemeProvider.notifier).setTheme(v!),
-                  title: const Text('Midnight Tech'),
-                ),
-                RadioListTile<NodeQlTheme>(
-                  value: NodeQlTheme.matrix,
-                  groupValue: current,
-                  onChanged: (v) =>
-                      ref.read(nodeQlThemeProvider.notifier).setTheme(v!),
-                  title: const Text('Matrix/Hacker'),
-                ),
-                const SizedBox(height: 8),
-                FilledButton.tonal(
-                  onPressed: () => _openPluginManager(context),
-                  child: const Text('Manage Plugins'),
-                ),
-              ],
+            return RadioGroup<NodeQlTheme>(
+              groupValue: current,
+              onChanged: (value) {
+                if (value != null) {
+                  ref.read(nodeQlThemeProvider.notifier).setTheme(value);
+                }
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<NodeQlTheme>(
+                    value: NodeQlTheme.dark,
+                    title: Text(catalog.text('settings.theme.dark')),
+                  ),
+                  RadioListTile<NodeQlTheme>(
+                    value: NodeQlTheme.midnight,
+                    title: Text(catalog.text('settings.theme.midnight')),
+                  ),
+                  RadioListTile<NodeQlTheme>(
+                    value: NodeQlTheme.matrix,
+                    title: Text(catalog.text('settings.theme.matrix')),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: () => _openPluginManager(context),
+                    child: Text(catalog.text('settings.plugins')),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: () => _openLanguageManager(context),
+                    child: Text(catalog.text('settings.languages')),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () => _openAbout(context),
+                    icon: const Icon(Icons.info_outline),
+                    label: Text(catalog.text('settings.about')),
+                  ),
+                ],
+              ),
             );
           },
         ),
@@ -423,13 +457,26 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     );
   }
 
+  Future<void> _openAbout(BuildContext context) async {
+    final package = await PackageInfo.fromPlatform();
+    if (!context.mounted) return;
+    showLicensePage(
+      context: context,
+      applicationName: 'NodeQL',
+      applicationVersion: '${package.version}+${package.buildNumber}',
+      applicationLegalese: 'Copyright © 2026 NodeQL contributors\nMIT License',
+      applicationIcon: const Icon(Icons.account_tree_outlined, size: 48),
+    );
+  }
+
   Future<void> _openPluginManager(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
     await ref.read(pluginPaletteProvider.notifier).reload();
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('NodeQL Plugins'),
+        title: Text(catalog.text('plugins.title')),
         content: SizedBox(
           width: 620,
           height: 430,
@@ -440,7 +487,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    plugins.pluginsDirectory ?? 'Loading plugin directory...',
+                    plugins.pluginsDirectory ??
+                        catalog.text('plugins.loadingDirectory'),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall,
@@ -452,11 +500,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                         : ListView(
                             children: [
                               if (plugins.manifests.isEmpty)
-                                const ListTile(
-                                  leading: Icon(Icons.extension_off),
-                                  title: Text('No external plugins installed'),
+                                ListTile(
+                                  leading: const Icon(Icons.extension_off),
+                                  title: Text(catalog.text('plugins.none')),
                                   subtitle: Text(
-                                    'Install a plugin.json manifest to add blocks.',
+                                    catalog.text('plugins.noneHint'),
                                   ),
                                 ),
                               for (final manifest in plugins.manifests)
@@ -465,11 +513,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                   title: Text(manifest.name),
                                   subtitle: Text(
                                     '${manifest.id}  •  ${manifest.version}\n'
-                                    '${manifest.blocks.length} block(s)',
+                                    '${catalog.text('plugins.blocks', {'count': manifest.blocks.length})}',
                                   ),
                                   isThreeLine: true,
                                   trailing: IconButton(
-                                    tooltip: 'Uninstall',
+                                    tooltip: catalog.text('plugins.uninstall'),
                                     icon: const Icon(Icons.delete_outline),
                                     onPressed: () async {
                                       await ref
@@ -499,25 +547,124 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
           TextButton.icon(
             onPressed: () => ref.read(pluginPaletteProvider.notifier).reload(),
             icon: const Icon(Icons.refresh),
-            label: const Text('Reload'),
+            label: Text(catalog.text('plugins.reload')),
           ),
           FilledButton.icon(
             onPressed: () => _installPluginManifest(dialogContext),
             icon: const Icon(Icons.add),
-            label: const Text('Install plugin.json'),
+            label: Text(catalog.text('plugins.install')),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Close'),
+            child: Text(catalog.text('common.close')),
           ),
         ],
       ),
     );
   }
 
+  Future<void> _openLanguageManager(BuildContext context) async {
+    final controller = ref.read(translationControllerProvider.notifier);
+    await controller.refreshManifest();
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Consumer(
+        builder: (context, ref, _) {
+          final translations = ref.watch(translationControllerProvider);
+          final catalog = translations.catalog;
+          final available = translations.available;
+          return AlertDialog(
+            title: Text(catalog.text('languages.title')),
+            content: SizedBox(
+              width: 620,
+              height: 440,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (translations.error != null)
+                    MaterialBanner(
+                      content: Text(
+                        defaultTranslationManifestUrl.isEmpty
+                            ? catalog.text('languages.notConfigured')
+                            : translations.error!,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => controller.refreshManifest(),
+                          child: Text(catalog.text('languages.refresh')),
+                        ),
+                      ],
+                    ),
+                  Expanded(
+                    child: RadioGroup<String>(
+                      groupValue: translations.locale.languageCode,
+                      onChanged: (value) {
+                        if (value != null) controller.setLocaleTag(value);
+                      },
+                      child: ListView(
+                        children: [
+                          for (final language in supportedLanguages)
+                            ListTile(
+                              onTap: () =>
+                                  controller.setLocaleTag(language.code),
+                              leading: const Icon(Icons.translate),
+                              title: Text(language.nativeName),
+                              subtitle: Text(catalog.text('languages.builtIn')),
+                              trailing: Radio<String>(value: language.code),
+                            ),
+                          for (final language in available)
+                            if (!supportedLanguages.any(
+                              (builtIn) => builtIn.code == language.locale,
+                            ))
+                              _LanguagePackTile(
+                                language: language,
+                                installed:
+                                    translations.installed[language.locale],
+                                active:
+                                    translations.catalog.locale ==
+                                    language.locale,
+                                catalog: catalog,
+                                onInstall: () => controller.install(language),
+                                onRemove: () =>
+                                    controller.remove(language.locale),
+                                onSelect: () =>
+                                    controller.setLocaleTag(language.locale),
+                              ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (translations.syncing) const LinearProgressIndicator(),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: controller.openContributionGuide,
+                icon: const Icon(Icons.volunteer_activism_outlined),
+                label: Text(catalog.text('languages.contribute')),
+              ),
+              TextButton.icon(
+                onPressed: controller.refreshManifest,
+                icon: const Icon(Icons.refresh),
+                label: Text(catalog.text('languages.refresh')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(catalog.text('common.close')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _installPluginManifest(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Select a NodeQL plugin.json manifest',
+      dialogTitle: catalog.text('plugins.selectDialog'),
       type: FileType.custom,
       allowedExtensions: const <String>['json'],
       allowMultiple: false,
@@ -531,13 +678,22 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Installed ${manifest.name} ${manifest.version}'),
+          content: Text(
+            catalog.text('plugins.installed', {
+              'name': manifest.name,
+              'version': manifest.version,
+            }),
+          ),
         ),
       );
     } on Object catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Plugin installation failed: $error')),
+        SnackBar(
+          content: Text(
+            catalog.text('plugins.installFailed', {'error': error}),
+          ),
+        ),
       );
     }
   }
@@ -574,7 +730,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
             as Map<String, dynamic>;
     final runtime = ref.read(sqlRuntimeProvider);
     final mode = ref.read(sqlModeProvider);
-    final locale = ref.read(localeControllerProvider);
+    final locale = ref.read(translationControllerProvider).locale;
     final theme = ref.read(nodeQlThemeProvider);
     return <String, dynamic>{
       'format': 'nodeql_project_v2',
@@ -725,7 +881,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.l10n,
+    required this.catalog,
+    required this.languageChoices,
     required this.localeCode,
     required this.onLocale,
     required this.onPickDb,
@@ -735,7 +892,8 @@ class _TopBar extends StatelessWidget {
     required this.onSettings,
   });
 
-  final AppLocalizations l10n;
+  final TranslationCatalog catalog;
+  final List<SupportedLanguage> languageChoices;
   final String localeCode;
   final ValueChanged<String> onLocale;
   final VoidCallback onPickDb;
@@ -743,24 +901,6 @@ class _TopBar extends StatelessWidget {
   final SqlAbstractionMode mode;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onSettings;
-
-  String _localizedUi(String key, String localeCode) {
-    final map = <String, Map<String, String>>{
-      'mount_db': {
-        'de': 'DB laden',
-        'en': 'Mount .db',
-        'fr': 'Monter .db',
-        'es': 'Montar .db',
-      },
-      'run_sql': {
-        'de': 'SQL ausführen',
-        'en': 'Run SQL',
-        'fr': 'Exécuter SQL',
-        'es': 'Ejecutar SQL',
-      },
-    };
-    return map[key]?[localeCode] ?? map[key]?['en'] ?? key;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -777,7 +917,7 @@ class _TopBar extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    l10n.appName,
+                    catalog.text('app.name'),
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
@@ -790,7 +930,7 @@ class _TopBar extends StatelessWidget {
                     style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFFE2E8F0),
                     ),
-                    child: Text(_localizedUi('mount_db', localeCode)),
+                    child: Text(catalog.text('toolbar.mountDatabase')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
@@ -799,18 +939,18 @@ class _TopBar extends StatelessWidget {
                       backgroundColor: const Color(0xFF1D4ED8),
                       foregroundColor: Colors.white,
                     ),
-                    child: Text(_localizedUi('run_sql', localeCode)),
+                    child: Text(catalog.text('toolbar.runSql')),
                   ),
                   const SizedBox(width: 8),
                   SegmentedButton<SqlAbstractionMode>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: SqlAbstractionMode.simple,
-                        label: Text('Simple'),
+                        label: Text(catalog.text('toolbar.simple')),
                       ),
                       ButtonSegment(
                         value: SqlAbstractionMode.advanced,
-                        label: Text('Advanced'),
+                        label: Text(catalog.text('toolbar.advanced')),
                       ),
                     ],
                     selected: <SqlAbstractionMode>{mode},
@@ -821,7 +961,7 @@ class _TopBar extends StatelessWidget {
                   DropdownButton<String>(
                     value: localeCode,
                     dropdownColor: const Color(0xFF0F172A),
-                    items: supportedLanguages
+                    items: languageChoices
                         .map(
                           (l) => DropdownMenuItem(
                             value: l.code,
@@ -838,6 +978,7 @@ class _TopBar extends StatelessWidget {
                   ),
                   IconButton(
                     onPressed: onSettings,
+                    tooltip: catalog.text('toolbar.settings'),
                     color: const Color(0xFFE2E8F0),
                     icon: const Icon(Icons.settings),
                   ),
@@ -845,6 +986,72 @@ class _TopBar extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguagePackTile extends StatelessWidget {
+  const _LanguagePackTile({
+    required this.language,
+    required this.installed,
+    required this.active,
+    required this.catalog,
+    required this.onInstall,
+    required this.onRemove,
+    required this.onSelect,
+  });
+
+  final TranslationLanguage language;
+  final TranslationPackage? installed;
+  final bool active;
+  final TranslationCatalog catalog;
+  final VoidCallback onInstall;
+  final VoidCallback onRemove;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUpdate =
+        installed != null && installed!.revision < language.revision;
+    return ListTile(
+      leading: Icon(
+        language.direction == TranslationDirection.rtl
+            ? Icons.format_textdirection_r_to_l
+            : Icons.translate,
+      ),
+      title: Text(language.nativeName),
+      subtitle: Text(
+        installed == null
+            ? catalog.text('languages.available', {
+                'completion': language.completion,
+              })
+            : catalog.text('languages.installed', {
+                'revision': installed!.revision,
+              }),
+      ),
+      onTap: installed == null ? null : onSelect,
+      trailing: Wrap(
+        spacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (active) const Icon(Icons.check_circle, color: Colors.green),
+          if (installed == null || hasUpdate)
+            TextButton(
+              onPressed: onInstall,
+              child: Text(
+                catalog.text(
+                  hasUpdate ? 'languages.update' : 'languages.install',
+                ),
+              ),
+            ),
+          if (installed != null)
+            IconButton(
+              onPressed: onRemove,
+              tooltip: catalog.text('languages.remove'),
+              icon: const Icon(Icons.delete_outline),
+            ),
         ],
       ),
     );
@@ -933,6 +1140,7 @@ class _Palette extends StatefulWidget {
     required this.runtime,
     required this.mode,
     required this.localeCode,
+    required this.catalog,
     required this.width,
     required this.pluginEntries,
     required this.onAdd,
@@ -942,6 +1150,7 @@ class _Palette extends StatefulWidget {
   final SqlRuntimeState runtime;
   final SqlAbstractionMode mode;
   final String localeCode;
+  final TranslationCatalog catalog;
   final double width;
   final List<PluginPaletteEntry> pluginEntries;
   final void Function(BlockType type, Map<String, dynamic>? defaults) onAdd;
@@ -986,9 +1195,7 @@ class _PaletteState extends State<_Palette> {
                   color: Color(0xFF94A3B8),
                   size: 20,
                 ),
-                hintText: widget.localeCode == 'de'
-                    ? 'Befehl suchen'
-                    : 'Search command',
+                hintText: widget.catalog.text('palette.search'),
                 hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                 filled: true,
                 fillColor: const Color(0xFF0F172A),
@@ -1011,19 +1218,21 @@ class _PaletteState extends State<_Palette> {
             padding: const EdgeInsets.fromLTRB(14, 2, 14, 8),
             child: Row(
               children: [
-                Text(
-                  query.isEmpty
-                      ? _categoryTitle(widget.category, widget.localeCode)
-                      : (widget.localeCode == 'de'
-                            ? 'Suchergebnisse'
-                            : 'Search results'),
-                  style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                Expanded(
+                  child: Text(
+                    query.isEmpty
+                        ? _categoryTitle(widget.category, widget.localeCode)
+                        : widget.catalog.text('palette.searchResults'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 Text(
                   '${blocks.length}',
                   style: const TextStyle(
@@ -1478,7 +1687,7 @@ class _PaletteState extends State<_Palette> {
         actions: [
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
+            child: Text(widget.catalog.text('common.ok')),
           ),
         ],
       ),
@@ -1486,15 +1695,15 @@ class _PaletteState extends State<_Palette> {
   }
 
   String _categoryTitle(SqlPaletteCategory category, String localeCode) {
-    final de = localeCode == 'de';
     return switch (category) {
-      SqlPaletteCategory.dql => de ? 'Daten abfragen' : 'Query data',
-      SqlPaletteCategory.dml => de ? 'Daten bearbeiten' : 'Change data',
-      SqlPaletteCategory.ddl => de ? 'Struktur bearbeiten' : 'Schema tools',
-      SqlPaletteCategory.dcl => de ? 'Rechte verwalten' : 'Permissions',
-      SqlPaletteCategory.txn =>
-        de ? 'Transaktionen & Mengen' : 'Transactions & sets',
-      SqlPaletteCategory.plugins => de ? 'Erweiterungen' : 'Extensions',
+      SqlPaletteCategory.dql => widget.catalog.text('palette.category.dql'),
+      SqlPaletteCategory.dml => widget.catalog.text('palette.category.dml'),
+      SqlPaletteCategory.ddl => widget.catalog.text('palette.category.ddl'),
+      SqlPaletteCategory.dcl => widget.catalog.text('palette.category.dcl'),
+      SqlPaletteCategory.txn => widget.catalog.text('palette.category.txn'),
+      SqlPaletteCategory.plugins => widget.catalog.text(
+        'palette.category.plugins',
+      ),
     };
   }
 
@@ -1676,8 +1885,8 @@ class _WorkspaceCanvas extends ConsumerWidget {
     final workspace = ref.watch(workspaceProvider);
     final controller = ref.read(workspaceProvider.notifier);
     transform.value = Matrix4.identity()
-      ..translate(workspace.pan.dx, workspace.pan.dy)
-      ..scale(workspace.scale);
+      ..translateByDouble(workspace.pan.dx, workspace.pan.dy, 0, 1)
+      ..scaleByDouble(workspace.scale, workspace.scale, workspace.scale, 1);
 
     return DragTarget<_PaletteDragData>(
       onWillAcceptWithDetails: (_) => true,
@@ -1690,7 +1899,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
           defaults: details.data.defaults,
         );
       },
-      builder: (context, _, __) => Focus(
+      builder: (context, _, _) => Focus(
         autofocus: true,
         focusNode: focusNode,
         onKeyEvent: (node, event) {
@@ -1771,6 +1980,7 @@ Future<void> _handleDeleteWithRootConfirmation(
   BuildContext context,
   WidgetRef ref,
 ) async {
+  final catalog = ref.read(translationControllerProvider).catalog;
   final workspace = ref.read(workspaceProvider);
   final selectedIds = workspace.selectedBlockIds.isNotEmpty
       ? workspace.selectedBlockIds
@@ -1794,22 +2004,22 @@ Future<void> _handleDeleteWithRootConfirmation(
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF111827),
-      title: const Text(
-        'Delete root script?',
-        style: TextStyle(color: Colors.white),
+      title: Text(
+        catalog.text('workspace.deleteRoot.title'),
+        style: const TextStyle(color: Colors.white),
       ),
-      content: const Text(
-        'This will remove the trigger and its attached chain.',
-        style: TextStyle(color: Color(0xFFD1D5DB)),
+      content: Text(
+        catalog.text('workspace.deleteRoot.message'),
+        style: const TextStyle(color: Color(0xFFD1D5DB)),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('No'),
+          child: Text(catalog.text('common.no')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Yes'),
+          child: Text(catalog.text('common.yes')),
         ),
       ],
     ),
@@ -1850,8 +2060,6 @@ class _PointerWorkspaceLayerState
   Offset? _primaryDownWorld;
   Offset? _primaryDownLocal;
   Offset? _secondaryDownWorld;
-  Offset? _secondaryDownLocal;
-  Offset? _secondaryDownGlobal;
   bool _marqueeSelecting = false;
   Rect? _marqueeRectLocal;
   double? _panZoomStartScale;
@@ -1894,8 +2102,6 @@ class _PointerWorkspaceLayerState
             (event.buttons & kSecondaryMouseButton) != 0) {
           _secondaryPending = true;
           _secondaryDownWorld = world;
-          _secondaryDownLocal = event.localPosition;
-          _secondaryDownGlobal = event.position;
           _rightPanning = false;
           _primaryPending = false;
           return;
@@ -1952,8 +2158,6 @@ class _PointerWorkspaceLayerState
           _rightPanning = false;
           _secondaryPending = false;
           _secondaryDownWorld = null;
-          _secondaryDownLocal = null;
-          _secondaryDownGlobal = null;
           return;
         }
         if (_secondaryPending) {
@@ -1965,8 +2169,6 @@ class _PointerWorkspaceLayerState
           }
           _secondaryPending = false;
           _secondaryDownWorld = null;
-          _secondaryDownLocal = null;
-          _secondaryDownGlobal = null;
           return;
         }
         if (_leftDraggingBlock) {
@@ -2061,6 +2263,7 @@ class _PointerWorkspaceLayerState
   }
 
   Future<void> _showNodeContextMenu(Offset globalPosition) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
@@ -2072,10 +2275,13 @@ class _PointerWorkspaceLayerState
       context: context,
       position: position,
       color: const Color(0xFF0F172A),
-      items: const [
+      items: [
         PopupMenuItem<String>(
           value: 'delete',
-          child: Text('Delete', style: TextStyle(color: Colors.white)),
+          child: Text(
+            catalog.text('workspace.delete'),
+            style: const TextStyle(color: Colors.white),
+          ),
         ),
       ],
     );
@@ -2107,7 +2313,10 @@ class _NodeView extends ConsumerWidget {
     final engine = ref.read(workspaceProvider.notifier);
     final mode = ref.watch(sqlModeProvider);
     final runtime = ref.watch(sqlRuntimeProvider);
-    final localeCode = ref.watch(localeControllerProvider).languageCode;
+    final localeCode = ref
+        .watch(translationControllerProvider)
+        .locale
+        .languageCode;
     final pluginBlock = pluginBlockForNode(
       node,
       ref.watch(pluginPaletteProvider),
@@ -2466,6 +2675,7 @@ class _NodeView extends ConsumerWidget {
     BlockNode node,
     WorkspaceController engine,
   ) async {
+    final catalog = translationCatalogOf(context);
     final key = _inputKey(node);
     if (key == null) return;
 
@@ -2480,11 +2690,11 @@ class _NodeView extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(catalog.text('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('OK'),
+            child: Text(catalog.text('common.ok')),
           ),
         ],
       ),
@@ -2504,6 +2714,7 @@ class _NodeView extends ConsumerWidget {
     required SqlRuntimeState runtime,
     required String localeCode,
   }) async {
+    final catalog = translationCatalogOf(context);
     final mappedKey = _slotInputKey(slotKey);
     final options = _inlineOptionsForToken(
       rawToken: rawToken,
@@ -2548,11 +2759,11 @@ class _NodeView extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(catalog.text('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('OK'),
+            child: Text(catalog.text('common.ok')),
           ),
         ],
       ),
@@ -2692,6 +2903,7 @@ class _NodeView extends ConsumerWidget {
     required Offset anchorGlobal,
     required String localeCode,
   }) async {
+    final catalog = translationCatalogOf(context);
     final completer = Completer<String?>();
     final textController = TextEditingController();
     OverlayEntry? entry;
@@ -2730,13 +2942,15 @@ class _NodeView extends ConsumerWidget {
                   children: [
                     Flexible(
                       child: options.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(10),
+                          ? Padding(
+                              padding: const EdgeInsets.all(10),
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  'No schema options yet',
-                                  style: TextStyle(color: Color(0xFF9CA3AF)),
+                                  catalog.text('editor.noSchemaOptions'),
+                                  style: const TextStyle(
+                                    color: Color(0xFF9CA3AF),
+                                  ),
                                 ),
                               ),
                             )
@@ -2791,11 +3005,13 @@ class _NodeView extends ConsumerWidget {
                             child: TextField(
                               controller: textController,
                               style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 isDense: true,
-                                hintText: 'Custom value',
-                                hintStyle: TextStyle(color: Color(0xFF9CA3AF)),
-                                border: OutlineInputBorder(),
+                                hintText: catalog.text('editor.customValue'),
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFF9CA3AF),
+                                ),
+                                border: const OutlineInputBorder(),
                               ),
                             ),
                           ),
@@ -3097,11 +3313,13 @@ class _SqlRuntimePane extends StatefulWidget {
     required this.sql,
     required this.runtime,
     required this.localeCode,
+    required this.catalog,
   });
 
   final String sql;
   final SqlRuntimeState runtime;
   final String localeCode;
+  final TranslationCatalog catalog;
 
   @override
   State<_SqlRuntimePane> createState() => _SqlRuntimePaneState();
@@ -3123,9 +3341,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     if (sql.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: sql));
     if (!mounted) return;
-    final copied = widget.localeCode == 'de'
-        ? 'SQL in Zwischenablage kopiert'
-        : 'SQL copied to clipboard';
+    final copied = widget.catalog.text('runtime.copied');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(copied),
@@ -3164,7 +3380,9 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                   child: SingleChildScrollView(
                     child: SelectionArea(
                       child: Text(
-                        widget.sql.isEmpty ? '-- SQL output --' : widget.sql,
+                        widget.sql.isEmpty
+                            ? widget.catalog.text('runtime.sqlOutput')
+                            : widget.sql,
                         style: const TextStyle(
                           fontFamily: 'monospace',
                           color: Color(0xFFBDE0FE),
@@ -3180,9 +3398,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                 child: IconButton(
                   onPressed: _copySqlToClipboard,
                   color: const Color(0xFFE2E8F0),
-                  tooltip: widget.localeCode == 'de'
-                      ? 'SQL kopieren'
-                      : 'Copy SQL',
+                  tooltip: widget.catalog.text('runtime.copySql'),
                   icon: const Icon(Icons.copy),
                 ),
               ),
@@ -3207,7 +3423,8 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          widget.runtime.lastMessage ?? 'No results',
+          widget.runtime.lastMessage ??
+              widget.catalog.text('runtime.noResults'),
           style: const TextStyle(color: Colors.white),
         ),
       );

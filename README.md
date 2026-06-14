@@ -1,84 +1,75 @@
 # NodeQL
 
-NodeQL is a multilingual, desktop-first visual programming platform inspired by Scratch workflows, implemented with original code and assets.
+NodeQL is a local-first desktop application for learning, designing, and
+running SQL with visual blocks. Projects, settings, plugins, and databases
+remain on the user's device.
 
-## Current Iteration Scope
+> **Release status:** public preview. Linux x64, macOS, and Windows x64 are the
+> supported release targets. Published binaries are currently unsigned; see
+> [Releasing](docs/RELEASING.md) before describing a build as generally
+> available.
 
-This iteration provides a production-oriented foundation with:
-- clean architecture folder boundaries
-- runtime scheduler core
-- block metadata + serialization core
-- workspace docking service core
-- stage state core
-- JSON project model + repository contract
-- extension registration contract
-- external manifest-based plugin SDK
-- full `gen_l10n` setup for 11 languages (including Arabic RTL)
-- baseline tests for runtime, serialization, localization, and workspace logic
+## Features
 
-## Architecture
+- Visual SQL blocks with snapping, editing, compilation, and execution.
+- Local SQLite database access without a separate system CLI.
+- JSON project files, autosave, recent projects, and legacy project import.
+- Declarative JSON plugin SDK with validation and compatibility checks.
+- English fallback with installable, validated community language packages.
+- Offline use after installation; no account, analytics, or cloud dependency.
+- GitHub-based update checks and community translation contributions.
 
-```mermaid
-flowchart LR
-  UI["UI / Shell"] --> FEAT["features/workbench/presentation"]
-  FEAT --> DOMAIN["domain models + service contracts"]
-  FEAT --> ENGINE["engine runtime/block/workspace/stage"]
-  FEAT --> LOC["localization gen_l10n + locale controller"]
-  DOMAIN --> DATA["data persistence + project factory"]
-  ENGINE --> EXT["extensions contract"]
-```
+## Privacy and security
 
-## Folder Structure
+NodeQL does not include analytics, advertising, account tracking, or automatic
+crash reporting. The optional network behavior is documented in
+[PRIVACY.md](PRIVACY.md). Vulnerabilities should be reported according to
+[SECURITY.md](SECURITY.md), not through public issues.
 
-- `lib/core`: app bootstrap and theme
-- `lib/localization`: locale state + language metadata
-- `lib/domain`: business models and repository interfaces
-- `lib/data`: persistence and project defaults
-- `lib/engine`: runtime, block, workspace, stage, extensions
-- `lib/features`: feature-level presentation and state wiring
-- `lib/ui`: shell-level entry widgets
-- `test`: unit and widget tests per subsystem
-- `docs/plugins`: external plugin SDK, JSON schema, and format reference
-- `examples/plugins`: installable example plugins
+Plugin API v1 is declarative. It does not execute third-party Dart code, native
+libraries, scripts, or executables. Translation packages are restricted to
+approved HTTPS hosts and verified by schema, size, metadata, placeholders, and
+SHA-256.
 
-## Internationalization
+## Development
 
-Implemented with Flutter `gen_l10n` + ARB files:
-- German (`de`)
-- English (`en`)
-- French (`fr`)
-- Spanish (`es`)
-- Italian (`it`)
-- Portuguese (`pt`)
-- Turkish (`tr`)
-- Arabic (`ar`, RTL)
-- Japanese (`ja`)
-- Korean (`ko`)
-- Chinese (`zh`)
+Requirements:
 
-All displayed UI texts and block labels are localized via ARB keys.
-
-## Run
+- Flutter `3.44.1`
+- Dart compatible with SDK `^3.9.0`
+- Native Flutter desktop build dependencies for the target platform
 
 ```bash
 flutter pub get
 flutter gen-l10n
+dart format lib test tool
+flutter analyze
 flutter test
-flutter run -d macos   # or windows/linux
+dart run tool/validate_translations.dart
+flutter run -d macos
 ```
 
-## External Plugins
+Use `windows` or `linux` instead of `macos` on the corresponding platform.
 
-NodeQL loads independent JSON plugin packages at runtime; plugin developers do
-not need Dart or Flutter. Plugins can define localized visual blocks, typed
-inputs, colors, container behavior, and SQL templates. See
-[`docs/plugins/README.md`](docs/plugins/README.md).
+## Project structure
 
-## Next TODO Iterations
+- `lib/core`: application bootstrap, themes, and update checks
+- `lib/localization`: runtime catalogs, cache, validation, and locale state
+- `lib/domain`: project and block models
+- `lib/data`: JSON persistence and defaults
+- `lib/engine`: runtime, block, workspace, stage, and extension contracts
+- `lib/features`: workbench presentation and feature state
+- `docs/plugins`: external plugin SDK and schema documentation
+- `docs/localization`: translation contribution and package documentation
+- `test`: unit and widget tests
 
-- implement block drag/drop graph editor + snapping visuals
-- runtime coroutine model with deterministic scheduling slices
-- stage renderer with costumes/sounds/input events
-- autosave, crash recovery, backup versions
-- desktop menus, shortcuts, dockable/resizable panels
-- performance profiling for thousands of blocks
+## Community
+
+- [Contributing](CONTRIBUTING.md)
+- [Plugin SDK](docs/plugins/README.md)
+- [Translation guide](docs/localization/README.md)
+- [Release process](docs/RELEASING.md)
+- [Changelog](CHANGELOG.md)
+
+NodeQL source code is available under the [MIT License](LICENSE). Runtime
+translation contributions are provided under CC BY 4.0.

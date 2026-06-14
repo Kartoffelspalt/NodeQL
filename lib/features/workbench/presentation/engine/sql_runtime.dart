@@ -1,12 +1,11 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 class TableSchema {
   const TableSchema({required this.name, required this.columns});
@@ -81,9 +80,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       );
       await attachDatabasePath(localDbPath);
     } catch (e) {
-      state = state.copyWith(
-        lastMessage: 'Failed to open DB on macOS sandbox: $e',
-      );
+      state = state.copyWith(lastMessage: 'Failed to open database: $e');
     }
   }
 
@@ -92,14 +89,18 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       state = state.copyWith(lastMessage: 'Database file not found: $dbPath');
       return;
     }
-    final schemas = await _reflectSchema(dbPath);
-    state = state.copyWith(
-      dbPath: dbPath,
-      schemas: schemas,
-      lastMessage: schemas.isEmpty
-          ? 'DB loaded, but no user tables found.'
-          : 'DB loaded: ${schemas.length} table(s)',
-    );
+    try {
+      final schemas = _reflectSchema(dbPath);
+      state = state.copyWith(
+        dbPath: dbPath,
+        schemas: schemas,
+        lastMessage: schemas.isEmpty
+            ? 'DB loaded, but no user tables found.'
+            : 'DB loaded: ${schemas.length} table(s)',
+      );
+    } catch (e) {
+      state = state.copyWith(lastMessage: 'Failed to open database: $e');
+    }
   }
 
   Future<String> createEmptyDatabase({String? preferredName}) async {
@@ -113,12 +114,11 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         : preferredName.trim();
     final fileName = base.endsWith('.db') ? base : '$base.db';
     final targetPath = p.join(dbDir.path, fileName);
-    final create = await Process.run('/usr/bin/sqlite3', <String>[
-      targetPath,
-      'PRAGMA user_version = 1;',
-    ]);
-    if (create.exitCode != 0) {
-      throw Exception((create.stderr as String).trim());
+    final database = sqlite3.open(targetPath);
+    try {
+      database.execute('PRAGMA user_version = 1;');
+    } finally {
+      database.close();
     }
     await attachDatabasePath(targetPath);
     return targetPath;
@@ -187,44 +187,34 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     state = state.copyWith(lastMessage: message);
   }
 
-  Future<List<TableSchema>> _reflectSchema(String path) async {
-    final tablesOut = await Process.run('/usr/bin/sqlite3', <String>[
-      path,
-      'PRAGMA table_list;',
-    ]);
-    if (tablesOut.exitCode != 0) return const <TableSchema>[];
-
-    final tableNames = <String>[];
-    for (final line in (tablesOut.stdout as String).split('\n')) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) continue;
-      final parts = trimmed.split('|');
-      if (parts.length > 1) {
-        final name = parts[1];
-        if (!name.startsWith('sqlite_')) tableNames.add(name);
-      }
+  List<TableSchema> _reflectSchema(String path) {
+    final database = sqlite3.open(path);
+    try {
+      final tables = database.select('''
+        SELECT name
+        FROM sqlite_schema
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+        ''');
+      return <TableSchema>[
+        for (final row in tables)
+          TableSchema(
+            name: row['name'] as String,
+            columns: database
+                .select(
+                  'PRAGMA table_info(${_quoteIdentifier(row['name'] as String)})',
+                )
+                .map((column) => column['name'] as String)
+                .toList(growable: false),
+          ),
+      ];
+    } finally {
+      database.close();
     }
+  }
 
-    final schemas = <TableSchema>[];
-    for (final table in tableNames) {
-      final columnsOut = await Process.run('/usr/bin/sqlite3', <String>[
-        path,
-        'PRAGMA table_info($table);',
-      ]);
-      final cols = <String>[];
-      if (columnsOut.exitCode == 0) {
-        final lines = (columnsOut.stdout as String)
-            .split('\n')
-            .where((line) => line.trim().isNotEmpty);
-        for (final line in lines) {
-          final parts = line.split('|');
-          if (parts.length > 1) cols.add(parts[1]);
-        }
-      }
-      schemas.add(TableSchema(name: table, columns: cols));
-    }
-
-    return schemas;
+  String _quoteIdentifier(String identifier) {
+    return '"${identifier.replaceAll('"', '""')}"';
   }
 
   Future<File> _createSnapshot(String dbPath) async {
@@ -238,25 +228,29 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   }
 
   Future<List<Map<String, String>>> _runQuery(String path, String sql) async {
-    final result = await Process.run('/usr/bin/sqlite3', <String>[
-      '-header',
-      '-json',
-      path,
-      sql,
-    ]);
-
-    if (result.exitCode != 0) {
-      throw Exception((result.stderr as String).trim());
+    final database = sqlite3.open(path);
+    final statements = database.prepareMultiple(sql);
+    try {
+      var rows = const <Map<String, String>>[];
+      for (final statement in statements) {
+        final result = statement.select();
+        if (result.columnNames.isNotEmpty) {
+          rows = <Map<String, String>>[
+            for (final row in result)
+              <String, String>{
+                for (final column in result.columnNames)
+                  column: '${row[column] ?? ''}',
+              },
+          ];
+        }
+      }
+      return rows;
+    } finally {
+      for (final statement in statements) {
+        statement.close();
+      }
+      database.close();
     }
-
-    final out = (result.stdout as String).trim();
-    if (out.isEmpty) return const <Map<String, String>>[];
-
-    final decoded = jsonDecode(out) as List<dynamic>;
-    return decoded
-        .cast<Map<String, dynamic>>()
-        .map((row) => row.map((key, value) => MapEntry(key, '${value ?? ''}')))
-        .toList();
   }
 
   Future<String> _copyIntoSandbox({

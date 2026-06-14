@@ -11,4 +11,4 @@ PRODUCT_NAME = NodeQL
 PRODUCT_BUNDLE_IDENTIFIER = digital.codespiresolutions.nodeql
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 digital.codespiresolutions. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 NodeQL contributors. MIT License.

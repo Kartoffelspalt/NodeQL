@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added local-first runtime translation packages with validation, SHA-256
+  verification, offline caching, persisted language selection, and English
+  fallback.
+- Added GitHub pull request translation contributions and GitHub Pages
+  publishing for reviewed packages.
+- Added CI quality gates and deterministic Linux, macOS, and Windows release
+  packaging with SHA-256 checksums.
+- Added public contribution, security, privacy, conduct, and release policies.
 - Added Plugin SDK v1 for independent, manifest-based NodeQL plugins without
   requiring Dart or Flutter.
 - Added runtime discovery of `plugin.json` manifests from the NodeQL plugin
@@ -38,6 +46,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Replaced the previous translation service integration with a GitHub-only
+  contribution and distribution workflow.
+- Standardized release artifacts and platform metadata on the NodeQL name.
+- Limited the first public release pipeline to supported desktop platforms.
 - Updated the SQL compiler to resolve and compile external plugin blocks.
 - Updated the block palette and workspace drag-and-drop flow to retain plugin
   metadata and default input values.
@@ -47,6 +59,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Translation downloads require HTTPS, an approved GitHub host, matching
+  package metadata, an exact byte size, and a matching SHA-256 digest.
+- Releases are created only after all quality and desktop build jobs succeed.
 - Plugin API v1 is declarative and does not execute third-party Dart code,
   native libraries, scripts, or executables.
 - Plugin manifests are limited to 1 MiB and reject unsupported or unknown

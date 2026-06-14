@@ -1,195 +1,189 @@
-name: Flutter Release
+name: Desktop Release
 
 on:
   push:
-    branches:
-      - master
-      - main
-    paths:
-      - 'pubspec.yaml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.44.1'
+  TRANSLATION_MANIFEST_URL: https://kartoffelspalt.github.io/NodeQL/translations/translation-manifest.json
+  TRANSLATION_CONTRIBUTION_URL: https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/localization/README.md
 
 jobs:
-  check-version:
-    name: Check Version Update
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      should-release: ${{ steps.check.outputs.should-release }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract version from pubspec.yaml
-        id: version
-        run: |
-          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Detected version: $VERSION"
-
-      - name: Check if release already exists
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
-          if gh release view "v$VERSION" 2>/dev/null; then
-            echo "should-release=false" >> $GITHUB_OUTPUT
-          else
-            echo "should-release=true" >> $GITHUB_OUTPUT
-          fi
-
-  build-linux:
-    name: Build Linux (Debian)
-    needs: check-version
-    if: needs.check-version.outputs.should-release == 'true'
+  quality:
+    name: Quality gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.1'
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter gen-l10n
+      - run: dart format --output=none --set-exit-if-changed lib test tool
+      - run: flutter analyze
+      - run: flutter test
+      - run: dart run tool/validate_translations.dart
+      - name: Verify tag matches pubspec version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          PUBSPEC_VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
+          RELEASE_VERSION="${PUBSPEC_VERSION%%+*}"
+          test "${GITHUB_REF_NAME}" = "v${RELEASE_VERSION}"
 
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Install Linux build dependencies
+  build-linux:
+    name: Linux x64
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev pkg-config cmake ninja-build
-
-      - name: Build Linux Release
-        run: flutter build linux --release
-
-      - name: Generate Debian control file
-        uses: Nightwind-Developments/debian-control-file-builder@latest
-        id: deb_control
+          sudo apt-get install -y libgtk-3-dev libsqlite3-dev ninja-build
+      - run: flutter pub get
+      - name: Build Linux bundle
+        run: >
+          flutter build linux --release
+          --dart-define=NODEQL_RELEASE_OWNER=${{ github.repository_owner }}
+          --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
+          --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
+          --dart-define=NODEQL_TRANSLATION_CONTRIBUTION_URL=${{ env.TRANSLATION_CONTRIBUTION_URL }}
+      - name: Package Linux bundle and Debian package
+        shell: bash
+        run: |
+          PUBSPEC_VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
+          RELEASE_VERSION="${PUBSPEC_VERSION%%+*}"
+          tar -C build/linux/x64/release/bundle -czf "nodeql-linux-x64-${RELEASE_VERSION}.tar.gz" .
+          mkdir -p package/DEBIAN package/usr/lib/nodeql package/usr/bin package/usr/share/applications
+          cp -R build/linux/x64/release/bundle/. package/usr/lib/nodeql/
+          ln -s /usr/lib/nodeql/nodeql package/usr/bin/nodeql
+          cat > package/DEBIAN/control <<EOF
+          Package: nodeql
+          Version: ${RELEASE_VERSION}
+          Section: devel
+          Priority: optional
+          Architecture: amd64
+          Maintainer: NodeQL Team <nodeql-support@codespiresolutions.digital>
+          Depends: libc6, libstdc++6, libgtk-3-0, libsqlite3-0
+          Homepage: https://github.com/${{ github.repository }}
+          Description: Local-first visual SQL learning and development
+          EOF
+          cat > package/usr/share/applications/nodeql.desktop <<EOF
+          [Desktop Entry]
+          Name=NodeQL
+          Comment=Visual SQL learning and development
+          Exec=/usr/bin/nodeql
+          Terminal=false
+          Type=Application
+          Categories=Development;Education;
+          EOF
+          dpkg-deb --build --root-owner-group package "nodeql_${RELEASE_VERSION}_amd64.deb"
+      - uses: actions/upload-artifact@v4
         with:
-          config-file: 'linux/debian/control_config.json'
-          deps-file: 'linux/debian/dependencies.txt'
-          output-path: 'linux/debian/'
-          case-sensitive-keys: 'false'
-
-      - name: Fix control file formatting
-        run: |
-          sed -i 's/Homepage:/\nHomepage:/' linux/debian/control
-
-      - name: Update Debian control file version
-        run: |
-          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
-          sed -i "s/^Version: .*/Version: $VERSION/" linux/debian/control
-
-      - name: Debug generated control file
-        run: cat linux/debian/control
-
-      - name: Create Debian package directory structure
-        run: |
-          mkdir -p debian/DEBIAN
-          mkdir -p debian/usr/local/bin/scratchql-creater
-          cp linux/debian/control debian/DEBIAN/
-          cp -r build/linux/x64/release/bundle/* debian/usr/local/bin/scratchql-creater/
-
-      - name: Build Debian package
-        run: |
-          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
-          dpkg-deb --build --root-owner-group debian scratchql-creater_${VERSION}_amd64.deb
-
-      
-        
-
-      - name: Upload Debian package to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //g')
-          gh release upload "v$VERSION" scratchql-creater_${VERSION}_amd64.deb
+          name: nodeql-linux
+          path: |
+            nodeql-linux-x64-*.tar.gz
+            nodeql_*_amd64.deb
+          if-no-files-found: error
 
   build-macos:
-    name: Build macOS
-    needs: check-version
-    if: needs.check-version.outputs.should-release == 'true'
+    name: macOS
+    needs: quality
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.1'
-          channel: 'stable'
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build macOS
-        uses: Oberhauser-Dev/flutter-release-action@v0
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build macOS application
+        run: >
+          flutter build macos --release
+          --dart-define=NODEQL_RELEASE_OWNER=${{ github.repository_owner }}
+          --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
+          --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
+          --dart-define=NODEQL_TRANSLATION_CONTRIBUTION_URL=${{ env.TRANSLATION_CONTRIBUTION_URL }}
+      - name: Package macOS application
+        shell: bash
+        run: |
+          PUBSPEC_VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
+          RELEASE_VERSION="${PUBSPEC_VERSION%%+*}"
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/macos/Build/Products/Release/NodeQL.app \
+            "nodeql-macos-${RELEASE_VERSION}.zip"
+      - uses: actions/upload-artifact@v4
         with:
-          token: ${{ github.token }}
-          dry-run: false
-          app-name: 'scratchql-creator'
-          app-version: ${{ needs.check-version.outputs.version }}
-          tag: v${{ needs.check-version.outputs.version }}
-          build-type: 'macos'
+          name: nodeql-macos
+          path: nodeql-macos-*.zip
+          if-no-files-found: error
 
   build-windows:
-    name: Build Windows
-    needs: check-version
-    if: needs.check-version.outputs.should-release == 'true'
+    name: Windows x64
+    needs: quality
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.1'
-          channel: 'stable'
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Windows
-        uses: Oberhauser-Dev/flutter-release-action@v0
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build Windows bundle
+        run: >
+          flutter build windows --release
+          --dart-define=NODEQL_RELEASE_OWNER=${{ github.repository_owner }}
+          --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
+          --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
+          --dart-define=NODEQL_TRANSLATION_CONTRIBUTION_URL=${{ env.TRANSLATION_CONTRIBUTION_URL }}
+      - name: Package Windows bundle
+        shell: pwsh
+        run: |
+          $pubspecVersion = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches.Groups[1].Value
+          $releaseVersion = $pubspecVersion.Split('+')[0]
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "nodeql-windows-x64-$releaseVersion.zip"
+      - uses: actions/upload-artifact@v4
         with:
-          token: ${{ github.token }}
-          dry-run: false
-          app-name: 'scratchql-creator'
-          app-version: ${{ needs.check-version.outputs.version }}
-          tag: v${{ needs.check-version.outputs.version }}
-          build-type: 'windows'
+          name: nodeql-windows
+          path: nodeql-windows-x64-*.zip
+          if-no-files-found: error
 
-  build-web:
-    name: Build Web
-    needs: check-version
-    if: needs.check-version.outputs.should-release == 'true'
+  publish:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
+      - uses: actions/download-artifact@v4
         with:
-          flutter-version: '3.44.1'
-          channel: 'stable'
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Web
-        uses: Oberhauser-Dev/flutter-release-action@v0
-        with:
-          token: ${{ github.token }}
-          dry-run: false
-          app-name: 'nodeql'
-          app-version: ${{ needs.check-version.outputs.version }}
-          tag: v${{ needs.check-version.outputs.version }}
-          build-type: 'web'
-
-  verify-builds:
-    name: Verify All Builds Complete
-    needs: [check-version, build-linux, build-macos, build-windows, build-web]
-    if: needs.check-version.outputs.should-release == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Release v${{ needs.check-version.outputs.version }} completed
-        run: echo "All platform builds completed"
+          path: artifacts
+          merge-multiple: true
+      - name: Generate checksums
+        run: cd artifacts && sha256sum * > SHA256SUMS.txt
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${GITHUB_REF_NAME}" artifacts/*
+          --repo "${{ github.repository }}"
+          --verify-tag
+          --generate-notes
+          --title "NodeQL ${GITHUB_REF_NAME#v}"

@@ -88,7 +88,7 @@ Example:
     {"name": "column", "type": "identifier", "default": "name"},
     {"name": "pattern", "type": "string", "default": "%node%"}
   ],
-  "sql": "{{column}} ILIKE {{pattern}}"
+  "sql": "LOWER({{column}}) LIKE LOWER({{pattern}})"
 }
 ```
 

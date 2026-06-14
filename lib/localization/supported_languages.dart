@@ -8,17 +8,8 @@ class SupportedLanguage {
 }
 
 const supportedLanguages = <SupportedLanguage>[
-  SupportedLanguage('de', 'Deutsch'),
   SupportedLanguage('en', 'English'),
-  SupportedLanguage('fr', 'Français'),
-  SupportedLanguage('es', 'Español'),
-  SupportedLanguage('it', 'Italiano'),
-  SupportedLanguage('pt', 'Português'),
-  SupportedLanguage('tr', 'Türkçe'),
-  SupportedLanguage('ar', 'العربية'),
-  SupportedLanguage('ja', '日本語'),
-  SupportedLanguage('ko', '한국어'),
-  SupportedLanguage('zh', '中文'),
+  SupportedLanguage('de', 'Deutsch'),
 ];
 
 Locale toLocale(SupportedLanguage language) => Locale(language.code);

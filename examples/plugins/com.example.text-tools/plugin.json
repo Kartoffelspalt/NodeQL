@@ -1,7 +1,7 @@
 {
   "$schema": "../../../docs/plugins/plugin.schema.json",
   "schemaVersion": 1,
-  "id": "dev.nodeql.example.text-tools",
+  "id": "com.example.text-tools",
   "name": "Text Tools",
   "version": "1.0.0",
   "minNodeQlVersion": "0.1.32",
@@ -30,7 +30,7 @@
         {"name": "column", "type": "identifier", "default": "name"},
         {"name": "pattern", "type": "string", "default": "%node%"}
       ],
-      "sql": "{{column}} ILIKE {{pattern}}"
+      "sql": "LOWER({{column}}) LIKE LOWER({{pattern}})"
     },
     {
       "id": "transaction",

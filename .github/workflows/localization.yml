@@ -1,0 +1,26 @@
+name: Validate translations
+
+on:
+  pull_request:
+    paths:
+      - 'assets/translations/**'
+      - 'translations/**'
+      - 'tool/validate_translations.dart'
+  push:
+    branches: [master, main]
+    paths:
+      - 'assets/translations/**'
+      - 'translations/**'
+      - 'tool/validate_translations.dart'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: stable
+      - run: flutter pub get
+      - run: dart run tool/validate_translations.dart

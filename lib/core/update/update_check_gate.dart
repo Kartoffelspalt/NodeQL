@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nodeql/localization/translation_controller.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'github_release_update_service.dart';
@@ -47,44 +49,43 @@ class _UpdateCheckGateState extends State<UpdateCheckGate> {
   Widget build(BuildContext context) => widget.child;
 }
 
-class _UpdateDialog extends StatelessWidget {
+class _UpdateDialog extends ConsumerWidget {
   const _UpdateDialog({required this.update});
 
   final AppUpdate update;
 
   @override
-  Widget build(BuildContext context) {
-    final locale = Localizations.localeOf(context).languageCode;
-    final copy = _UpdateDialogCopy.forLocale(locale);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catalog = ref.watch(translationControllerProvider).catalog;
 
     return AlertDialog(
       icon: const Icon(Icons.system_update_alt_rounded),
-      title: Text(copy.title),
+      title: Text(catalog.text('update.title')),
       content: Text(
-        copy.message(
-          currentVersion: update.currentVersion,
-          latestVersion: update.latestVersion,
-          assetName: update.assetName,
-        ),
+        catalog.text('update.message', {
+          'currentVersion': update.currentVersion,
+          'latestVersion': update.latestVersion,
+          'assetName': update.assetName,
+        }),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(copy.later),
+          child: Text(catalog.text('update.later')),
         ),
         OutlinedButton(
           onPressed: () {
             _launch(update.releaseUrl);
             Navigator.of(context).pop();
           },
-          child: Text(copy.releaseNotes),
+          child: Text(catalog.text('update.details')),
         ),
         FilledButton(
           onPressed: () {
             _launch(update.downloadUrl);
             Navigator.of(context).pop();
           },
-          child: Text(copy.download),
+          child: Text(catalog.text('update.download')),
         ),
       ],
     );
@@ -92,77 +93,5 @@ class _UpdateDialog extends StatelessWidget {
 
   Future<void> _launch(Uri uri) async {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-}
-
-class _UpdateDialogCopy {
-  const _UpdateDialogCopy({
-    required this.title,
-    required this.later,
-    required this.releaseNotes,
-    required this.download,
-    required String Function({
-      required String currentVersion,
-      required String latestVersion,
-      required String assetName,
-    })
-    messageBuilder,
-  }) : _message = messageBuilder;
-
-  final String title;
-  final String later;
-  final String releaseNotes;
-  final String download;
-  final String Function({
-    required String currentVersion,
-    required String latestVersion,
-    required String assetName,
-  })
-  _message;
-
-  String message({
-    required String currentVersion,
-    required String latestVersion,
-    required String assetName,
-  }) {
-    return _message(
-      currentVersion: currentVersion,
-      latestVersion: latestVersion,
-      assetName: assetName,
-    );
-  }
-
-  static _UpdateDialogCopy forLocale(String languageCode) {
-    if (languageCode == 'de') {
-      return _UpdateDialogCopy(
-        title: 'Update verfuegbar',
-        later: 'Spaeter',
-        releaseNotes: 'Details',
-        download: 'Update laden',
-        messageBuilder:
-            ({
-              required currentVersion,
-              required latestVersion,
-              required assetName,
-            }) =>
-                'Version $latestVersion ist verfuegbar. Installiert ist '
-                'Version $currentVersion.\n\nDownload: $assetName',
-      );
-    }
-
-    return _UpdateDialogCopy(
-      title: 'Update available',
-      later: 'Later',
-      releaseNotes: 'Details',
-      download: 'Download update',
-      messageBuilder:
-          ({
-            required currentVersion,
-            required latestVersion,
-            required assetName,
-          }) =>
-              'Version $latestVersion is available. You are currently running '
-              'version $currentVersion.\n\nDownload: $assetName',
-    );
   }
 }
