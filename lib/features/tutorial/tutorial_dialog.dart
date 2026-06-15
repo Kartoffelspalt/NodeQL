@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
@@ -33,6 +34,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final compact = size.width < 820;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return PopScope(
       canPop: false,
       child: Dialog(
@@ -54,7 +56,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
                 LinearProgressIndicator(
                   value: (_step + 1) / _stepCount,
                   minHeight: 4,
-                  backgroundColor: const Color(0xFF1E293B),
+                  backgroundColor: workbenchColors.border,
                 ),
                 Expanded(
                   child: compact
@@ -132,7 +134,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
           Text(
             catalog.text('tutorial.step.${_step + 1}.body'),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: const Color(0xFFCBD5E1),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.5,
             ),
           ),
@@ -147,12 +149,13 @@ class _TutorialDialogState extends State<TutorialDialog> {
   Widget _buildChallenge() {
     final answer = _answers[_step];
     final correct = _correctAnswer(_step)!;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1220),
+        color: workbenchColors.panel,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: workbenchColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -190,7 +193,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
                         ? (option == correct
                               ? const Color(0xFF22C55E)
                               : const Color(0xFFEF4444))
-                        : const Color(0xFF475569),
+                        : workbenchColors.border,
                   ),
                   backgroundColor: answer == option
                       ? (option == correct
@@ -277,10 +280,11 @@ class _TutorialHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Container(
       height: 68,
       padding: const EdgeInsets.symmetric(horizontal: 22),
-      color: const Color(0xFF0B1220),
+      color: workbenchColors.topBar,
       child: Row(
         children: [
           Container(
@@ -296,7 +300,11 @@ class _TutorialHeader extends StatelessWidget {
           Expanded(
             child: Text(
               catalog.text('tutorial.title'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: workbenchColors.topBarForeground,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           Text(
@@ -304,7 +312,7 @@ class _TutorialHeader extends StatelessWidget {
               'current': step + 1,
               'total': stepCount,
             }),
-            style: const TextStyle(color: Color(0xFF94A3B8)),
+            style: TextStyle(color: workbenchColors.muted),
           ),
           const SizedBox(width: 14),
           TextButton(
@@ -335,6 +343,8 @@ class _StepRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 235,
       child: ListView.builder(
@@ -348,21 +358,29 @@ class _StepRail extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 6),
             child: ListTile(
               selected: active,
-              selectedTileColor: const Color(0xFF1E3A5F),
+              selectedTileColor: colorScheme.primaryContainer,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               leading: CircleAvatar(
                 radius: 15,
                 backgroundColor: active
-                    ? const Color(0xFF2563EB)
-                    : const Color(0xFF1E293B),
+                    ? colorScheme.primary
+                    : workbenchColors.border,
                 child: complete
-                    ? const Icon(Icons.check, size: 17, color: Colors.white)
+                    ? Icon(
+                        Icons.check,
+                        size: 17,
+                        color: active
+                            ? colorScheme.onPrimary
+                            : colorScheme.onSurface,
+                      )
                     : Text(
                         '${index + 1}',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: active
+                              ? colorScheme.onPrimary
+                              : colorScheme.onSurface,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
@@ -375,7 +393,7 @@ class _StepRail extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  color: unlocked ? null : const Color(0xFF64748B),
+                  color: unlocked ? null : workbenchColors.muted,
                 ),
               ),
               enabled: unlocked,
@@ -407,11 +425,12 @@ class _TutorialFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A),
-        border: Border(top: BorderSide(color: Color(0xFF1E293B))),
+      decoration: BoxDecoration(
+        color: workbenchColors.panel,
+        border: Border(top: BorderSide(color: workbenchColors.border)),
       ),
       child: Row(
         children: [
@@ -431,7 +450,7 @@ class _TutorialFooter extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.end,
-                      style: const TextStyle(color: Color(0xFF94A3B8)),
+                      style: TextStyle(color: workbenchColors.muted),
                     ),
                   ),
           ),
@@ -461,17 +480,18 @@ class _TutorialVisual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Container(
       constraints: const BoxConstraints(minHeight: 210),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF111827), Color(0xFF0B1220)],
+        gradient: LinearGradient(
+          colors: [workbenchColors.panelElevated, workbenchColors.panel],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: workbenchColors.border),
       ),
       child: switch (step) {
         0 => _WelcomeVisual(catalog: catalog),
@@ -525,27 +545,28 @@ class _InterfaceVisual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
     return Row(
       children: [
         _PanePreview(
           flex: 2,
           icon: Icons.view_sidebar_outlined,
           label: catalog.text('tutorial.visual.palette'),
-          color: const Color(0xFF1E3A5F),
+          color: colors.panelElevated,
         ),
         const SizedBox(width: 10),
         _PanePreview(
           flex: 4,
           icon: Icons.account_tree_outlined,
           label: catalog.text('tutorial.visual.workspace'),
-          color: ScratchPalette.workspace,
+          color: colors.workspace,
         ),
         const SizedBox(width: 10),
         _PanePreview(
           flex: 3,
           icon: Icons.terminal,
           label: catalog.text('tutorial.visual.output'),
-          color: const Color(0xFF172033),
+          color: colors.panel,
         ),
       ],
     );
@@ -666,6 +687,7 @@ class _RunVisual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Row(
       children: [
         Expanded(
@@ -681,7 +703,7 @@ class _RunVisual extends StatelessWidget {
               Text(
                 catalog.text('tutorial.visual.runHint'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF94A3B8)),
+                style: TextStyle(color: workbenchColors.muted),
               ),
             ],
           ),
@@ -691,13 +713,14 @@ class _RunVisual extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF020617),
+              color: workbenchColors.panel,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: workbenchColors.border),
             ),
-            child: const Text(
+            child: Text(
               'SELECT name, city\nFROM customers\nWHERE active = 1;',
               style: TextStyle(
-                color: Color(0xFFBAE6FD),
+                color: workbenchColors.sqlText,
                 fontFamily: 'monospace',
                 height: 1.6,
               ),
@@ -859,6 +882,8 @@ class _PanePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Expanded(
       flex: flex,
       child: Container(
@@ -866,12 +891,12 @@ class _PanePreview extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF475569)),
+          border: Border.all(color: workbenchColors.border),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 34, color: const Color(0xFFE2E8F0)),
+            Icon(icon, size: 34, color: colorScheme.onSurface),
             const SizedBox(height: 10),
             Text(
               label,

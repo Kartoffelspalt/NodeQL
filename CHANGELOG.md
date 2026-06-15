@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Added a screenshot gallery near the top of the public README with dedicated
+  contribution guidance for future app images.
+- Added a trademark policy that separates the MIT-licensed source code from
+  the NodeQL name, logo, and project identity.
+- Added a persistent White Mode and updated the workbench, SQL output,
+  dropdowns, and interactive tutorial to use theme-aware surfaces and readable
+  foreground colors.
+- Fixed inline table and JOIN dropdown positioning so menus open beneath their
+  selected block slots instead of at a window edge.
+- Fixed SELECT table spacing and JOIN type overlap in visual blocks.
+- Updated JOIN behavior so CROSS and NATURAL joins omit the ON condition,
+  while condition-based joins retain it.
+- Added a vertical separator to JOIN blocks to make the boundary between the
+  source table and each appended table visible.
+- Updated Linux, macOS, and Windows runners to start NodeQL maximized.
 - Added a localized, interactive seven-step onboarding tutorial with visual
   block examples, knowledge checks, persisted first-run completion and a
   permanent help entry in the workbench.
