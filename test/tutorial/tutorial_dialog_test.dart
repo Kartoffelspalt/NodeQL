@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 
@@ -53,6 +54,34 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('tutorial-skip')));
     await tester.pumpAndSettle();
     expect(completed, isTrue);
+  });
+
+  testWidgets('uses readable theme colors in White Mode', (tester) async {
+    final catalog = _englishCatalog();
+    final lightTheme = themeFor(NodeQlTheme.light);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: lightTheme,
+        home: TutorialDialog(catalog: catalog, onComplete: () async {}),
+      ),
+    );
+
+    final body = tester.widget<Text>(
+      find.text(
+        'NodeQL combines visual blocks with real SQL output. You can '
+        'learn query structure, experiment locally and inspect every '
+        'generated statement.',
+      ),
+    );
+    final colors = lightTheme.extension<NodeQlWorkbenchColors>()!;
+
+    expect(body.style?.color, lightTheme.colorScheme.onSurfaceVariant);
+    expect(
+      ThemeData.estimateBrightnessForColor(colors.panel),
+      Brightness.light,
+    );
+    expect(tester.takeException(), isNull);
   });
 }
 

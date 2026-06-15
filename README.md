@@ -9,6 +9,42 @@ remain on the user's device.
 > [Releasing](docs/RELEASING.md) before describing a build as generally
 > available.
 
+## App-Gallery
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <a href="docs/screenshots/darkmode-preview.png">
+        <img src="docs/screenshots/darkmode-preview.png" alt="NodeQL Dark Mode">
+      </a>
+      <br><strong>Dark Mode</strong>
+    </td>
+    <td width="50%" align="center">
+      <a href="docs/screenshots/whitemode-preview.png">
+        <img src="docs/screenshots/whitemode-preview.png" alt="NodeQL White Mode">
+      </a>
+      <br><strong>White Mode</strong>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="docs/screenshots/NodeQL-Einfuehrung.png">
+        <img src="docs/screenshots/NodeQL-Einfuehrung.png" alt="NodeQL interactive tutorial">
+      </a>
+      <br><strong>Interactive Tutorial</strong>
+    </td>
+    <td width="50%" align="center">
+      <a href="docs/screenshots/Plugins.png">
+        <img src="docs/screenshots/Plugins.png" alt="NodeQL plugin blocks">
+      </a>
+      <br><strong>Plugin Ecosystem</strong>
+    </td>
+  </tr>
+</table>
+
+Additional screenshots and contribution guidance are available in
+[docs/screenshots](docs/screenshots/README.md).
+
 ## Features
 
 - Visual SQL blocks with snapping, editing, compilation, and execution.
@@ -71,6 +107,8 @@ Use `windows` or `linux` instead of `macos` on the corresponding platform.
 - [Translation guide](docs/localization/README.md)
 - [Release process](docs/RELEASING.md)
 - [Changelog](CHANGELOG.md)
+- [Trademark policy](TRADEMARKS.md)
 
 NodeQL source code is available under the [MIT License](LICENSE). Runtime
-translation contributions are provided under CC BY 4.0.
+translation contributions are provided under CC BY 4.0. The NodeQL name and
+logo are not licensed under the MIT License; see [TRADEMARKS.md](TRADEMARKS.md).
