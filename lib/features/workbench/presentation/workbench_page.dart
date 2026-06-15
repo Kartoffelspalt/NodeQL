@@ -5,7 +5,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_reporters.dart';
+import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
+import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
@@ -14,6 +17,8 @@ import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
+import 'package:nodeql/features/tutorial/tutorial_controller.dart';
+import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -26,6 +31,44 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
+
+Color _sqlColorForType(BlockType type) {
+  if (type == BlockType.eventGreenFlag) return ScratchPalette.events;
+  if (isJoinType(type)) return ScratchPalette.sqlJoin;
+  return switch (blockVisualKindForType(type)) {
+    BlockVisualKind.statement when type == BlockType.sqlSelect =>
+      ScratchPalette.sqlQuery,
+    BlockVisualKind.statement
+        when type == BlockType.sqlInsert ||
+            type == BlockType.sqlUpdate ||
+            type == BlockType.sqlDelete =>
+      ScratchPalette.sqlMutation,
+    BlockVisualKind.statement
+        when type == BlockType.sqlCreateTable ||
+            type == BlockType.sqlAlterTable ||
+            type == BlockType.sqlTruncate ||
+            type == BlockType.sqlDropTable ||
+            type == BlockType.sqlGrant ||
+            type == BlockType.sqlRevoke =>
+      ScratchPalette.sqlSchema,
+    BlockVisualKind.statement => ScratchPalette.sqlTransaction,
+    BlockVisualKind.setOperator => ScratchPalette.sqlSet,
+    BlockVisualKind.join => ScratchPalette.sqlJoin,
+    BlockVisualKind.expression => ScratchPalette.sqlExpression,
+    BlockVisualKind.terminal => ScratchPalette.sqlTransaction,
+    BlockVisualKind.container => ScratchPalette.control,
+    BlockVisualKind.clause when type == BlockType.sqlFrom =>
+      ScratchPalette.sqlSource,
+    BlockVisualKind.clause
+        when type == BlockType.sqlWhere || type == BlockType.sqlOrderBy =>
+      ScratchPalette.sqlFilter,
+    BlockVisualKind.clause => ScratchPalette.sqlAggregate,
+    BlockVisualKind.trigger => ScratchPalette.events,
+    BlockVisualKind.pluginStatement ||
+    BlockVisualKind.pluginValue ||
+    BlockVisualKind.pluginContainer => ScratchPalette.myBlocks,
+  };
+}
 
 class WorkbenchPage extends ConsumerStatefulWidget {
   const WorkbenchPage({super.key});
@@ -47,6 +90,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   int _lastAutosaveRevision = -1;
   Timer? _autosaveDebounce;
   double _paletteWidth = 250;
+  bool _tutorialWasPresented = false;
+  ProviderSubscription<TutorialState>? _tutorialSubscription;
 
   @override
   void initState() {
@@ -56,12 +101,25 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       () => ref.read(pluginPaletteProvider.notifier).reload(),
     );
     _restoreAutosave();
+    _tutorialSubscription = ref.listenManual<TutorialState>(
+      tutorialControllerProvider,
+      (_, next) {
+        if (!next.loading && !next.completed && !_tutorialWasPresented) {
+          _tutorialWasPresented = true;
+          Future<void>.delayed(const Duration(milliseconds: 450), () {
+            if (mounted) _openTutorial(context);
+          });
+        }
+      },
+      fireImmediately: true,
+    );
   }
 
   @override
   void dispose() {
     _menuChannel.setMethodCallHandler(null);
     _autosaveDebounce?.cancel();
+    _tutorialSubscription?.close();
     _workspaceFocus.dispose();
     super.dispose();
   }
@@ -132,6 +190,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
               onModeChanged: (next) =>
                   ref.read(sqlModeProvider.notifier).state = next,
               onSettings: () => _openSettings(context),
+              onTutorial: () => _openTutorial(context),
             ),
             Expanded(
               child: Row(
@@ -174,7 +233,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                         child: Container(
                           width: 2,
                           height: double.infinity,
-                          color: const Color(0xFF1E293B),
+                          color: NodeQlWorkbenchColors.of(context).border,
                         ),
                       ),
                     ),
@@ -421,6 +480,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RadioListTile<NodeQlTheme>(
+                    value: NodeQlTheme.light,
+                    title: Text(catalog.text('settings.theme.light')),
+                  ),
+                  RadioListTile<NodeQlTheme>(
                     value: NodeQlTheme.dark,
                     title: Text(catalog.text('settings.theme.dark')),
                   ),
@@ -443,6 +506,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     child: Text(catalog.text('settings.languages')),
                   ),
                   const SizedBox(height: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _openTutorial(this.context);
+                    },
+                    icon: const Icon(Icons.school_outlined),
+                    label: Text(catalog.text('settings.tutorial')),
+                  ),
+                  const SizedBox(height: 8),
                   TextButton.icon(
                     onPressed: () => _openAbout(context),
                     icon: const Icon(Icons.info_outline),
@@ -453,6 +525,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Future<void> _openTutorial(BuildContext context) async {
+    if (!mounted) return;
+    final catalog = ref.read(translationControllerProvider).catalog;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => TutorialDialog(
+        catalog: catalog,
+        onComplete: () =>
+            ref.read(tutorialControllerProvider.notifier).complete(),
       ),
     );
   }
@@ -475,92 +561,151 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(catalog.text('plugins.title')),
-        content: SizedBox(
-          width: 620,
-          height: 430,
-          child: Consumer(
-            builder: (context, ref, _) {
-              final plugins = ref.watch(pluginPaletteProvider);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    plugins.pluginsDirectory ??
-                        catalog.text('plugins.loadingDirectory'),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: plugins.loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : ListView(
-                            children: [
-                              if (plugins.manifests.isEmpty)
-                                ListTile(
-                                  leading: const Icon(Icons.extension_off),
-                                  title: Text(catalog.text('plugins.none')),
-                                  subtitle: Text(
-                                    catalog.text('plugins.noneHint'),
-                                  ),
-                                ),
-                              for (final manifest in plugins.manifests)
-                                ListTile(
-                                  leading: const Icon(Icons.extension),
-                                  title: Text(manifest.name),
-                                  subtitle: Text(
-                                    '${manifest.id}  •  ${manifest.version}\n'
-                                    '${catalog.text('plugins.blocks', {'count': manifest.blocks.length})}',
-                                  ),
-                                  isThreeLine: true,
-                                  trailing: IconButton(
-                                    tooltip: catalog.text('plugins.uninstall'),
-                                    icon: const Icon(Icons.delete_outline),
-                                    onPressed: () async {
-                                      await ref
-                                          .read(pluginPaletteProvider.notifier)
-                                          .uninstall(manifest.id);
-                                    },
-                                  ),
-                                ),
-                              for (final issue in plugins.issues)
-                                ListTile(
-                                  leading: const Icon(
-                                    Icons.warning_amber,
-                                    color: Colors.orange,
-                                  ),
-                                  title: Text(issue.message),
-                                  subtitle: Text(issue.path),
-                                ),
-                            ],
+      builder: (dialogContext) => DefaultTabController(
+        length: 2,
+        child: AlertDialog(
+          title: Text(catalog.text('plugins.title')),
+          content: SizedBox(
+            width: 720,
+            height: 500,
+            child: Consumer(
+              builder: (context, ref, _) {
+                final plugins = ref.watch(pluginPaletteProvider);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TabBar(
+                      tabs: [
+                        Tab(text: catalog.text('plugins.installedTab')),
+                        Tab(text: catalog.text('plugins.repositoriesTab')),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _InstalledPluginsView(
+                            plugins: plugins,
+                            catalog: catalog,
+                            onUninstall: (id) => ref
+                                .read(pluginPaletteProvider.notifier)
+                                .uninstall(id),
                           ),
-                  ),
-                ],
-              );
-            },
+                          _PluginRepositoriesView(
+                            plugins: plugins,
+                            catalog: catalog,
+                            onAdd: () => _addPluginRepository(dialogContext),
+                            onRefresh: () => ref
+                                .read(pluginPaletteProvider.notifier)
+                                .refreshRepositories(),
+                            onRemove: (url) => ref
+                                .read(pluginPaletteProvider.notifier)
+                                .removeRepository(url),
+                            onInstall: (entry) =>
+                                _installRepositoryPlugin(dialogContext, entry),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () =>
+                  ref.read(pluginPaletteProvider.notifier).reload(),
+              icon: const Icon(Icons.refresh),
+              label: Text(catalog.text('plugins.reload')),
+            ),
+            FilledButton.icon(
+              onPressed: () => _installPluginManifest(dialogContext),
+              icon: const Icon(Icons.add),
+              label: Text(catalog.text('plugins.install')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(catalog.text('common.close')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addPluginRepository(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(catalog.text('plugins.repository.add')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: catalog.text('plugins.repository.url'),
+            hintText: 'https://example.org/nodeql/catalog.json',
           ),
         ),
         actions: [
-          TextButton.icon(
-            onPressed: () => ref.read(pluginPaletteProvider.notifier).reload(),
-            icon: const Icon(Icons.refresh),
-            label: Text(catalog.text('plugins.reload')),
-          ),
-          FilledButton.icon(
-            onPressed: () => _installPluginManifest(dialogContext),
-            icon: const Icon(Icons.add),
-            label: Text(catalog.text('plugins.install')),
-          ),
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(catalog.text('common.close')),
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(catalog.text('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: Text(catalog.text('plugins.repository.add')),
           ),
         ],
       ),
     );
+    if (url == null || url.isEmpty) return;
+    try {
+      await ref.read(pluginPaletteProvider.notifier).addRepository(url);
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Text(
+            catalog.text('plugins.repository.failed', {'error': error}),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _installRepositoryPlugin(
+    BuildContext context,
+    PluginRepositoryEntry entry,
+  ) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
+    try {
+      await ref
+          .read(pluginPaletteProvider.notifier)
+          .installRepositoryPlugin(entry);
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Text(
+            catalog.text('plugins.installed', {
+              'name': entry.name,
+              'version': entry.version,
+            }),
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Text(
+            catalog.text('plugins.installFailed', {'error': error}),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _openLanguageManager(BuildContext context) async {
@@ -890,6 +1035,7 @@ class _TopBar extends StatelessWidget {
     required this.mode,
     required this.onModeChanged,
     required this.onSettings,
+    required this.onTutorial,
   });
 
   final TranslationCatalog catalog;
@@ -901,14 +1047,16 @@ class _TopBar extends StatelessWidget {
   final SqlAbstractionMode mode;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onSettings;
+  final VoidCallback onTutorial;
 
   @override
   Widget build(BuildContext context) {
     final localeCode = Localizations.localeOf(context).languageCode;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      color: const Color(0xFF0B1220),
+      color: workbenchColors.topBar,
       child: Row(
         children: [
           Expanded(
@@ -918,17 +1066,17 @@ class _TopBar extends StatelessWidget {
                 children: [
                   Text(
                     catalog.text('app.name'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      color: workbenchColors.topBarForeground,
                     ),
                   ),
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: onPickDb,
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFE2E8F0),
+                      foregroundColor: workbenchColors.topBarForeground,
                     ),
                     child: Text(catalog.text('toolbar.mountDatabase')),
                   ),
@@ -960,14 +1108,16 @@ class _TopBar extends StatelessWidget {
                   const SizedBox(width: 8),
                   DropdownButton<String>(
                     value: localeCode,
-                    dropdownColor: const Color(0xFF0F172A),
+                    dropdownColor: workbenchColors.panelElevated,
                     items: languageChoices
                         .map(
                           (l) => DropdownMenuItem(
                             value: l.code,
                             child: Text(
                               l.nativeName,
-                              style: const TextStyle(color: Colors.white),
+                              style: TextStyle(
+                                color: workbenchColors.topBarForeground,
+                              ),
                             ),
                           ),
                         )
@@ -977,9 +1127,16 @@ class _TopBar extends StatelessWidget {
                     },
                   ),
                   IconButton(
+                    key: const ValueKey('open-tutorial'),
+                    onPressed: onTutorial,
+                    tooltip: catalog.text('toolbar.tutorial'),
+                    color: workbenchColors.topBarForeground,
+                    icon: const Icon(Icons.school_outlined),
+                  ),
+                  IconButton(
                     onPressed: onSettings,
                     tooltip: catalog.text('toolbar.settings'),
-                    color: const Color(0xFFE2E8F0),
+                    color: workbenchColors.topBarForeground,
                     icon: const Icon(Icons.settings),
                   ),
                 ],
@@ -1054,6 +1211,167 @@ class _LanguagePackTile extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _InstalledPluginsView extends StatelessWidget {
+  const _InstalledPluginsView({
+    required this.plugins,
+    required this.catalog,
+    required this.onUninstall,
+  });
+
+  final PluginPaletteState plugins;
+  final TranslationCatalog catalog;
+  final ValueChanged<String> onUninstall;
+
+  @override
+  Widget build(BuildContext context) {
+    if (plugins.loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return ListView(
+      children: [
+        Text(
+          plugins.pluginsDirectory ?? catalog.text('plugins.loadingDirectory'),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        if (plugins.manifests.isEmpty)
+          ListTile(
+            leading: const Icon(Icons.extension_off),
+            title: Text(catalog.text('plugins.none')),
+            subtitle: Text(catalog.text('plugins.noneHint')),
+          ),
+        for (final manifest in plugins.manifests)
+          ListTile(
+            leading: Icon(
+              manifest.schemaVersion >= 2
+                  ? Icons.hub_outlined
+                  : Icons.extension,
+            ),
+            title: Text(manifest.name),
+            subtitle: Text(
+              '${manifest.id}  •  ${manifest.version}  •  SDK v${manifest.schemaVersion}\n'
+              '${catalog.text('plugins.blocks', {'count': manifest.blocks.length})}'
+              '${manifest.dataSources.isEmpty ? '' : '  •  ${catalog.text('plugins.dataSources', {'count': manifest.dataSources.length})}'}'
+              '${manifest.networkHosts.isEmpty ? '' : '\n${catalog.text('plugins.networkHosts')}: ${manifest.networkHosts.join(', ')}'}',
+            ),
+            isThreeLine: true,
+            trailing: IconButton(
+              tooltip: catalog.text('plugins.uninstall'),
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => onUninstall(manifest.id),
+            ),
+          ),
+        for (final issue in plugins.issues)
+          ListTile(
+            leading: const Icon(Icons.warning_amber, color: Colors.orange),
+            title: Text(issue.message),
+            subtitle: Text(issue.path),
+          ),
+      ],
+    );
+  }
+}
+
+class _PluginRepositoriesView extends StatelessWidget {
+  const _PluginRepositoriesView({
+    required this.plugins,
+    required this.catalog,
+    required this.onAdd,
+    required this.onRefresh,
+    required this.onRemove,
+    required this.onInstall,
+  });
+
+  final PluginPaletteState plugins;
+  final TranslationCatalog catalog;
+  final VoidCallback onAdd;
+  final VoidCallback onRefresh;
+  final ValueChanged<Uri> onRemove;
+  final ValueChanged<PluginRepositoryEntry> onInstall;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                catalog.text('plugins.repository.hint'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            IconButton(
+              onPressed: onRefresh,
+              tooltip: catalog.text('plugins.repository.refresh'),
+              icon: const Icon(Icons.sync),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_link),
+              label: Text(catalog.text('plugins.repository.add')),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: plugins.repositories.isEmpty
+              ? Center(child: Text(catalog.text('plugins.repository.none')))
+              : ListView(
+                  children: [
+                    for (final source in plugins.repositories) ...[
+                      ListTile(
+                        leading: const Icon(Icons.cloud_outlined),
+                        title: Text(
+                          plugins.repositoryCatalogs[source.url]?.name ??
+                              source.url.host,
+                        ),
+                        subtitle: Text(source.url.toString()),
+                        trailing: IconButton(
+                          onPressed: () => onRemove(source.url),
+                          tooltip: catalog.text('plugins.repository.remove'),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ),
+                      if (plugins.repositoryErrors[source.url]
+                          case final error?)
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(
+                            Icons.warning_amber,
+                            color: Colors.orange,
+                          ),
+                          title: Text(error),
+                        ),
+                      for (final entry
+                          in plugins.repositoryCatalogs[source.url]?.entries ??
+                              const <PluginRepositoryEntry>[])
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.extension_outlined),
+                            title: Text(entry.name),
+                            subtitle: Text(
+                              '${entry.id}  •  ${entry.version}\n${entry.description}',
+                            ),
+                            isThreeLine: true,
+                            trailing: FilledButton(
+                              onPressed: () => onInstall(entry),
+                              child: Text(catalog.text('plugins.install')),
+                            ),
+                          ),
+                        ),
+                      const Divider(),
+                    ],
+                  ],
+                ),
+        ),
+      ],
     );
   }
 }
@@ -1164,6 +1482,7 @@ class _PaletteState extends State<_Palette> {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final tileWidth = (widget.width - 32).clamp(160.0, 500.0);
     final query = _query.trim().toLowerCase();
     final sourceBlocks = query.isEmpty
@@ -1187,25 +1506,25 @@ class _PaletteState extends State<_Palette> {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: TextField(
               onChanged: (value) => setState(() => _query = value),
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search,
-                  color: Color(0xFF94A3B8),
+                  color: workbenchColors.muted,
                   size: 20,
                 ),
                 hintText: widget.catalog.text('palette.search'),
-                hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                hintStyle: TextStyle(color: workbenchColors.muted),
                 filled: true,
-                fillColor: const Color(0xFF0F172A),
+                fillColor: workbenchColors.panelElevated,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF1E293B)),
+                  borderSide: BorderSide(color: workbenchColors.border),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF1E293B)),
+                  borderSide: BorderSide(color: workbenchColors.border),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1225,8 +1544,8 @@ class _PaletteState extends State<_Palette> {
                         : widget.catalog.text('palette.searchResults'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFFE2E8F0),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1235,10 +1554,7 @@ class _PaletteState extends State<_Palette> {
                 const SizedBox(width: 8),
                 Text(
                   '${blocks.length}',
-                  style: const TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: workbenchColors.muted, fontSize: 11),
                 ),
               ],
             ),
@@ -1288,6 +1604,8 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.dql => <_PaletteItem>[
         native(BlockType.eventGreenFlag),
         native(BlockType.sqlSelect),
+        native(BlockType.sqlColumn),
+        native(BlockType.sqlText),
         native(BlockType.sqlWhere),
         native(BlockType.sqlJoin),
         native(BlockType.sqlGroupBy),
@@ -1429,6 +1747,10 @@ class _PaletteState extends State<_Palette> {
         return de
             ? 'Definiert eine einzelne Spalte oder Ausdruck.'
             : 'Defines a single column or expression.';
+      case BlockType.sqlText:
+        return de
+            ? 'Erzeugt einen Textwert, der in runde Eingabefelder eingesetzt werden kann.'
+            : 'Creates a text value that can be inserted into rounded input slots.';
       case BlockType.sqlFrom:
         return de
             ? 'Legt fest, aus welcher Tabelle gelesen wird.'
@@ -1709,14 +2031,43 @@ class _PaletteState extends State<_Palette> {
 
   BlockNode _templateNode(BlockType type, Map<String, dynamic>? defaults) {
     final node = switch (type) {
-      BlockType.sqlSelect => OperatorBlock(
-        id: 'tpl_sel',
-        position: Offset.zero,
-        operatorType: type,
-      ),
+      BlockType.sqlSelect =>
+        OperatorBlock(id: 'tpl_sel', position: Offset.zero, operatorType: type)
+          ..inputs.addAll(<String, dynamic>{
+            'columns': '*',
+            'table': 'table_name',
+            'separate_from': false,
+          }),
       BlockType.eventGreenFlag => EventBlock(
         id: 'tpl_evt',
         position: Offset.zero,
+      ),
+      BlockType.sqlColumn => OperatorBlock(
+        id: 'tpl_column',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'column': '*'},
+      ),
+      BlockType.sqlText => OperatorBlock(
+        id: 'tpl_text',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'text': 'Text'},
+      ),
+      BlockType.sqlCount => OperatorBlock(
+        id: 'tpl_count',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'expr': '*'},
+      ),
+      BlockType.sqlSum ||
+      BlockType.sqlAvg ||
+      BlockType.sqlMin ||
+      BlockType.sqlMax => OperatorBlock(
+        id: 'tpl_aggregate',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'expr': 'amount'},
       ),
       BlockType.sqlWhere || BlockType.sqlOrderBy => MotionBlock(
         id: 'tpl_mot',
@@ -1739,30 +2090,7 @@ class _PaletteState extends State<_Palette> {
   }
 
   Color _colorForType(BlockType type) {
-    switch (type) {
-      case BlockType.sqlSelect:
-        return ScratchPalette.motion;
-      case BlockType.eventGreenFlag:
-        return ScratchPalette.events;
-      case BlockType.sqlWhere:
-      case BlockType.sqlOrderBy:
-        return ScratchPalette.motion;
-      case BlockType.sqlLoop:
-        return ScratchPalette.control;
-      case BlockType.sqlGroupBy:
-      case BlockType.sqlJoin:
-      case BlockType.sqlFrom:
-      case BlockType.sqlColumn:
-      case BlockType.sqlCreateTable:
-      case BlockType.sqlDropTable:
-        return ScratchPalette.operators;
-      case BlockType.sqlInsert:
-      case BlockType.sqlUpdate:
-      case BlockType.sqlDelete:
-        return ScratchPalette.variables;
-      default:
-        return ScratchPalette.operators;
-    }
+    return _sqlColorForType(type);
   }
 }
 
@@ -1789,11 +2117,12 @@ class _PaletteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final block = BlockShape(
       node: node,
       color: color,
       width: width,
-      height: WorkspaceController.blockBaseHeight,
+      height: baseHeightForBlock(node),
       label: label,
     );
 
@@ -1806,9 +2135,9 @@ class _PaletteCard extends StatelessWidget {
           width: width,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xFF0F172A),
+            color: workbenchColors.panel,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF1E293B)),
+            border: Border.all(color: workbenchColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1855,8 +2184,8 @@ class _PaletteCard extends StatelessWidget {
                 description,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFFCBD5E1),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 11,
                   height: 1.25,
                 ),
@@ -1932,7 +2261,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
           paletteWidth: paletteWidth,
           focusNode: focusNode,
           child: Container(
-            color: ScratchPalette.workspace,
+            color: NodeQlWorkbenchColors.of(context).workspace,
             child: ClipRect(
               child: RepaintBoundary(
                 child: Transform(
@@ -2003,15 +2332,8 @@ Future<void> _handleDeleteWithRootConfirmation(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      backgroundColor: const Color(0xFF111827),
-      title: Text(
-        catalog.text('workspace.deleteRoot.title'),
-        style: const TextStyle(color: Colors.white),
-      ),
-      content: Text(
-        catalog.text('workspace.deleteRoot.message'),
-        style: const TextStyle(color: Color(0xFFD1D5DB)),
-      ),
+      title: Text(catalog.text('workspace.deleteRoot.title')),
+      content: Text(catalog.text('workspace.deleteRoot.message')),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
@@ -2274,14 +2596,11 @@ class _PointerWorkspaceLayerState
     final action = await showMenu<String>(
       context: context,
       position: position,
-      color: const Color(0xFF0F172A),
+      color: NodeQlWorkbenchColors.of(context).panelElevated,
       items: [
         PopupMenuItem<String>(
           value: 'delete',
-          child: Text(
-            catalog.text('workspace.delete'),
-            style: const TextStyle(color: Colors.white),
-          ),
+          child: Text(catalog.text('workspace.delete')),
         ),
       ],
     );
@@ -2326,26 +2645,40 @@ class _NodeView extends ConsumerWidget {
         : Color(pluginBlock.colorValue);
 
     final height = engine.blockHeight(node);
+    final pluginShape = pluginBlock?.shape.name;
+    final visualKind = blockVisualKind(node, pluginShape: pluginShape);
     final template = _templateForNode(node, mode, localeCode, pluginBlock);
-    final measuredWidth = _computeBlockWidth(
-      template: template,
-      values: node.inputs,
-      localeCode: localeCode,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-      ),
-    );
+    final measuredWidth =
+        _computeBlockWidth(
+          node: node,
+          template: template,
+          values: node.inputs,
+          localeCode: localeCode,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ) +
+        (visualKind == BlockVisualKind.trigger ? 34 : 0);
     final blockWidth = measuredWidth.clamp(
       WorkspaceController.blockWidth,
       900.0,
     );
     engine.setRenderWidth(node, blockWidth);
+    final contentLeft = switch (visualKind) {
+      BlockVisualKind.trigger => 49.0,
+      BlockVisualKind.join => 26.0,
+      BlockVisualKind.pluginStatement ||
+      BlockVisualKind.pluginValue ||
+      BlockVisualKind.pluginContainer => 28.0,
+      _ => 14.0,
+    };
     final slotRects = _computeInlineSlots(
+      node: node,
       template: template,
       values: node.inputs,
-      maxWidth: blockWidth - 28,
+      maxWidth: blockWidth - contentLeft - 12,
       localeCode: localeCode,
       style: const TextStyle(
         color: Colors.white,
@@ -2354,6 +2687,7 @@ class _NodeView extends ConsumerWidget {
       ),
     );
     final maskedLabel = _labelMaskWithSlotSpacing(
+      node: node,
       template: template,
       values: node.inputs,
       localeCode: localeCode,
@@ -2380,63 +2714,130 @@ class _NodeView extends ConsumerWidget {
                   width: blockWidth,
                   height: height,
                   label: maskedLabel,
+                  pluginShape: pluginShape,
                   isHighlighted: highlighted,
                   isSelected: selected,
                   showInnerHighlight: innerHighlighted,
                 ),
               ),
               ...slotRects.map((slot) {
+                final acceptsReporter = slotAcceptsReporter(
+                  slot.rawKey,
+                  slot.inputKey,
+                );
                 return Positioned(
-                  left: 14 + slot.rect.left,
-                  top: 9,
-                  child: GestureDetector(
-                    onTap: () async {
-                      final rb = context.findRenderObject() as RenderBox;
-                      final anchor = rb.localToGlobal(
-                        Offset(
-                          14 + slot.rect.left + (slot.rect.width / 2),
-                          9 + 20,
-                        ),
-                      );
-                      await _editSlot(
-                        context: context,
-                        slotKey: slot.inputKey,
-                        rawToken: slot.rawKey,
-                        anchorGlobal: anchor,
-                        node: node,
-                        engine: engine,
-                        runtime: runtime,
-                        localeCode: localeCode,
+                  left: contentLeft + slot.rect.left,
+                  top: 9 + slot.rect.top,
+                  child: DragTarget<_PaletteDragData>(
+                    onWillAcceptWithDetails: (details) =>
+                        acceptsReporter && isReporterType(details.data.type),
+                    onAcceptWithDetails: (details) {
+                      final reporter = slot.reporter;
+                      final nestedKey = reporter == null
+                          ? null
+                          : primaryReporterInputKey(reporter.type);
+                      if (reporter != null && nestedKey != null) {
+                        engine.setNestedReporterInput(
+                          node,
+                          slot.inputKey,
+                          reporter,
+                          nestedKey,
+                          details.data.type,
+                          defaults: details.data.defaults,
+                        );
+                      } else {
+                        engine.setReporterInput(
+                          node,
+                          slot.inputKey,
+                          details.data.type,
+                          defaults: details.data.defaults,
+                        );
+                      }
+                    },
+                    builder: (context, candidates, _) {
+                      final highlighted = candidates.isNotEmpty;
+                      return GestureDetector(
+                        onTap: () async {
+                          if (slot.reporter != null) {
+                            await _editReporterSlot(
+                              context: context,
+                              node: node,
+                              slot: slot,
+                              engine: engine,
+                              runtime: runtime,
+                              localeCode: localeCode,
+                            );
+                            return;
+                          }
+                          final rb = context.findRenderObject() as RenderBox;
+                          final anchor = rb.localToGlobal(
+                            Offset(slot.rect.width / 2, slot.rect.height),
+                          );
+                          await _editSlot(
+                            context: context,
+                            slotKey: slot.inputKey,
+                            rawToken: slot.rawKey,
+                            anchorGlobal: anchor,
+                            node: node,
+                            engine: engine,
+                            runtime: runtime,
+                            localeCode: localeCode,
+                          );
+                        },
+                        onLongPress: slot.reporter == null
+                            ? null
+                            : () => engine.removeReporterInput(
+                                node,
+                                slot.inputKey,
+                              ),
+                        child: slot.reporter == null
+                            ? Container(
+                                width: slot.rect.width,
+                                height: slot.rect.height,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: highlighted
+                                      ? const Color(0xFF38BDF8)
+                                      : Colors.white.withValues(alpha: 0.22),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: highlighted
+                                        ? Colors.white
+                                        : Colors.white.withValues(alpha: 0.55),
+                                    width: highlighted ? 2 : 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  slot.display,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              )
+                            : AnimatedScale(
+                                scale: highlighted ? 1.05 : 1,
+                                duration: const Duration(milliseconds: 100),
+                                child: BlockShape(
+                                  node: slot.reporter!,
+                                  color: _colorForNodeType(slot.reporter!.type),
+                                  width: slot.rect.width,
+                                  height: slot.rect.height,
+                                  label: _reporterLabel(
+                                    slot.reporter!,
+                                    localeCode,
+                                  ),
+                                  isHighlighted: highlighted,
+                                ),
+                              ),
                       );
                     },
-                    child: Container(
-                      constraints: const BoxConstraints(
-                        minWidth: 40,
-                        maxWidth: 280,
-                        minHeight: 20,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.55),
-                        ),
-                      ),
-                      child: Text(
-                        slot.display,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
                   ),
                 );
               }),
@@ -2457,24 +2858,236 @@ class _NodeView extends ConsumerWidget {
     return sqlLabelFor(node.type, mode, node.inputs, localeCode);
   }
 
-  Color _colorForNodeType(BlockType type) {
-    return switch (type) {
-      BlockType.eventGreenFlag => ScratchPalette.events,
-      BlockType.sqlSelect ||
-      BlockType.sqlWhere ||
-      BlockType.sqlOrderBy ||
-      BlockType.sqlColumn => ScratchPalette.motion,
-      BlockType.sqlLoop ||
-      BlockType.controlRepeat ||
-      BlockType.controlForever => ScratchPalette.control,
-      BlockType.sqlInsert ||
-      BlockType.sqlUpdate ||
-      BlockType.sqlDelete => ScratchPalette.variables,
-      _ => ScratchPalette.operators,
+  String _reporterLabel(BlockNode reporter, String localeCode) {
+    if (reporter.type == BlockType.sqlColumn) {
+      return '${reporter.inputs['column'] ?? '*'}';
+    }
+    if (reporter.type == BlockType.sqlText) {
+      return '"${reporter.inputs['text'] ?? ''}"';
+    }
+    final nested = reporterForInput(reporter, 'expr');
+    final value = nested == null
+        ? '${reporter.inputs['expr'] ?? reporter.inputs['column'] ?? '*'}'
+        : _reporterLabel(nested, localeCode);
+    return switch (reporter.type) {
+      BlockType.sqlCount => 'COUNT($value)',
+      BlockType.sqlSum => 'SUM($value)',
+      BlockType.sqlAvg => 'AVG($value)',
+      BlockType.sqlMin => 'MIN($value)',
+      BlockType.sqlMax => 'MAX($value)',
+      BlockType.sqlLength => 'LENGTH($value)',
+      BlockType.sqlUpper => 'UPPER($value)',
+      BlockType.sqlLower => 'LOWER($value)',
+      BlockType.sqlTrim => 'TRIM($value)',
+      _ => sqlLabelFor(
+        reporter.type,
+        SqlAbstractionMode.advanced,
+        reporter.inputs,
+        localeCode,
+      ),
     };
   }
 
+  Future<void> _editReporterSlot({
+    required BuildContext context,
+    required BlockNode node,
+    required _InlineSlotRect slot,
+    required WorkspaceController engine,
+    required SqlRuntimeState runtime,
+    required String localeCode,
+  }) async {
+    final reporter = slot.reporter;
+    if (reporter == null) return;
+    final catalog = translationCatalogOf(context);
+    final nestedKey = primaryReporterInputKey(reporter.type);
+    final nestedReporter = nestedKey == null
+        ? null
+        : reporterForInput(reporter, nestedKey);
+
+    if (reporter.type == BlockType.sqlColumn ||
+        nestedReporter?.type == BlockType.sqlColumn) {
+      final columnReporter = nestedReporter ?? reporter;
+      final allowMultiple = nestedReporter == null;
+      final selectedTable =
+          '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}';
+      final selectedSchema = runtime.schemas.where(
+        (schema) => schema.name == selectedTable,
+      );
+      final columns = selectedSchema.isEmpty
+          ? runtime.schemas
+                .expand((schema) => schema.columns)
+                .toSet()
+                .toList(growable: false)
+          : selectedSchema.first.columns;
+      final selectedColumns = '${columnReporter.inputs['column'] ?? '*'}'
+          .split(',')
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty && value != '*')
+          .toSet();
+      final result = await showDialog<_ColumnReporterEditResult>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(
+              catalog.text('editor.chooseColumn', {'table': selectedTable}),
+            ),
+            content: SizedBox(
+              width: 360,
+              height: 320,
+              child: columns.isEmpty
+                  ? Center(child: Text(catalog.text('editor.noSchemaOptions')))
+                  : ListView(
+                      children: [
+                        for (final column in columns)
+                          CheckboxListTile(
+                            value: selectedColumns.contains(column),
+                            secondary: const Icon(Icons.view_column_outlined),
+                            title: Text(column),
+                            onChanged: (selected) {
+                              setDialogState(() {
+                                if (!allowMultiple) selectedColumns.clear();
+                                if (selected == true) {
+                                  selectedColumns.add(column);
+                                } else {
+                                  selectedColumns.remove(column);
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(const _ColumnReporterEditResult(removeReporter: true)),
+                icon: const Icon(Icons.remove_circle_outline),
+                label: Text(catalog.text('editor.removeReporter')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(catalog.text('common.cancel')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _ColumnReporterEditResult(
+                    value: selectedColumns.isEmpty
+                        ? '*'
+                        : selectedColumns.join(', '),
+                  ),
+                ),
+                child: Text(catalog.text('common.ok')),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (result?.removeReporter == true) {
+        if (nestedReporter != null && nestedKey != null) {
+          engine.removeNestedReporterInput(
+            node,
+            slot.inputKey,
+            reporter,
+            nestedKey,
+          );
+        } else {
+          engine.removeReporterInput(node, slot.inputKey);
+        }
+        return;
+      }
+      final picked = result?.value;
+      if (picked != null) {
+        if (nestedReporter != null && nestedKey != null) {
+          engine.updateNestedReporterInput(
+            node,
+            slot.inputKey,
+            reporter,
+            nestedKey,
+            nestedReporter,
+            'column',
+            picked,
+          );
+        } else {
+          engine.updateReporterInput(
+            node,
+            slot.inputKey,
+            columnReporter,
+            'column',
+            picked,
+          );
+        }
+      }
+      return;
+    }
+
+    if (reporter.type == BlockType.sqlText ||
+        nestedReporter?.type == BlockType.sqlText) {
+      final textReporter = nestedReporter ?? reporter;
+      final controller = TextEditingController(
+        text: '${textReporter.inputs['text'] ?? ''}',
+      );
+      final text = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(catalog.text('editor.textValue')),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 3,
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).pop('__REMOVE_REPORTER__'),
+              icon: const Icon(Icons.remove_circle_outline),
+              label: Text(catalog.text('editor.removeReporter')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(catalog.text('common.cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: Text(catalog.text('common.ok')),
+            ),
+          ],
+        ),
+      );
+      if (text == '__REMOVE_REPORTER__') {
+        engine.removeReporterInput(node, slot.inputKey);
+        return;
+      }
+      if (text != null) {
+        if (nestedReporter != null && nestedKey != null) {
+          engine.updateNestedReporterInput(
+            node,
+            slot.inputKey,
+            reporter,
+            nestedKey,
+            nestedReporter,
+            'text',
+            text,
+          );
+        } else {
+          engine.updateReporterInput(
+            node,
+            slot.inputKey,
+            textReporter,
+            'text',
+            text,
+          );
+        }
+      }
+    }
+  }
+
+  Color _colorForNodeType(BlockType type) {
+    return _sqlColorForType(type);
+  }
+
   String _labelMaskWithSlotSpacing({
+    required BlockNode node,
     required String template,
     required Map<String, dynamic> values,
     required String localeCode,
@@ -2487,12 +3100,23 @@ class _NodeView extends ConsumerWidget {
     final safeSpaceWidth = spaceWidth <= 0 ? 4.0 : spaceWidth;
 
     for (final m in pattern.allMatches(template)) {
-      buffer.write(template.substring(cursor, m.start));
+      final before = template.substring(cursor, m.start);
+      buffer.write(before);
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
       final inputKey = _slotInputKey(rawKey);
+      final leadingGap = _slotLeadingGap(before, inputKey);
+      if (leadingGap > 0) {
+        buffer.write(' ' * (leadingGap / safeSpaceWidth).ceil());
+      }
       final display = _slotDisplay(values[inputKey], rawKey, localeCode);
-      final slotWidth = _slotWidthForDisplay(display, style);
+      final reporter = reporterForInput(node, inputKey);
+      final slotWidth = _slotWidthForContent(
+        display,
+        reporter,
+        style,
+        localeCode,
+      );
       final gapWidth = _slotGap();
       var dynamicReduction = 0.0;
       var extraBeforeNextText = 0.0;
@@ -2523,6 +3147,7 @@ class _NodeView extends ConsumerWidget {
   }
 
   List<_InlineSlotRect> _computeInlineSlots({
+    required BlockNode node,
     required String template,
     required Map<String, dynamic> values,
     required double maxWidth,
@@ -2532,24 +3157,45 @@ class _NodeView extends ConsumerWidget {
     final pattern = RegExp(r'(\[[^\]]+\]|\{[^}]+\})');
     final slots = <_InlineSlotRect>[];
     var x = 0.0;
+    var y = 0.0;
     var cursor = 0;
 
     for (final m in pattern.allMatches(template)) {
       final before = template.substring(cursor, m.start);
-      x += _measureText(before, style);
+      final lines = before.split('\n');
+      if (lines.length > 1) {
+        y += (lines.length - 1) * 28;
+        x = _measureText(lines.last, style);
+      } else {
+        x += _measureText(before, style);
+      }
 
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
       final inputKey = _slotInputKey(rawKey);
+      x += _slotLeadingGap(before, inputKey);
       final display = _slotDisplay(values[inputKey], rawKey, localeCode);
-      final slotWidth = _slotWidthForDisplay(display, style);
+      final reporter = reporterForInput(node, inputKey);
+      final slotWidth = _slotWidthForContent(
+        display,
+        reporter,
+        style,
+        localeCode,
+      );
+      final slotHeight = reporter == null ? 20.0 : 34.0;
       if (x < maxWidth) {
         slots.add(
           _InlineSlotRect(
             rawKey: rawKey,
             inputKey: inputKey,
             display: display,
-            rect: Rect.fromLTWH(x, 0, slotWidth, 20),
+            reporter: reporter,
+            rect: Rect.fromLTWH(
+              x,
+              y - (reporter == null ? 0 : 7),
+              slotWidth,
+              slotHeight,
+            ),
           ),
         );
       }
@@ -2561,26 +3207,59 @@ class _NodeView extends ConsumerWidget {
   }
 
   double _computeBlockWidth({
+    required BlockNode node,
     required String template,
     required Map<String, dynamic> values,
     required String localeCode,
     required TextStyle style,
   }) {
     final pattern = RegExp(r'(\[[^\]]+\]|\{[^}]+\})');
-    var width = 14.0;
+    var lineWidth = 0.0;
+    var maxLineWidth = 0.0;
     var cursor = 0;
     for (final m in pattern.allMatches(template)) {
-      width += _measureText(template.substring(cursor, m.start), style);
+      final before = template.substring(cursor, m.start);
+      final lines = before.split('\n');
+      if (lines.length > 1) {
+        lineWidth += _measureText(lines.first, style);
+        if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+        for (final middle in lines.skip(1).take(lines.length - 2)) {
+          final middleWidth = _measureText(middle, style);
+          if (middleWidth > maxLineWidth) maxLineWidth = middleWidth;
+        }
+        lineWidth = _measureText(lines.last, style);
+      } else {
+        lineWidth += _measureText(before, style);
+      }
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
       final inputKey = _slotInputKey(rawKey);
       final display = _slotDisplay(values[inputKey], rawKey, localeCode);
-      width += _slotWidthForDisplay(display, style) + _slotGap();
+      lineWidth +=
+          _slotLeadingGap(before, inputKey) +
+          _slotWidthForContent(
+            display,
+            reporterForInput(node, inputKey),
+            style,
+            localeCode,
+          ) +
+          _slotGap();
       cursor = m.end;
     }
-    width += _measureText(template.substring(cursor), style);
-    width += 14.0;
-    return width;
+    final trailing = template.substring(cursor);
+    final trailingLines = trailing.split('\n');
+    if (trailingLines.length > 1) {
+      lineWidth += _measureText(trailingLines.first, style);
+      if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+      for (final line in trailingLines.skip(1)) {
+        final trailingWidth = _measureText(line, style);
+        if (trailingWidth > maxLineWidth) maxLineWidth = trailingWidth;
+      }
+    } else {
+      lineWidth += _measureText(trailing, style);
+      if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+    }
+    return maxLineWidth + (template.contains('\n') ? 52 : 28);
   }
 
   double _slotWidthForDisplay(String display, TextStyle style) {
@@ -2588,6 +3267,17 @@ class _NodeView extends ConsumerWidget {
       40.0,
       280.0,
     );
+  }
+
+  double _slotWidthForContent(
+    String display,
+    BlockNode? reporter,
+    TextStyle style,
+    String localeCode,
+  ) {
+    if (reporter == null) return _slotWidthForDisplay(display, style);
+    final label = _reporterLabel(reporter, localeCode);
+    return (_measureText(label, style) + 32).clamp(72.0, 260.0);
   }
 
   double _measureText(String text, TextStyle style) {
@@ -2616,7 +3306,7 @@ class _NodeView extends ConsumerWidget {
       return _localizedOrderLabel(_normalizeOrderValue(text), localeCode);
     }
     if (_slotInputKey(rawKey) == 'join_type') {
-      return _localizedJoinLabel(_normalizeJoinValue(text), localeCode);
+      return _normalizeJoinValue(text);
     }
     if (_slotInputKey(rawKey) == 'columns') {
       return _compactColumnSelectionDisplay(text);
@@ -2652,6 +3342,13 @@ class _NodeView extends ConsumerWidget {
   }
 
   double _slotGap() => 10.0;
+
+  double _slotLeadingGap(String precedingText, String inputKey) {
+    if (inputKey == 'table' && precedingText.trim().isNotEmpty) {
+      return 12.0;
+    }
+    return 0.0;
+  }
 
   String? _inputKey(BlockNode node) {
     if (node.type == BlockType.sqlWhere) return 'predicate';
@@ -2915,6 +3612,11 @@ class _NodeView extends ConsumerWidget {
     }
 
     final maxHeight = MediaQuery.of(context).size.height * 0.4;
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
+    final anchor = overlayBox.globalToLocal(anchorGlobal);
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final foreground = Theme.of(context).colorScheme.onSurface;
     entry = OverlayEntry(
       builder: (ctx) => Stack(
         children: [
@@ -2925,17 +3627,18 @@ class _NodeView extends ConsumerWidget {
             ),
           ),
           Positioned(
-            left: _clampOverlayLeft(context, anchorGlobal.dx, 220),
-            top: _clampOverlayTop(context, anchorGlobal.dy + 8, maxHeight),
+            left: _clampOverlayLeft(context, anchor.dx - 110, 220),
+            top: _clampOverlayTop(context, anchor.dy + 8, maxHeight),
             child: Material(
               color: Colors.transparent,
               child: Container(
+                key: const ValueKey('inline-option-overlay'),
                 width: 220,
                 constraints: BoxConstraints(maxHeight: maxHeight),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111827),
+                  color: workbenchColors.panelElevated,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF334155)),
+                  border: Border.all(color: workbenchColors.border),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -2948,8 +3651,8 @@ class _NodeView extends ConsumerWidget {
                                 alignment: Alignment.centerLeft,
                                 child: Text(
                                   catalog.text('editor.noSchemaOptions'),
-                                  style: const TextStyle(
-                                    color: Color(0xFF9CA3AF),
+                                  style: TextStyle(
+                                    color: workbenchColors.muted,
                                   ),
                                 ),
                               ),
@@ -2971,13 +3674,15 @@ class _NodeView extends ConsumerWidget {
                                           MainAxisAlignment.spaceBetween,
                                       children: [
                                         // Column name (or any non‑remove option)
-                                        Text(
-                                          _localizedOptionLabel(
-                                            options[i],
-                                            localeCode,
-                                          ),
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                        Expanded(
+                                          child: Text(
+                                            _localizedOptionLabel(
+                                              options[i],
+                                              localeCode,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(color: foreground),
                                           ),
                                         ),
                                         // If this is a removal entry, show a small remove‑icon.
@@ -2996,7 +3701,7 @@ class _NodeView extends ConsumerWidget {
                               ),
                             ),
                     ),
-                    const Divider(height: 1, color: Color(0xFF334155)),
+                    Divider(height: 1, color: workbenchColors.border),
                     Padding(
                       padding: const EdgeInsets.all(8),
                       child: Row(
@@ -3004,12 +3709,12 @@ class _NodeView extends ConsumerWidget {
                           Expanded(
                             child: TextField(
                               controller: textController,
-                              style: const TextStyle(color: Colors.white),
+                              style: TextStyle(color: foreground),
                               decoration: InputDecoration(
                                 isDense: true,
                                 hintText: catalog.text('editor.customValue'),
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFF9CA3AF),
+                                hintStyle: TextStyle(
+                                  color: workbenchColors.muted,
                                 ),
                                 border: const OutlineInputBorder(),
                               ),
@@ -3018,7 +3723,7 @@ class _NodeView extends ConsumerWidget {
                           const SizedBox(width: 6),
                           IconButton(
                             onPressed: () => close(textController.text.trim()),
-                            icon: const Icon(Icons.check, color: Colors.white),
+                            icon: Icon(Icons.check, color: foreground),
                           ),
                         ],
                       ),
@@ -3032,7 +3737,7 @@ class _NodeView extends ConsumerWidget {
       ),
     );
 
-    Overlay.of(context, rootOverlay: true).insert(entry);
+    overlay.insert(entry);
     return completer.future;
   }
 
@@ -3299,13 +4004,22 @@ class _InlineSlotRect {
     required this.rawKey,
     required this.inputKey,
     required this.display,
+    required this.reporter,
     required this.rect,
   });
 
   final String rawKey;
   final String inputKey;
   final String display;
+  final BlockNode? reporter;
   final Rect rect;
+}
+
+class _ColumnReporterEditResult {
+  const _ColumnReporterEditResult({this.value, this.removeReporter = false});
+
+  final String? value;
+  final bool removeReporter;
 }
 
 class _SqlRuntimePane extends StatefulWidget {
@@ -3362,70 +4076,116 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
   }
 
   Widget _buildSplitOutput() {
-    return Column(
-      key: const ValueKey('split'),
-      children: [
-        Expanded(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF1E293B)),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectionArea(
-                      child: Text(
-                        widget.sql.isEmpty
-                            ? widget.catalog.text('runtime.sqlOutput')
-                            : widget.sql,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          color: Color(0xFFBDE0FE),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final workbenchColors = NodeQlWorkbenchColors.of(context);
+        final sql = widget.sql.isEmpty
+            ? widget.catalog.text('runtime.sqlOutput')
+            : widget.sql;
+        final lineCount = '\n'.allMatches(sql).length + 1;
+        final desiredSqlHeight = 48.0 + 28.0 + (lineCount * 19.0);
+        final maxSqlHeight = (constraints.maxHeight * 0.58).clamp(130.0, 420.0);
+        final sqlHeight = desiredSqlHeight.clamp(112.0, maxSqlHeight);
+        return Column(
+          key: const ValueKey('split'),
+          children: [
+            SizedBox(
+              height: sqlHeight,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: workbenchColors.panel,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: workbenchColors.border),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    Container(
+                      height: 48,
+                      padding: const EdgeInsets.only(left: 14, right: 4),
+                      decoration: BoxDecoration(
+                        color: workbenchColors.panelElevated,
+                        border: Border(
+                          bottom: BorderSide(color: workbenchColors.border),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.terminal_rounded,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              widget.catalog.text('runtime.sqlCommandOutput'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            key: const ValueKey('copy-sql-command'),
+                            onPressed: widget.sql.trim().isEmpty
+                                ? null
+                                : _copySqlToClipboard,
+                            color: Theme.of(context).colorScheme.onSurface,
+                            tooltip: widget.catalog.text('runtime.copySql'),
+                            icon: const Icon(Icons.copy_rounded, size: 19),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(12),
+                        child: Align(
+                          alignment: AlignmentDirectional.topStart,
+                          child: SelectionArea(
+                            child: Text(
+                              sql,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: workbenchColors.sqlText,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: IconButton(
-                  onPressed: _copySqlToClipboard,
-                  color: const Color(0xFFE2E8F0),
-                  tooltip: widget.catalog.text('runtime.copySql'),
-                  icon: const Icon(Icons.copy),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: Stack(children: [Positioned.fill(child: _buildOutputBody())]),
-        ),
-      ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: _buildOutputBody()),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildOutputBody() {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
     if (widget.runtime.lastRows.isEmpty) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
+          color: workbenchColors.panel,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: workbenchColors.border),
         ),
         child: Text(
           widget.runtime.lastMessage ??
               widget.catalog.text('runtime.noResults'),
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: colorScheme.onSurface),
         ),
       );
     }
@@ -3455,15 +4215,15 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
             child: SingleChildScrollView(
               controller: _outputVertical,
               child: DataTable(
-                headingTextStyle: const TextStyle(
-                  color: Color(0xFFE2E8F0),
+                headingTextStyle: TextStyle(
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.w700,
                 ),
-                dataTextStyle: const TextStyle(color: Color(0xFFF8FAFC)),
+                dataTextStyle: TextStyle(color: colorScheme.onSurface),
                 headingRowColor: WidgetStateProperty.all(
-                  const Color(0xFF111827),
+                  workbenchColors.panelElevated,
                 ),
-                dataRowColor: WidgetStateProperty.all(const Color(0xFF0B1220)),
+                dataRowColor: WidgetStateProperty.all(workbenchColors.panel),
                 columns: widget.runtime.lastRows.first.keys
                     .map((k) => DataColumn(label: Text(k)))
                     .toList(),

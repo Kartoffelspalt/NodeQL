@@ -11,7 +11,8 @@ class MainFlutterWindow: NSWindow {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
-    self.setFrame(windowFrame, display: true)
+    let maximizedFrame = self.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? windowFrame
+    self.setFrame(maximizedFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     let channel = FlutterMethodChannel(

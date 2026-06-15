@@ -4,6 +4,8 @@ import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_reporters.dart';
+import 'package:nodeql/engine/block/block_syntax.dart';
 
 enum SnapZone { topOuter, bottomOuter, innerTop, innerBottom }
 
@@ -84,19 +86,53 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         WorkspaceState(
           roots: <BlockNode>[
             EventBlock(id: 'event_1', position: const Offset(120, 120))
-              ..next = ControlBlock(
-                id: 'forever_1',
-                position: const Offset(120, 170),
-                controlType: BlockType.controlForever,
-                children: <BlockNode>[
-                  MotionBlock(
-                    id: 'move_1',
-                    position: const Offset(135, 210),
-                    motionType: BlockType.motionMove,
-                    inputs: <String, dynamic>{'steps': 10},
-                  ),
-                ],
-              ),
+              ..next =
+                  (OperatorBlock(
+                      id: 'select_1',
+                      position: const Offset(120, 178),
+                      operatorType: BlockType.sqlSelect,
+                      inputs: <String, dynamic>{
+                        'columns': 'customers.id, customers.name',
+                        'table': 'customers',
+                        'separate_from': true,
+                      },
+                    )
+                    ..next =
+                        (OperatorBlock(
+                            id: 'from_1',
+                            position: const Offset(120, 234),
+                            operatorType: BlockType.sqlFrom,
+                            inputs: <String, dynamic>{'table': 'customers'},
+                          )
+                          ..next =
+                              (OperatorBlock(
+                                  id: 'join_1',
+                                  position: const Offset(120, 284),
+                                  operatorType: BlockType.sqlLeftJoin,
+                                  inputs: <String, dynamic>{
+                                    'table': 'orders',
+                                    'on': 'orders.customer_id = customers.id',
+                                  },
+                                )
+                                ..next =
+                                    (MotionBlock(
+                                        id: 'where_1',
+                                        position: const Offset(120, 360),
+                                        motionType: BlockType.sqlWhere,
+                                        inputs: <String, dynamic>{
+                                          'predicate': 'customers.active = 1',
+                                        },
+                                      )
+                                      ..next = MotionBlock(
+                                        id: 'order_1',
+                                        position: const Offset(120, 410),
+                                        motionType: BlockType.sqlOrderBy,
+                                        inputs: <String, dynamic>{
+                                          'expr': 'customers.name ASC',
+                                          'column': 'customers.name',
+                                          'order': 'ASC',
+                                        },
+                                      ))))),
           ],
           scale: 1,
           pan: Offset.zero,
@@ -182,6 +218,93 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     if (key == 'table' && value is String && value.trim().isNotEmpty) {
       _propagateTableSelection(node, value.trim());
     }
+    _relayoutAll();
+    _touch();
+  }
+
+  void setReporterInput(
+    BlockNode node,
+    String key,
+    BlockType reporterType, {
+    Map<String, dynamic>? defaults,
+  }) {
+    if (!isReporterType(reporterType)) return;
+    _pushUndoSnapshot();
+    final reporter = _createNode(reporterType, Offset.zero);
+    if (defaults != null) reporter.inputs.addAll(defaults);
+    reporter.inputs.remove('__width');
+    setReporterForInput(node, key, reporter);
+    _relayoutAll();
+    _touch();
+  }
+
+  void updateReporterInput(
+    BlockNode node,
+    String key,
+    BlockNode reporter,
+    String reporterKey,
+    dynamic value,
+  ) {
+    _pushUndoSnapshot();
+    reporter.inputs[reporterKey] = value;
+    setReporterForInput(node, key, reporter);
+    _relayoutAll();
+    _touch();
+  }
+
+  void setNestedReporterInput(
+    BlockNode node,
+    String key,
+    BlockNode reporter,
+    String nestedKey,
+    BlockType nestedType, {
+    Map<String, dynamic>? defaults,
+  }) {
+    if (!isReporterType(nestedType)) return;
+    _pushUndoSnapshot();
+    final nested = _createNode(nestedType, Offset.zero);
+    if (defaults != null) nested.inputs.addAll(defaults);
+    nested.inputs.remove('__width');
+    setReporterForInput(reporter, nestedKey, nested);
+    setReporterForInput(node, key, reporter);
+    _relayoutAll();
+    _touch();
+  }
+
+  void updateNestedReporterInput(
+    BlockNode node,
+    String key,
+    BlockNode reporter,
+    String nestedKey,
+    BlockNode nested,
+    String nestedInputKey,
+    dynamic value,
+  ) {
+    _pushUndoSnapshot();
+    nested.inputs[nestedInputKey] = value;
+    setReporterForInput(reporter, nestedKey, nested);
+    setReporterForInput(node, key, reporter);
+    _relayoutAll();
+    _touch();
+  }
+
+  void removeNestedReporterInput(
+    BlockNode node,
+    String key,
+    BlockNode reporter,
+    String nestedKey,
+  ) {
+    _pushUndoSnapshot();
+    setReporterForInput(reporter, nestedKey, null);
+    setReporterForInput(node, key, reporter);
+    _relayoutAll();
+    _touch();
+  }
+
+  void removeReporterInput(BlockNode node, String key) {
+    if (reporterForInput(node, key) == null) return;
+    _pushUndoSnapshot();
+    setReporterForInput(node, key, null);
     _relayoutAll();
     _touch();
   }
@@ -385,7 +508,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       final innerHeight = max(cInnerMin, _childrenChainHeight(node));
       return cUpperBar + innerHeight + cLowerBar;
     }
-    return blockBaseHeight;
+    return baseHeightForBlock(node);
   }
 
   double nodeWidth(BlockNode node) {
@@ -498,6 +621,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           ..inputs.addAll(<String, dynamic>{
             'columns': '*',
             'table': 'table_name',
+            'separate_from': false,
           });
       case BlockType.sqlColumn:
         return OperatorBlock(
@@ -505,6 +629,27 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           position: worldPos,
           operatorType: type,
         )..inputs['column'] = '*';
+      case BlockType.sqlText:
+        return OperatorBlock(
+          id: 'text_$suffix',
+          position: worldPos,
+          operatorType: type,
+        )..inputs['text'] = 'Text';
+      case BlockType.sqlCount:
+        return OperatorBlock(
+          id: 'count_$suffix',
+          position: worldPos,
+          operatorType: type,
+        )..inputs['expr'] = '*';
+      case BlockType.sqlSum:
+      case BlockType.sqlAvg:
+      case BlockType.sqlMin:
+      case BlockType.sqlMax:
+        return OperatorBlock(
+          id: 'aggregate_$suffix',
+          position: worldPos,
+          operatorType: type,
+        )..inputs['expr'] = 'amount';
       case BlockType.sqlFrom:
         return OperatorBlock(
           id: 'from_$suffix',
@@ -534,14 +679,20 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           ..inputs.addAll(<String, dynamic>{
             'table': 'table_name',
             'on': '1 = 1',
+            'join_type': 'INNER',
           });
       case BlockType.sqlGroupBy:
-      case BlockType.sqlHaving:
         return OperatorBlock(
           id: 'group_$suffix',
           position: worldPos,
           operatorType: type,
         )..inputs['expr'] = 'id';
+      case BlockType.sqlHaving:
+        return OperatorBlock(
+          id: 'having_$suffix',
+          position: worldPos,
+          operatorType: type,
+        )..inputs['predicate'] = 'COUNT(*) > 0';
       case BlockType.sqlOrderBy:
         return MotionBlock(
           id: 'order_$suffix',
@@ -586,11 +737,6 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       case BlockType.sqlSubqueryIn:
       case BlockType.sqlSubqueryAny:
       case BlockType.sqlSubqueryAll:
-      case BlockType.sqlCount:
-      case BlockType.sqlSum:
-      case BlockType.sqlAvg:
-      case BlockType.sqlMin:
-      case BlockType.sqlMax:
       case BlockType.sqlConcat:
       case BlockType.sqlSubstring:
       case BlockType.sqlLength:
@@ -723,37 +869,96 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         zone == SnapZone.bottomOuter) {
       return false;
     }
+    if (zone == SnapZone.topOuter) {
+      if (!hasBottomConnector(target) || !hasTopConnector(dragged)) {
+        return false;
+      }
+      if (!_canConnectSequentially(target, dragged)) return false;
+      final successor = target.next;
+      return successor == null ||
+          _canConnectSequentially(_chainTail(dragged), successor);
+    }
+    if (zone == SnapZone.bottomOuter) {
+      if (!hasBottomConnector(dragged) || !hasTopConnector(target)) {
+        return false;
+      }
+      if (!_canConnectSequentially(_chainTail(dragged), target)) return false;
+      final predecessor = _sequentialPredecessor(target);
+      if (predecessor == null) {
+        return !isSqlChainType(target.type);
+      }
+      return _canConnectSequentially(predecessor, dragged);
+    }
+    return target is ControlBlock;
+  }
+
+  bool _canConnectSequentially(BlockNode previous, BlockNode next) {
+    if (previous.inputs.containsKey(r'$nodeqlPluginBlock') ||
+        next.inputs.containsKey(r'$nodeqlPluginBlock')) {
+      return true;
+    }
+    if (previous.type == BlockType.eventGreenFlag) {
+      return isStatementType(next.type) ||
+          blockVisualKindForType(next.type) == BlockVisualKind.terminal;
+    }
+    if (isSqlChainType(previous.type) || isSqlChainType(next.type)) {
+      return canFollowInSqlChain(previous.type, next.type);
+    }
     return true;
+  }
+
+  BlockNode? _sequentialPredecessor(BlockNode target) {
+    for (final root in state.roots) {
+      final predecessor = _predecessorInNode(root, target);
+      if (predecessor != null) return predecessor;
+    }
+    return null;
+  }
+
+  BlockNode? _predecessorInNode(BlockNode current, BlockNode target) {
+    if (current.next?.id == target.id) return current;
+    for (final child in current.children) {
+      if (child.id == target.id) return current;
+      final nested = _predecessorInNode(child, target);
+      if (nested != null) return nested;
+    }
+    return current.next == null
+        ? null
+        : _predecessorInNode(current.next!, target);
   }
 
   List<_SlotTarget> _buildSlotTargets({required Set<String> excludedIds}) {
     final slots = <_SlotTarget>[];
     for (final target in allBlocks()) {
       if (excludedIds.contains(target.id)) continue;
-      slots.add(
-        _SlotTarget(
-          target: target,
-          zone: SnapZone.topOuter,
-          anchor: _bottomTabPoint(target),
-          rect: Rect.fromCenter(
-            center: _bottomTabPoint(target),
-            width: 56,
-            height: 28,
+      if (hasBottomConnector(target)) {
+        slots.add(
+          _SlotTarget(
+            target: target,
+            zone: SnapZone.topOuter,
+            anchor: _bottomTabPoint(target),
+            rect: Rect.fromCenter(
+              center: _bottomTabPoint(target),
+              width: 56,
+              height: 28,
+            ),
           ),
-        ),
-      );
-      slots.add(
-        _SlotTarget(
-          target: target,
-          zone: SnapZone.bottomOuter,
-          anchor: _topNotchPoint(target),
-          rect: Rect.fromCenter(
-            center: _topNotchPoint(target),
-            width: 56,
-            height: 28,
+        );
+      }
+      if (hasTopConnector(target)) {
+        slots.add(
+          _SlotTarget(
+            target: target,
+            zone: SnapZone.bottomOuter,
+            anchor: _topNotchPoint(target),
+            rect: Rect.fromCenter(
+              center: _topNotchPoint(target),
+              width: 56,
+              height: 28,
+            ),
           ),
-        ),
-      );
+        );
+      }
 
       if (target is! ControlBlock) continue;
       final innerTopAnchor = _innerMouthEntryPoint(target);
@@ -1029,7 +1234,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       if (successor != null) successor.position = target.position;
       current.next = successor;
       if (successor != null) {
-        _shiftSequentialChain(successor, -blockBaseHeight);
+        _shiftSequentialChain(successor, -blockHeight(target));
       }
       return true;
     }
@@ -1041,7 +1246,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         if (successor != null) {
           successor.position = head.position;
           current.children[i] = successor;
-          _shiftSequentialChain(successor, -blockBaseHeight);
+          _shiftSequentialChain(successor, -blockHeight(target));
         } else {
           current.children.removeAt(i);
         }
@@ -1192,17 +1397,12 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       var y = root.position.dy + cUpperBar;
       for (final head in root.children) {
         BlockNode? current = head;
-        var index = 0;
         while (current != null) {
-          current.position = Offset(
-            root.position.dx + childIndent,
-            y + (index * blockBaseHeight),
-          );
+          current.position = Offset(root.position.dx + childIndent, y);
           _layoutNodeSubTree(current);
+          y += blockHeight(current);
           current = current.next;
-          index++;
         }
-        y += _verticalChainHeight(head);
       }
     }
 

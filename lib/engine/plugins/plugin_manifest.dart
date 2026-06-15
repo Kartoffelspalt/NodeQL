@@ -2,10 +2,103 @@ import 'package:nodeql/engine/block/block_node.dart';
 
 const pluginBlockKeyInput = r'$nodeqlPluginBlock';
 const pluginVersionInput = r'$nodeqlPluginVersion';
+const pluginShapeInput = r'$nodeqlPluginShape';
 
 enum PluginBlockShape { statement, value, container }
 
 enum PluginInputType { sql, identifier, number, string }
+
+enum PluginDataSourceTransport { httpJson }
+
+class PluginDataSourceDefinition {
+  const PluginDataSourceDefinition({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.transport,
+    required this.baseUrl,
+    required this.schemaPath,
+    required this.queryPath,
+    required this.secretNames,
+  });
+
+  final String id;
+  final Map<String, String> name;
+  final Map<String, String> description;
+  final PluginDataSourceTransport transport;
+  final Uri baseUrl;
+  final String schemaPath;
+  final String queryPath;
+  final List<String> secretNames;
+
+  String nameFor(String languageCode) => _localized(name, languageCode, id);
+  String descriptionFor(String languageCode) =>
+      _localized(description, languageCode, nameFor(languageCode));
+
+  factory PluginDataSourceDefinition.fromJson(
+    Map<String, dynamic> json, {
+    required Set<String> allowedHosts,
+    required Set<String> declaredSecrets,
+  }) {
+    _rejectUnknownFields(json, const <String>{
+      'id',
+      'name',
+      'description',
+      'transport',
+      'baseUrl',
+      'schemaPath',
+      'queryPath',
+      'secrets',
+    }, context: 'plugin data source');
+    final id = _requiredId(json, 'id');
+    final transportName = json['transport'] as String? ?? 'http-json';
+    if (transportName != 'http-json') {
+      throw FormatException(
+        'Data source "$id" has unsupported transport "$transportName".',
+      );
+    }
+    final baseUrl = Uri.parse(_requiredString(json, 'baseUrl'));
+    if (!_isAllowedPluginUri(baseUrl)) {
+      throw FormatException(
+        'Data source "$id" must use HTTPS or a localhost HTTP URL.',
+      );
+    }
+    if (!allowedHosts.contains(baseUrl.host.toLowerCase())) {
+      throw FormatException(
+        'Data source "$id" host "${baseUrl.host}" is not declared in '
+        'permissions.networkHosts.',
+      );
+    }
+    final secrets = (json['secrets'] as List<dynamic>? ?? const <dynamic>[])
+        .map((value) => _validateSecretName('$value'))
+        .toList(growable: false);
+    final unknownSecrets = secrets.toSet().difference(declaredSecrets);
+    if (unknownSecrets.isNotEmpty) {
+      throw FormatException(
+        'Data source "$id" references undeclared secret(s): '
+        '${unknownSecrets.join(', ')}.',
+      );
+    }
+    return PluginDataSourceDefinition(
+      id: id,
+      name: _localizedMap(json['name'], field: 'name'),
+      description: json['description'] == null
+          ? const <String, String>{}
+          : _localizedMap(json['description'], field: 'description'),
+      transport: PluginDataSourceTransport.httpJson,
+      baseUrl: baseUrl,
+      schemaPath: _validateEndpointPath(
+        json['schemaPath'] as String? ?? '/schema',
+        'schemaPath',
+      ),
+      queryPath: _validateEndpointPath(
+        json['queryPath'] as String? ?? '/query',
+        'queryPath',
+      ),
+      secretNames: secrets,
+    );
+  }
+}
 
 class PluginInputDefinition {
   const PluginInputDefinition({
@@ -111,6 +204,7 @@ class NodeQlPluginBlock {
     for (final input in inputs) input.name: input.defaultValue,
     pluginBlockKeyInput: qualifiedId,
     pluginVersionInput: pluginVersion,
+    pluginShapeInput: shape.name,
   };
 
   String labelFor(String languageCode) =>
@@ -200,7 +294,8 @@ class NodeQlPluginBlock {
       }
       if (input.name == 'children' ||
           input.name == pluginBlockKeyInput ||
-          input.name == pluginVersionInput) {
+          input.name == pluginVersionInput ||
+          input.name == pluginShapeInput) {
         throw FormatException(
           'Block "$id" uses reserved input name "${input.name}".',
         );
@@ -307,6 +402,9 @@ class NodeQlPluginManifest {
     required this.license,
     required this.capabilities,
     required this.blocks,
+    this.networkHosts = const <String>{},
+    this.secretNames = const <String>{},
+    this.dataSources = const <PluginDataSourceDefinition>[],
   });
 
   final int schemaVersion;
@@ -320,6 +418,9 @@ class NodeQlPluginManifest {
   final String? license;
   final Set<String> capabilities;
   final List<NodeQlPluginBlock> blocks;
+  final Set<String> networkHosts;
+  final Set<String> secretNames;
+  final List<PluginDataSourceDefinition> dataSources;
 
   factory NodeQlPluginManifest.fromJson(Map<String, dynamic> json) {
     _rejectUnknownFields(json, const <String>{
@@ -335,11 +436,13 @@ class NodeQlPluginManifest {
       'license',
       'capabilities',
       'blocks',
+      'permissions',
+      'dataSources',
     }, context: 'plugin manifest');
     final schemaVersion = json['schemaVersion'];
-    if (schemaVersion != 1) {
+    if (schemaVersion != 1 && schemaVersion != 2) {
       throw FormatException(
-        'Unsupported schemaVersion "$schemaVersion"; expected 1.',
+        'Unsupported schemaVersion "$schemaVersion"; expected 1 or 2.',
       );
     }
     final id = _requiredPluginId(json, 'id');
@@ -354,7 +457,10 @@ class NodeQlPluginManifest {
                 const <dynamic>['sql.compile'])
             .map((value) => '$value')
             .toSet();
-    final unsupported = capabilities.difference(const <String>{'sql.compile'});
+    final unsupported = capabilities.difference(const <String>{
+      'sql.compile',
+      'data-source.http',
+    });
     if (unsupported.isNotEmpty) {
       throw FormatException(
         'Unsupported capabilities: ${unsupported.join(', ')}.',
@@ -366,9 +472,54 @@ class NodeQlPluginManifest {
         : _localizedMap(json['description'], field: 'description');
     final homepage = _optionalUri(json, 'homepage');
     final license = _optionalString(json, 'license');
-    final rawBlocks = json['blocks'] as List<dynamic>?;
-    if (rawBlocks == null || rawBlocks.isEmpty) {
-      throw const FormatException('A plugin must define at least one block.');
+    if (schemaVersion == 1 && capabilities.contains('data-source.http')) {
+      throw const FormatException('data-source.http requires schemaVersion 2.');
+    }
+    final permissions = json['permissions'] == null
+        ? const <String, dynamic>{}
+        : Map<String, dynamic>.from(json['permissions'] as Map);
+    _rejectUnknownFields(permissions, const <String>{
+      'networkHosts',
+      'secrets',
+    }, context: 'plugin permissions');
+    final networkHosts =
+        (permissions['networkHosts'] as List<dynamic>? ?? const <dynamic>[])
+            .map((value) => _validateHost('$value'))
+            .toSet();
+    final secretNames =
+        (permissions['secrets'] as List<dynamic>? ?? const <dynamic>[])
+            .map((value) => _validateSecretName('$value'))
+            .toSet();
+    final rawDataSources =
+        json['dataSources'] as List<dynamic>? ?? const <dynamic>[];
+    if (rawDataSources.isNotEmpty &&
+        !capabilities.contains('data-source.http')) {
+      throw const FormatException(
+        'dataSources require the data-source.http capability.',
+      );
+    }
+    final dataSources = rawDataSources
+        .map(
+          (value) => PluginDataSourceDefinition.fromJson(
+            Map<String, dynamic>.from(value as Map),
+            allowedHosts: networkHosts,
+            declaredSecrets: secretNames,
+          ),
+        )
+        .toList(growable: false);
+    final dataSourceIds = <String>{};
+    for (final dataSource in dataSources) {
+      if (!dataSourceIds.add(dataSource.id)) {
+        throw FormatException(
+          'Plugin "$id" defines data source "${dataSource.id}" more than once.',
+        );
+      }
+    }
+    final rawBlocks = json['blocks'] as List<dynamic>? ?? const <dynamic>[];
+    if (rawBlocks.isEmpty && dataSources.isEmpty) {
+      throw const FormatException(
+        'A plugin must define at least one block or data source.',
+      );
     }
     final blocks = rawBlocks
         .map(
@@ -400,11 +551,49 @@ class NodeQlPluginManifest {
       license: license,
       capabilities: capabilities,
       blocks: blocks,
+      networkHosts: networkHosts,
+      secretNames: secretNames,
+      dataSources: dataSources,
     );
   }
 
   String descriptionFor(String languageCode) =>
       _localized(description, languageCode, name);
+}
+
+String _validateHost(String value) {
+  final host = value.trim().toLowerCase();
+  if (host.isEmpty ||
+      !RegExp(r'^[a-z0-9.-]+$').hasMatch(host) ||
+      host.startsWith('.') ||
+      host.endsWith('.')) {
+    throw FormatException('Invalid network host "$value".');
+  }
+  return host;
+}
+
+String _validateSecretName(String value) {
+  final name = value.trim();
+  if (!RegExp(r'^[A-Z][A-Z0-9_]{1,63}$').hasMatch(name)) {
+    throw FormatException(
+      'Secret name "$value" must use uppercase letters, digits, and "_".',
+    );
+  }
+  return name;
+}
+
+String _validateEndpointPath(String value, String field) {
+  final path = value.trim();
+  if (!path.startsWith('/') || path.contains('://')) {
+    throw FormatException('$field must be an absolute URL path.');
+  }
+  return path;
+}
+
+bool _isAllowedPluginUri(Uri uri) {
+  if (uri.scheme == 'https' && uri.host.isNotEmpty) return true;
+  return uri.scheme == 'http' &&
+      const <String>{'localhost', '127.0.0.1', '::1'}.contains(uri.host);
 }
 
 String _localized(

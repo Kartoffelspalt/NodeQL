@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_loader.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
@@ -57,6 +58,77 @@ void main() {
       "users.name ILIKE 'O''Reilly'",
     );
     expect(block.uiTemplateFor('de'), '[column] enthaelt [pattern]');
+    expect(block.workspaceDefaults[pluginShapeInput], 'statement');
+  });
+
+  test('maps plugin shapes to distinct visual roles', () {
+    final statement = NodeQlPluginManifest.fromJson(manifestJson).blocks.single;
+    final valueJson = _copyManifest();
+    (valueJson['blocks'] as List<dynamic>).single['shape'] = 'value';
+    final value = NodeQlPluginManifest.fromJson(valueJson).blocks.single;
+    final containerJson = _copyManifest();
+    final containerBlock =
+        (containerJson['blocks'] as List<dynamic>).single
+            as Map<String, dynamic>;
+    containerBlock['shape'] = 'container';
+    containerBlock['inputs'] = <Map<String, dynamic>>[];
+    containerBlock['label'] = <String, String>{
+      'en': 'transaction',
+      'de': 'Transaktion',
+    };
+    containerBlock['sql'] = 'BEGIN; {{children}}; COMMIT';
+    final container = NodeQlPluginManifest.fromJson(
+      containerJson,
+    ).blocks.single;
+
+    final statementNode = OperatorBlock(
+      id: 'statement',
+      position: Offset.zero,
+      operatorType: statement.hostBlockType,
+      inputs: statement.workspaceDefaults,
+    );
+    final valueNode = OperatorBlock(
+      id: 'value',
+      position: Offset.zero,
+      operatorType: value.hostBlockType,
+      inputs: value.workspaceDefaults,
+    );
+    final containerNode = ControlBlock(
+      id: 'container',
+      position: Offset.zero,
+      controlType: container.hostBlockType,
+      inputs: container.workspaceDefaults,
+    );
+
+    expect(blockVisualKind(statementNode), BlockVisualKind.pluginStatement);
+    expect(blockVisualKind(valueNode), BlockVisualKind.pluginValue);
+    expect(blockVisualKind(containerNode), BlockVisualKind.pluginContainer);
+    expect(hasTopConnector(valueNode), isFalse);
+    expect(hasBottomConnector(valueNode), isFalse);
+    expect(hasTopConnector(statementNode), isTrue);
+    expect(hasBottomConnector(statementNode), isTrue);
+  });
+
+  test('recognizes legacy plugin nodes without stored shape metadata', () {
+    final legacyStatement = OperatorBlock(
+      id: 'legacy-statement',
+      position: Offset.zero,
+      operatorType: BlockType.sqlHaving,
+      inputs: const <String, dynamic>{
+        pluginBlockKeyInput: 'dev.nodeql.tests/legacy',
+      },
+    );
+    final legacyValue = OperatorBlock(
+      id: 'legacy-value',
+      position: Offset.zero,
+      operatorType: BlockType.sqlColumn,
+      inputs: const <String, dynamic>{
+        pluginBlockKeyInput: 'dev.nodeql.tests/value',
+      },
+    );
+
+    expect(blockVisualKind(legacyStatement), BlockVisualKind.pluginStatement);
+    expect(blockVisualKind(legacyValue), BlockVisualKind.pluginValue);
   });
 
   test('rejects invalid defaults and unknown placeholders', () {
@@ -79,6 +151,49 @@ void main() {
     final unknownField = _copyManifest()..['executable'] = 'plugin.sh';
     expect(
       () => NodeQlPluginManifest.fromJson(unknownField),
+      throwsFormatException,
+    );
+  });
+
+  test('parses SDK v2 external data-source declarations', () {
+    final source = File(
+      'docs/plugins/examples/external-data-source.plugin.json',
+    ).readAsStringSync();
+    final manifest = NodeQlPluginManifest.fromJson(
+      Map<String, dynamic>.from(jsonDecode(source) as Map),
+    );
+
+    expect(manifest.schemaVersion, 2);
+    expect(manifest.capabilities, contains('data-source.http'));
+    expect(manifest.blocks, isEmpty);
+    expect(manifest.dataSources.single.id, 'external');
+    expect(manifest.dataSources.single.baseUrl.host, 'localhost');
+    expect(manifest.secretNames, contains('EXTERNAL_API_TOKEN'));
+  });
+
+  test('rejects undeclared SDK v2 hosts and secrets', () {
+    final source =
+        jsonDecode(
+              File(
+                'docs/plugins/examples/external-data-source.plugin.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final undeclaredHost = Map<String, dynamic>.from(source);
+    undeclaredHost['permissions'] = <String, dynamic>{
+      'networkHosts': <String>['example.org'],
+      'secrets': <String>['EXTERNAL_API_TOKEN'],
+    };
+    expect(
+      () => NodeQlPluginManifest.fromJson(undeclaredHost),
+      throwsFormatException,
+    );
+
+    final undeclaredSecret = _deepCopy(source);
+    (undeclaredSecret['permissions'] as Map<String, dynamic>)['secrets'] =
+        <String>[];
+    expect(
+      () => NodeQlPluginManifest.fromJson(undeclaredSecret),
       throwsFormatException,
     );
   });
@@ -255,3 +370,6 @@ Map<String, dynamic> _copyManifest() {
 String _encodeManifest(Map<String, dynamic> value) => jsonEncode(value);
 
 Object? _decodeManifest(String value) => jsonDecode(value);
+
+Map<String, dynamic> _deepCopy(Map<String, dynamic> value) =>
+    Map<String, dynamic>.from(jsonDecode(jsonEncode(value)) as Map);

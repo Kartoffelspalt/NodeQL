@@ -10,6 +10,7 @@ enum BlockType {
   variableSet,
   sqlSelect,
   sqlColumn,
+  sqlText,
   sqlFrom,
   sqlWhere,
   sqlJoin,
@@ -150,6 +151,7 @@ abstract class BlockNode {
         );
       case BlockType.operatorAdd:
       case BlockType.sqlColumn:
+      case BlockType.sqlText:
       case BlockType.sqlFrom:
       case BlockType.sqlJoin:
       case BlockType.sqlInnerJoin:

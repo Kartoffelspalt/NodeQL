@@ -1,4 +1,5 @@
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 
 class SqlCompiler {
@@ -112,19 +113,44 @@ class SqlCompiler {
           pluginBlocks: pluginBlocks,
           warnings: warnings,
         ).trim();
-        final cols = colsFromChildren.isNotEmpty
-            ? colsFromChildren
-            : colsFromInput;
+        final reporterColumns = _compileReporterInput(
+          node,
+          'columns',
+          '',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+        );
+        final cols = reporterColumns.isNotEmpty
+            ? reporterColumns
+            : (colsFromChildren.isNotEmpty ? colsFromChildren : colsFromInput);
+        if (node.next?.type == BlockType.sqlFrom) {
+          return 'SELECT $cols';
+        }
         final from = node.inputs['table'] as String? ?? 'table_name';
         return 'SELECT $cols FROM $from';
       case BlockType.sqlColumn:
         return node.inputs['column'] as String? ?? '*';
+      case BlockType.sqlText:
+        final text = '${node.inputs['text'] ?? ''}'.replaceAll("'", "''");
+        return "'$text'";
       case BlockType.sqlFrom:
         return 'FROM ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlWhere:
         return 'WHERE ${node.inputs['predicate'] as String? ?? '1 = 1'}';
       case BlockType.sqlJoin:
-        return 'JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${node.inputs['on'] as String? ?? '1 = 1'}';
+        final joinType = _normalizedJoinType(node.inputs['join_type']);
+        final table = node.inputs['table'] as String? ?? 'table_name';
+        final condition = node.inputs['on'] as String? ?? '1 = 1';
+        return switch (joinType) {
+          'CROSS' => 'CROSS JOIN $table',
+          'NATURAL' => 'NATURAL JOIN $table',
+          'SELF' => 'JOIN $table AS t2 ON $condition',
+          'INNER' ||
+          'LEFT' ||
+          'RIGHT' ||
+          'FULL' => '$joinType JOIN $table ON $condition',
+          _ => 'JOIN $table ON $condition',
+        };
       case BlockType.sqlInnerJoin:
         return 'INNER JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${node.inputs['on'] as String? ?? '1 = 1'}';
       case BlockType.sqlLeftJoin:
@@ -136,7 +162,7 @@ class SqlCompiler {
       case BlockType.sqlCrossJoin:
         return 'CROSS JOIN ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlSelfJoin:
-        return 'FROM ${node.inputs['table'] as String? ?? 't'} t1, ${node.inputs['table'] as String? ?? 't'} t2 WHERE ${node.inputs['on'] as String? ?? 't1.id = t2.id'}';
+        return 'JOIN ${node.inputs['table'] as String? ?? 'table_name'} AS t2 ON ${node.inputs['on'] as String? ?? 't1.id = t2.id'}';
       case BlockType.sqlNaturalJoin:
         return 'NATURAL JOIN ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlGroupBy:
@@ -158,27 +184,27 @@ class SqlCompiler {
       case BlockType.sqlSubqueryAll:
         return '${node.inputs['lhs'] as String? ?? 'id'} = ALL (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
       case BlockType.sqlCount:
-        return 'COUNT(${node.inputs['expr'] as String? ?? '*'})';
+        return 'COUNT(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? '*'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlSum:
-        return 'SUM(${node.inputs['expr'] as String? ?? 'amount'})';
+        return 'SUM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlAvg:
-        return 'AVG(${node.inputs['expr'] as String? ?? 'amount'})';
+        return 'AVG(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlMin:
-        return 'MIN(${node.inputs['expr'] as String? ?? 'amount'})';
+        return 'MIN(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlMax:
-        return 'MAX(${node.inputs['expr'] as String? ?? 'amount'})';
+        return 'MAX(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlConcat:
-        return 'CONCAT(${node.inputs['a'] as String? ?? "''"}, ${node.inputs['b'] as String? ?? "''"})';
+        return 'CONCAT(${_compileReporterInput(node, 'a', '${node.inputs['a'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)}, ${_compileReporterInput(node, 'b', '${node.inputs['b'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlSubstring:
-        return 'SUBSTRING(${node.inputs['expr'] as String? ?? "''"}, ${node.inputs['start'] as String? ?? '1'}, ${node.inputs['len'] as String? ?? '1'})';
+        return 'SUBSTRING(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)}, ${node.inputs['start'] as String? ?? '1'}, ${node.inputs['len'] as String? ?? '1'})';
       case BlockType.sqlLength:
-        return 'LENGTH(${node.inputs['expr'] as String? ?? "''"})';
+        return 'LENGTH(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlUpper:
-        return 'UPPER(${node.inputs['expr'] as String? ?? "''"})';
+        return 'UPPER(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlLower:
-        return 'LOWER(${node.inputs['expr'] as String? ?? "''"})';
+        return 'LOWER(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlTrim:
-        return 'TRIM(${node.inputs['expr'] as String? ?? "''"})';
+        return 'TRIM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
       case BlockType.sqlLeft:
         return 'LEFT(${node.inputs['expr'] as String? ?? "''"}, ${node.inputs['n'] as String? ?? '1'})';
       case BlockType.sqlRight:
@@ -247,6 +273,20 @@ class SqlCompiler {
     }
   }
 
+  String _normalizedJoinType(dynamic value) {
+    final normalized = '${value ?? ''}'.trim().toUpperCase();
+    const supported = <String>{
+      'INNER',
+      'LEFT',
+      'RIGHT',
+      'FULL',
+      'CROSS',
+      'NATURAL',
+      'SELF',
+    };
+    return supported.contains(normalized) ? normalized : '';
+  }
+
   String _compileChildren(
     List<BlockNode> children, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
@@ -259,6 +299,22 @@ class SqlCompiler {
       );
     }
     return parts.where((p) => p.trim().isNotEmpty).join(', ');
+  }
+
+  String _compileReporterInput(
+    BlockNode node,
+    String key,
+    String fallback, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+  }) {
+    final reporter = reporterForInput(node, key);
+    if (reporter == null) return fallback;
+    return _compileSingle(
+      reporter,
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+    ).trim();
   }
 }
 

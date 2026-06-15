@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nodeql.dev/schemas/plugin-v2.json",
+  "title": "NodeQL Plugin SDK v2 manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "version", "capabilities"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": 2},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(?:\\.[a-z0-9-]+)+$"},
+    "name": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "minNodeQlVersion": {"type": "string"},
+    "author": {"type": "string"},
+    "description": {"$ref": "#/$defs/localized"},
+    "homepage": {"type": "string", "format": "uri"},
+    "license": {"type": "string"},
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["sql.compile", "data-source.http"]}
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "networkHosts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z0-9.-]+$"}
+        },
+        "secrets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"}
+        }
+      }
+    },
+    "dataSources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/dataSource"}
+    },
+    "blocks": {"type": "array", "items": {"type": "object"}}
+  },
+  "$defs": {
+    "localized": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      ]
+    },
+    "dataSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "transport", "baseUrl"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"},
+        "name": {"$ref": "#/$defs/localized"},
+        "description": {"$ref": "#/$defs/localized"},
+        "transport": {"const": "http-json"},
+        "baseUrl": {"type": "string", "format": "uri"},
+        "schemaPath": {"type": "string", "pattern": "^/"},
+        "queryPath": {"type": "string", "pattern": "^/"},
+        "secrets": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    }
+  }
+}

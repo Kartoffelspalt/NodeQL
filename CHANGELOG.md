@@ -6,8 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Added a localized, interactive seven-step onboarding tutorial with visual
+  block examples, knowledge checks, persisted first-run completion and a
+  permanent help entry in the workbench.
+- Refined the `EXECUTE QUERY` trigger with a cleaner start-cap silhouette,
+  integrated play marker and improved label spacing.
+- Simplified the `EXECUTE QUERY` trigger to a straight top edge while keeping
+  its circular play marker.
+- Added Scratch-style nested reporter inputs: rounded aggregate functions,
+  column selectors and text values can now be dropped directly into compatible
+  input slots and compile recursively.
+- Added Plugin SDK v2 contracts for permission-declared HTTP data sources,
+  persistent custom plugin repositories, SHA-256-verified installs, and
+  repository management in the Plugin Dashboard.
+- Reworked the SQL command panel with a dedicated header, non-overlapping copy
+  action, and content-responsive height.
+- Restored complete `SELECT ... FROM ...` defaults while retaining support for
+  separately docked FROM clauses.
+
 ### Added
 
+- Added SQL-aware block shapes for statement heads, clauses, joins, set
+  operators, expressions, containers, and terminal statements.
+- Added dedicated plugin statement, value, and container silhouettes while
+  preserving compatibility with existing plugin manifests and projects.
+- Added two-row JOIN layouts with a dedicated condition row and distinct
+  visuals for CROSS, NATURAL, and SELF joins.
+- Added syntax-aware docking for valid SELECT, FROM, JOIN, WHERE, GROUP BY,
+  HAVING, ORDER BY, and set-operator sequences.
+- Added a representative SQL query as the initial workspace instead of the
+  legacy motion-block example.
 - Added local-first runtime translation packages with validation, SHA-256
   verification, offline caching, persisted language selection, and English
   fallback.
@@ -46,6 +74,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Split newly created SELECT and FROM blocks while preserving compilation of
+  existing projects that store the source table directly on SELECT.
+- Updated workspace layout calculations for variable block heights.
 - Replaced the previous translation service integration with a GitHub-only
   contribution and distribution workflow.
 - Standardized release artifacts and platform metadata on the NodeQL name.

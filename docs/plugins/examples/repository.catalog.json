@@ -1,0 +1,15 @@
+{
+  "$schema": "https://nodeql.dev/schemas/plugin-repository-v1.json",
+  "schemaVersion": 1,
+  "name": "NodeQL SDK v2 Examples",
+  "plugins": [
+    {
+      "id": "org.example.external-data",
+      "name": "Example External Data Source",
+      "version": "2.0.0",
+      "description": "Reference JSON-over-HTTP data-source adapter.",
+      "manifestUrl": "external-data-source.plugin.json",
+      "sha256": "40f4c14e14e4691c1f1a547e2fe8a709231c4c14a3ad732583e72185c6518bcb"
+    }
+  ]
+}

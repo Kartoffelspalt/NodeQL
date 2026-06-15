@@ -8,22 +8,28 @@ String sqlLabelFor(
   String languageCode,
 ) {
   final simpleLang = _simpleByLanguage(languageCode);
+  final genericJoinUsesCondition =
+      '${inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase() != 'CROSS' &&
+      '${inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase() != 'NATURAL';
   final adv = <BlockType, String>{
     BlockType.eventGreenFlag: 'EXECUTE QUERY',
     BlockType.sqlSelect: 'SELECT [columns] FROM [table_name]',
     BlockType.sqlColumn: '[column]',
+    BlockType.sqlText: 'TEXT {text}',
     BlockType.sqlFrom: 'FROM [table_name]',
     BlockType.sqlWhere: 'WHERE [condition]',
     BlockType.sqlOrderBy: 'ORDER BY [column] {ASC|DESC}',
-    BlockType.sqlGroupBy: 'GROUP BY [column] HAVING [condition]',
+    BlockType.sqlGroupBy: 'GROUP BY [expr]',
     BlockType.sqlHaving: 'HAVING [condition]',
-    BlockType.sqlJoin: '[JOIN_TYPE] JOIN [table] ON [join_condition]',
-    BlockType.sqlInnerJoin: 'INNER JOIN [table] ON [join_condition]',
-    BlockType.sqlLeftJoin: 'LEFT JOIN [table] ON [join_condition]',
-    BlockType.sqlRightJoin: 'RIGHT JOIN [table] ON [join_condition]',
-    BlockType.sqlFullJoin: 'FULL JOIN [table] ON [join_condition]',
+    BlockType.sqlJoin: genericJoinUsesCondition
+        ? '[JOIN_TYPE] JOIN [table]\nON [join_condition]'
+        : '[JOIN_TYPE] JOIN [table]',
+    BlockType.sqlInnerJoin: 'INNER JOIN [table]\nON [join_condition]',
+    BlockType.sqlLeftJoin: 'LEFT JOIN [table]\nON [join_condition]',
+    BlockType.sqlRightJoin: 'RIGHT JOIN [table]\nON [join_condition]',
+    BlockType.sqlFullJoin: 'FULL JOIN [table]\nON [join_condition]',
     BlockType.sqlCrossJoin: 'CROSS JOIN [table]',
-    BlockType.sqlSelfJoin: 'SELF JOIN [table] ON [join_condition]',
+    BlockType.sqlSelfJoin: 'SELF JOIN [table]\nON [join_condition]',
     BlockType.sqlNaturalJoin: 'NATURAL JOIN [table]',
     BlockType.sqlInsert: 'INSERT INTO [table] ([columns]) VALUES ([values])',
     BlockType.sqlUpdate:
@@ -47,11 +53,11 @@ String sqlLabelFor(
     BlockType.sqlSubqueryIn: '[column] IN ([sql])',
     BlockType.sqlSubqueryAny: '[column] = ANY ([sql])',
     BlockType.sqlSubqueryAll: '[column] = ALL ([sql])',
-    BlockType.sqlCount: 'COUNT([column])',
-    BlockType.sqlSum: 'SUM([column])',
-    BlockType.sqlAvg: 'AVG([column])',
-    BlockType.sqlMin: 'MIN([column])',
-    BlockType.sqlMax: 'MAX([column])',
+    BlockType.sqlCount: 'COUNT([expr])',
+    BlockType.sqlSum: 'SUM([expr])',
+    BlockType.sqlAvg: 'AVG([expr])',
+    BlockType.sqlMin: 'MIN([expr])',
+    BlockType.sqlMax: 'MAX([expr])',
     BlockType.sqlConcat: 'CONCAT({value}, {default})',
     BlockType.sqlSubstring: 'SUBSTRING({value})',
     BlockType.sqlLength: 'LENGTH({value})',
@@ -82,23 +88,26 @@ String sqlLabelFor(
     BlockType.eventGreenFlag: 'QUERY AUSFUEHREN',
     BlockType.sqlSelect: 'zeige [columns] aus Tabelle [table_name]',
     BlockType.sqlColumn: '[column]',
+    BlockType.sqlText: 'Text {text}',
     BlockType.sqlFrom: 'aus Tabelle [table_name]',
     BlockType.sqlWhere: 'wenn [condition]',
     BlockType.sqlOrderBy: 'sortiert nach [column] {aufsteigend|absteigend}',
-    BlockType.sqlGroupBy: 'gruppiere nach [column] falls [condition]',
+    BlockType.sqlGroupBy: 'gruppiere nach [expr]',
     BlockType.sqlHaving: 'behalte Gruppen wenn [condition]',
-    BlockType.sqlJoin:
-        'verbinde mittels [JOIN_TYPE] mit Tabelle [table] wenn [join_condition]',
+    BlockType.sqlJoin: genericJoinUsesCondition
+        ? 'verbinde mittels [JOIN_TYPE] mit Tabelle [table]\nwenn [join_condition]'
+        : 'verbinde mittels [JOIN_TYPE] mit Tabelle [table]',
     BlockType.sqlInnerJoin:
-        'verbinde INNER mit Tabelle [table] wenn [join_condition]',
+        'verbinde INNER mit Tabelle [table]\nwenn [join_condition]',
     BlockType.sqlLeftJoin:
-        'verbinde LEFT mit Tabelle [table] wenn [join_condition]',
+        'verbinde LEFT mit Tabelle [table]\nwenn [join_condition]',
     BlockType.sqlRightJoin:
-        'verbinde RIGHT mit Tabelle [table] wenn [join_condition]',
+        'verbinde RIGHT mit Tabelle [table]\nwenn [join_condition]',
     BlockType.sqlFullJoin:
-        'verbinde FULL mit Tabelle [table] wenn [join_condition]',
+        'verbinde FULL mit Tabelle [table]\nwenn [join_condition]',
     BlockType.sqlCrossJoin: 'verbinde kreuzweise mit Tabelle [table]',
-    BlockType.sqlSelfJoin: 'verbinde Tabelle [table] mit sich selbst',
+    BlockType.sqlSelfJoin:
+        'verbinde Tabelle [table] mit sich selbst\nwenn [join_condition]',
     BlockType.sqlNaturalJoin: 'verbinde natuerlich mit Tabelle [table]',
     BlockType.sqlInsert:
         'fuege ein in [table] ([columns]) die Werte ([values])',
@@ -125,11 +134,11 @@ String sqlLabelFor(
     BlockType.sqlSubqueryIn: '[column] ist in ([sql])',
     BlockType.sqlSubqueryAny: '[column] entspricht irgendeinem aus ([sql])',
     BlockType.sqlSubqueryAll: '[column] entspricht allen aus ([sql])',
-    BlockType.sqlCount: 'zaehle [column]',
-    BlockType.sqlSum: 'summiere [column]',
-    BlockType.sqlAvg: 'berechne durchschnitt von [column]',
-    BlockType.sqlMin: 'minimum von [column]',
-    BlockType.sqlMax: 'maximum von [column]',
+    BlockType.sqlCount: 'zaehle [expr]',
+    BlockType.sqlSum: 'summiere [expr]',
+    BlockType.sqlAvg: 'berechne durchschnitt von [expr]',
+    BlockType.sqlMin: 'minimum von [expr]',
+    BlockType.sqlMax: 'maximum von [expr]',
     BlockType.sqlConcat: 'verbinde Texte {value} und {default}',
     BlockType.sqlSubstring: 'Textausschnitt aus {value}',
     BlockType.sqlLength: 'Laenge von {value}',
@@ -160,19 +169,22 @@ String sqlLabelFor(
     BlockType.eventGreenFlag: 'RUN QUERY',
     BlockType.sqlSelect: 'show [columns] from table [table_name]',
     BlockType.sqlColumn: '[column]',
+    BlockType.sqlText: 'text {text}',
     BlockType.sqlFrom: 'from table [table_name]',
     BlockType.sqlWhere: 'when [condition]',
     BlockType.sqlOrderBy: 'sort by [column] {ascending|descending}',
-    BlockType.sqlGroupBy: 'group by [column] when [condition]',
+    BlockType.sqlGroupBy: 'group by [expr]',
     BlockType.sqlHaving: 'keep groups when [condition]',
-    BlockType.sqlJoin:
-        'join with [table] using [JOIN_TYPE] when [join_condition]',
-    BlockType.sqlInnerJoin: 'join INNER with [table] when [join_condition]',
-    BlockType.sqlLeftJoin: 'join LEFT with [table] when [join_condition]',
-    BlockType.sqlRightJoin: 'join RIGHT with [table] when [join_condition]',
-    BlockType.sqlFullJoin: 'join FULL with [table] when [join_condition]',
+    BlockType.sqlJoin: genericJoinUsesCondition
+        ? 'join with [table] using [JOIN_TYPE]\nwhen [join_condition]'
+        : 'join with [table] using [JOIN_TYPE]',
+    BlockType.sqlInnerJoin: 'join INNER with [table]\nwhen [join_condition]',
+    BlockType.sqlLeftJoin: 'join LEFT with [table]\nwhen [join_condition]',
+    BlockType.sqlRightJoin: 'join RIGHT with [table]\nwhen [join_condition]',
+    BlockType.sqlFullJoin: 'join FULL with [table]\nwhen [join_condition]',
     BlockType.sqlCrossJoin: 'cross-join with table [table]',
-    BlockType.sqlSelfJoin: 'join table [table] with itself',
+    BlockType.sqlSelfJoin:
+        'join table [table] with itself\nwhen [join_condition]',
     BlockType.sqlNaturalJoin: 'natural-join with table [table]',
     BlockType.sqlInsert: 'add to [table] ([columns]) values ([values])',
     BlockType.sqlUpdate:
@@ -196,11 +208,11 @@ String sqlLabelFor(
     BlockType.sqlSubqueryIn: '[column] is in ([sql])',
     BlockType.sqlSubqueryAny: '[column] equals any value from ([sql])',
     BlockType.sqlSubqueryAll: '[column] equals all values from ([sql])',
-    BlockType.sqlCount: 'count [column]',
-    BlockType.sqlSum: 'sum [column]',
-    BlockType.sqlAvg: 'average of [column]',
-    BlockType.sqlMin: 'minimum of [column]',
-    BlockType.sqlMax: 'maximum of [column]',
+    BlockType.sqlCount: 'count [expr]',
+    BlockType.sqlSum: 'sum [expr]',
+    BlockType.sqlAvg: 'average of [expr]',
+    BlockType.sqlMin: 'minimum of [expr]',
+    BlockType.sqlMax: 'maximum of [expr]',
     BlockType.sqlConcat: 'combine texts {value} and {default}',
     BlockType.sqlSubstring: 'text part from {value}',
     BlockType.sqlLength: 'length of {value}',
@@ -230,6 +242,10 @@ String sqlLabelFor(
   final simpleBase = languageCode == 'de' ? simpleDe : simpleEn;
   final simple = {...simpleBase, ...?simpleLang};
   final map = mode == SqlAbstractionMode.advanced ? adv : simple;
+  if (type == BlockType.sqlSelect && inputs['separate_from'] == true) {
+    if (mode == SqlAbstractionMode.advanced) return 'SELECT [columns]';
+    return languageCode == 'de' ? 'zeige [columns]' : 'show [columns]';
+  }
   return map[type] ?? simpleBase[type] ?? adv[type] ?? type.name;
 }
 

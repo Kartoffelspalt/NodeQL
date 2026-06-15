@@ -23,6 +23,7 @@ void main() {
 
     expect(find.byType(WorkbenchPage), findsOneWidget);
     expect(find.text('NodeQL'), findsOneWidget);
+    expect(find.text('SQL-Command Output'), findsOneWidget);
   });
 }
 
@@ -42,6 +43,7 @@ class _ReadyTranslationController extends TranslationController {
       'palette.search': 'Search command',
       'palette.category.dql': 'Query data',
       'runtime.sqlOutput': '-- SQL output --',
+      'runtime.sqlCommandOutput': 'SQL-Command Output',
       'runtime.copySql': 'Copy SQL',
       'runtime.noResults': 'No results',
     };

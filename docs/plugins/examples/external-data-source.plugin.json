@@ -1,0 +1,34 @@
+{
+  "$schema": "https://nodeql.dev/schemas/plugin-v2.json",
+  "schemaVersion": 2,
+  "id": "org.example.external-data",
+  "name": "Example External Data Source",
+  "version": "2.0.0",
+  "minNodeQlVersion": "0.2.0",
+  "author": "Community contributor",
+  "license": "MIT",
+  "capabilities": ["data-source.http"],
+  "permissions": {
+    "networkHosts": ["localhost"],
+    "secrets": ["EXTERNAL_API_TOKEN"]
+  },
+  "dataSources": [
+    {
+      "id": "external",
+      "name": {
+        "en": "External database bridge",
+        "de": "Externe Datenbank-Bridge"
+      },
+      "description": {
+        "en": "Connects NodeQL to a contributor-maintained JSON bridge.",
+        "de": "Verbindet NodeQL mit einer von Contributors gepflegten JSON-Bridge."
+      },
+      "transport": "http-json",
+      "baseUrl": "http://localhost:8787",
+      "schemaPath": "/v1/schema",
+      "queryPath": "/v1/query",
+      "secrets": ["EXTERNAL_API_TOKEN"]
+    }
+  ],
+  "blocks": []
+}

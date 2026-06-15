@@ -14,7 +14,8 @@ remain on the user's device.
 - Visual SQL blocks with snapping, editing, compilation, and execution.
 - Local SQLite database access without a separate system CLI.
 - JSON project files, autosave, recent projects, and legacy project import.
-- Declarative JSON plugin SDK with validation and compatibility checks.
+- Declarative Plugin SDK v2 with visual blocks, external data-source adapters,
+  SHA-256-verified community repositories, validation, and compatibility checks.
 - English fallback with installable, validated community language packages.
 - Offline use after installation; no account, analytics, or cloud dependency.
 - GitHub-based update checks and community translation contributions.

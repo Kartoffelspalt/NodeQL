@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 
 void main() {
@@ -53,5 +54,66 @@ void main() {
     controller.deleteSelected();
 
     expect(controller.state.roots, isEmpty);
+  });
+
+  test('inserts JOIN between FROM and WHERE', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlWhere, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlLeftJoin, const Offset(120, 284));
+
+    final event = controller.state.roots.single;
+    expect(event.next?.type, BlockType.sqlSelect);
+    expect(event.next?.next?.type, BlockType.sqlFrom);
+    expect(event.next?.next?.next?.type, BlockType.sqlLeftJoin);
+    expect(event.next?.next?.next?.next?.type, BlockType.sqlWhere);
+  });
+
+  test('does not attach HAVING without GROUP BY', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlHaving, const Offset(120, 234));
+
+    expect(controller.state.roots.first.next?.type, BlockType.sqlSelect);
+    expect(controller.state.roots.first.next?.next, isNull);
+    expect(
+      controller.state.roots.where((node) => node.type == BlockType.sqlHaving),
+      hasLength(1),
+    );
+  });
+
+  test('stores nested Scratch-style reporters inside an input slot', () {
+    final controller = WorkspaceController();
+    final select = controller.state.roots.first.next!;
+
+    controller.setReporterInput(select, 'columns', BlockType.sqlAvg);
+    final average = reporterForInput(select, 'columns');
+    expect(average?.type, BlockType.sqlAvg);
+
+    controller.setNestedReporterInput(
+      select,
+      'columns',
+      average!,
+      'expr',
+      BlockType.sqlColumn,
+      defaults: <String, dynamic>{'column': 'total'},
+    );
+
+    final restoredAverage = reporterForInput(select, 'columns');
+    final column = reporterForInput(restoredAverage!, 'expr');
+    expect(column?.type, BlockType.sqlColumn);
+    expect(column?.inputs['column'], 'total');
+  });
+
+  test('new SELECT blocks include their own FROM input by default', () {
+    final controller = WorkspaceController();
+
+    controller.addTemplate(BlockType.sqlSelect, const Offset(600, 300));
+
+    final select = controller.state.roots.last;
+    expect(select.type, BlockType.sqlSelect);
+    expect(select.inputs['separate_from'], isFalse);
+    expect(select.inputs['table'], 'table_name');
   });
 }
