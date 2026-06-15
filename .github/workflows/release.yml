@@ -125,7 +125,7 @@ jobs:
           Categories=Development;Education;
           EOF
           dpkg-deb --build --root-owner-group package "nodeql_${RELEASE_VERSION}_amd64.deb"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nodeql-linux
           path: |
@@ -161,7 +161,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             build/macos/Build/Products/Release/NodeQL.app \
             "nodeql-macos-${RELEASE_VERSION}.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nodeql-macos
           path: nodeql-macos-*.zip
@@ -193,7 +193,7 @@ jobs:
           $pubspecVersion = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches.Groups[1].Value
           $releaseVersion = $pubspecVersion.Split('+')[0]
           Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "nodeql-windows-x64-$releaseVersion.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nodeql-windows
           path: nodeql-windows-x64-*.zip
