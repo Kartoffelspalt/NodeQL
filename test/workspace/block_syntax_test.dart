@@ -129,6 +129,20 @@ void main() {
     expect(leftLabel, contains('ON [join_condition]'));
   });
 
+  test('simple SELECT uses beginner-friendly all-columns wording', () {
+    expect(
+      sqlLabelFor(
+        BlockType.sqlSelect,
+        SqlAbstractionMode.simple,
+        const <String, dynamic>{},
+        'de',
+      ),
+      'Zeige [columns] aus Tabelle [table_name]',
+    );
+    expect(simpleAllColumnsLabel('de-DE'), 'Alles');
+    expect(simpleAllColumnsLabel('en'), 'Everything');
+  });
+
   test('gives the execute query trigger a dedicated start cap height', () {
     final trigger = EventBlock(id: 'trigger', position: Offset.zero);
 

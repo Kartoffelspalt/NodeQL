@@ -188,7 +188,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
               },
               mode: mode,
               onModeChanged: (next) =>
-                  ref.read(sqlModeProvider.notifier).state = next,
+                  ref.read(sqlModeProvider.notifier).setMode(next),
               onSettings: () => _openSettings(context),
               onTutorial: () => _openTutorial(context),
             ),
@@ -2653,6 +2653,7 @@ class _NodeView extends ConsumerWidget {
           node: node,
           template: template,
           values: node.inputs,
+          mode: mode,
           localeCode: localeCode,
           style: const TextStyle(
             color: Colors.white,
@@ -2679,6 +2680,7 @@ class _NodeView extends ConsumerWidget {
       template: template,
       values: node.inputs,
       maxWidth: blockWidth - contentLeft - 12,
+      mode: mode,
       localeCode: localeCode,
       style: const TextStyle(
         color: Colors.white,
@@ -2690,6 +2692,7 @@ class _NodeView extends ConsumerWidget {
       node: node,
       template: template,
       values: node.inputs,
+      mode: mode,
       localeCode: localeCode,
       style: const TextStyle(
         color: Colors.white,
@@ -2832,6 +2835,7 @@ class _NodeView extends ConsumerWidget {
                                   label: _reporterLabel(
                                     slot.reporter!,
                                     localeCode,
+                                    mode,
                                   ),
                                   isHighlighted: highlighted,
                                 ),
@@ -2858,9 +2862,17 @@ class _NodeView extends ConsumerWidget {
     return sqlLabelFor(node.type, mode, node.inputs, localeCode);
   }
 
-  String _reporterLabel(BlockNode reporter, String localeCode) {
+  String _reporterLabel(
+    BlockNode reporter,
+    String localeCode,
+    SqlAbstractionMode mode,
+  ) {
     if (reporter.type == BlockType.sqlColumn) {
-      return '${reporter.inputs['column'] ?? '*'}';
+      final column = '${reporter.inputs['column'] ?? '*'}';
+      if (mode == SqlAbstractionMode.simple && column.trim() == '*') {
+        return simpleAllColumnsLabel(localeCode);
+      }
+      return column;
     }
     if (reporter.type == BlockType.sqlText) {
       return '"${reporter.inputs['text'] ?? ''}"';
@@ -2868,7 +2880,7 @@ class _NodeView extends ConsumerWidget {
     final nested = reporterForInput(reporter, 'expr');
     final value = nested == null
         ? '${reporter.inputs['expr'] ?? reporter.inputs['column'] ?? '*'}'
-        : _reporterLabel(nested, localeCode);
+        : _reporterLabel(nested, localeCode, mode);
     return switch (reporter.type) {
       BlockType.sqlCount => 'COUNT($value)',
       BlockType.sqlSum => 'SUM($value)',
@@ -2924,6 +2936,7 @@ class _NodeView extends ConsumerWidget {
           .map((value) => value.trim())
           .where((value) => value.isNotEmpty && value != '*')
           .toSet();
+      var selectAll = '${columnReporter.inputs['column'] ?? '*'}'.trim() == '*';
       final result = await showDialog<_ColumnReporterEditResult>(
         context: context,
         builder: (context) => StatefulBuilder(
@@ -2938,21 +2951,38 @@ class _NodeView extends ConsumerWidget {
                   ? Center(child: Text(catalog.text('editor.noSchemaOptions')))
                   : ListView(
                       children: [
+                        CheckboxListTile(
+                          value: selectAll,
+                          secondary: const Icon(Icons.select_all),
+                          title: Text(simpleAllColumnsLabel(localeCode)),
+                          onChanged: (selected) {
+                            setDialogState(() {
+                              selectAll = selected == true;
+                              if (selectAll) selectedColumns.clear();
+                            });
+                          },
+                        ),
+                        const Divider(height: 1),
                         for (final column in columns)
                           CheckboxListTile(
                             value: selectedColumns.contains(column),
                             secondary: const Icon(Icons.view_column_outlined),
                             title: Text(column),
-                            onChanged: (selected) {
-                              setDialogState(() {
-                                if (!allowMultiple) selectedColumns.clear();
-                                if (selected == true) {
-                                  selectedColumns.add(column);
-                                } else {
-                                  selectedColumns.remove(column);
-                                }
-                              });
-                            },
+                            onChanged: selectAll
+                                ? null
+                                : (selected) {
+                                    setDialogState(() {
+                                      if (!allowMultiple) {
+                                        selectedColumns.clear();
+                                      }
+                                      if (selected == true) {
+                                        selectAll = false;
+                                        selectedColumns.add(column);
+                                      } else {
+                                        selectedColumns.remove(column);
+                                      }
+                                    });
+                                  },
                           ),
                       ],
                     ),
@@ -2972,7 +3002,7 @@ class _NodeView extends ConsumerWidget {
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(
                   _ColumnReporterEditResult(
-                    value: selectedColumns.isEmpty
+                    value: selectAll || selectedColumns.isEmpty
                         ? '*'
                         : selectedColumns.join(', '),
                   ),
@@ -3090,6 +3120,7 @@ class _NodeView extends ConsumerWidget {
     required BlockNode node,
     required String template,
     required Map<String, dynamic> values,
+    required SqlAbstractionMode mode,
     required String localeCode,
     required TextStyle style,
   }) {
@@ -3109,13 +3140,14 @@ class _NodeView extends ConsumerWidget {
       if (leadingGap > 0) {
         buffer.write(' ' * (leadingGap / safeSpaceWidth).ceil());
       }
-      final display = _slotDisplay(values[inputKey], rawKey, localeCode);
+      final display = _slotDisplay(values[inputKey], rawKey, localeCode, mode);
       final reporter = reporterForInput(node, inputKey);
       final slotWidth = _slotWidthForContent(
         display,
         reporter,
         style,
         localeCode,
+        mode,
       );
       final gapWidth = _slotGap();
       var dynamicReduction = 0.0;
@@ -3151,6 +3183,7 @@ class _NodeView extends ConsumerWidget {
     required String template,
     required Map<String, dynamic> values,
     required double maxWidth,
+    required SqlAbstractionMode mode,
     required String localeCode,
     required TextStyle style,
   }) {
@@ -3174,13 +3207,14 @@ class _NodeView extends ConsumerWidget {
       final rawKey = token.substring(1, token.length - 1).trim();
       final inputKey = _slotInputKey(rawKey);
       x += _slotLeadingGap(before, inputKey);
-      final display = _slotDisplay(values[inputKey], rawKey, localeCode);
+      final display = _slotDisplay(values[inputKey], rawKey, localeCode, mode);
       final reporter = reporterForInput(node, inputKey);
       final slotWidth = _slotWidthForContent(
         display,
         reporter,
         style,
         localeCode,
+        mode,
       );
       final slotHeight = reporter == null ? 20.0 : 34.0;
       if (x < maxWidth) {
@@ -3210,6 +3244,7 @@ class _NodeView extends ConsumerWidget {
     required BlockNode node,
     required String template,
     required Map<String, dynamic> values,
+    required SqlAbstractionMode mode,
     required String localeCode,
     required TextStyle style,
   }) {
@@ -3234,7 +3269,7 @@ class _NodeView extends ConsumerWidget {
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
       final inputKey = _slotInputKey(rawKey);
-      final display = _slotDisplay(values[inputKey], rawKey, localeCode);
+      final display = _slotDisplay(values[inputKey], rawKey, localeCode, mode);
       lineWidth +=
           _slotLeadingGap(before, inputKey) +
           _slotWidthForContent(
@@ -3242,6 +3277,7 @@ class _NodeView extends ConsumerWidget {
             reporterForInput(node, inputKey),
             style,
             localeCode,
+            mode,
           ) +
           _slotGap();
       cursor = m.end;
@@ -3274,9 +3310,10 @@ class _NodeView extends ConsumerWidget {
     BlockNode? reporter,
     TextStyle style,
     String localeCode,
+    SqlAbstractionMode mode,
   ) {
     if (reporter == null) return _slotWidthForDisplay(display, style);
-    final label = _reporterLabel(reporter, localeCode);
+    final label = _reporterLabel(reporter, localeCode, mode);
     return (_measureText(label, style) + 32).clamp(72.0, 260.0);
   }
 
@@ -3290,7 +3327,12 @@ class _NodeView extends ConsumerWidget {
     return painter.width;
   }
 
-  String _slotDisplay(dynamic value, String rawKey, String localeCode) {
+  String _slotDisplay(
+    dynamic value,
+    String rawKey,
+    String localeCode,
+    SqlAbstractionMode mode,
+  ) {
     final text = '${value ?? ''}'.trim();
     final rawLower = rawKey.toLowerCase();
     final normalized = text.toLowerCase();
@@ -3300,7 +3342,13 @@ class _NodeView extends ConsumerWidget {
         normalized == 'column' ||
         normalized == 'column_name' ||
         normalized == 'columns') {
-      return _slotDefaultDisplay(rawKey);
+      final defaultDisplay = _slotDefaultDisplay(rawKey);
+      if (mode == SqlAbstractionMode.simple &&
+          _slotInputKey(rawKey) == 'columns' &&
+          defaultDisplay == '*') {
+        return simpleAllColumnsLabel(localeCode);
+      }
+      return defaultDisplay;
     }
     if (_slotInputKey(rawKey) == 'order') {
       return _localizedOrderLabel(_normalizeOrderValue(text), localeCode);
@@ -3309,6 +3357,9 @@ class _NodeView extends ConsumerWidget {
       return _normalizeJoinValue(text);
     }
     if (_slotInputKey(rawKey) == 'columns') {
+      if (mode == SqlAbstractionMode.simple && text == '*') {
+        return simpleAllColumnsLabel(localeCode);
+      }
       return _compactColumnSelectionDisplay(text);
     }
     return text;
@@ -3413,6 +3464,21 @@ class _NodeView extends ConsumerWidget {
   }) async {
     final catalog = translationCatalogOf(context);
     final mappedKey = _slotInputKey(slotKey);
+    if (mappedKey == 'columns') {
+      final selectedTable =
+          '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}';
+      final picked = await _pickColumnsDialog(
+        context: context,
+        columns: _availableColumns(node, runtime, engine),
+        currentValue: '${node.inputs[mappedKey] ?? '*'}',
+        selectedTable: selectedTable,
+        localeCode: localeCode,
+      );
+      if (picked != null) {
+        engine.updateInput(node, mappedKey, picked);
+      }
+      return;
+    }
     final options = _inlineOptionsForToken(
       rawToken: rawToken,
       mappedKey: mappedKey,
@@ -3536,15 +3602,7 @@ class _NodeView extends ConsumerWidget {
     if (mappedKey == 'columns' ||
         mappedKey == 'column' ||
         mappedKey == 'column_name') {
-      final selectedTable =
-          '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}';
-      final schema = runtime.schemas.where((s) => s.name == selectedTable);
-      final cols = schema.isEmpty
-          ? runtime.schemas
-                .expand((s) => s.columns)
-                .toSet()
-                .toList(growable: false)
-          : schema.first.columns;
+      final cols = _availableColumns(node, runtime, engine);
       if (mappedKey == 'columns') {
         final currentRaw = '${node.inputs['columns'] ?? '*'}';
         final selected = _selectedColumns(currentRaw);
@@ -3592,6 +3650,101 @@ class _NodeView extends ConsumerWidget {
     }
 
     return const <String>[];
+  }
+
+  List<String> _availableColumns(
+    BlockNode node,
+    SqlRuntimeState runtime,
+    WorkspaceController engine,
+  ) {
+    final selectedTable =
+        '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}';
+    final schema = runtime.schemas.where((s) => s.name == selectedTable);
+    return schema.isEmpty
+        ? runtime.schemas
+              .expand((s) => s.columns)
+              .toSet()
+              .toList(growable: false)
+        : schema.first.columns;
+  }
+
+  Future<String?> _pickColumnsDialog({
+    required BuildContext context,
+    required List<String> columns,
+    required String currentValue,
+    required String selectedTable,
+    required String localeCode,
+  }) {
+    final catalog = translationCatalogOf(context);
+    var selectAll = currentValue.trim() == '*';
+    final selectedColumns = _selectedColumns(currentValue).toSet();
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(
+            catalog.text('editor.chooseColumn', {'table': selectedTable}),
+          ),
+          content: SizedBox(
+            width: 360,
+            height: 320,
+            child: ListView(
+              children: [
+                CheckboxListTile(
+                  value: selectAll,
+                  secondary: const Icon(Icons.select_all),
+                  title: Text(simpleAllColumnsLabel(localeCode)),
+                  onChanged: (selected) {
+                    setDialogState(() {
+                      selectAll = selected == true;
+                      if (selectAll) selectedColumns.clear();
+                    });
+                  },
+                ),
+                if (columns.isNotEmpty) const Divider(height: 1),
+                for (final column in columns)
+                  CheckboxListTile(
+                    value: selectedColumns.contains(column),
+                    secondary: const Icon(Icons.view_column_outlined),
+                    title: Text(column),
+                    onChanged: selectAll
+                        ? null
+                        : (selected) {
+                            setDialogState(() {
+                              if (selected == true) {
+                                selectedColumns.add(column);
+                              } else {
+                                selectedColumns.remove(column);
+                              }
+                            });
+                          },
+                  ),
+                if (columns.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(catalog.text('editor.noSchemaOptions')),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(catalog.text('common.cancel')),
+            ),
+            FilledButton(
+              onPressed: selectAll || selectedColumns.isNotEmpty
+                  ? () => Navigator.of(
+                      context,
+                    ).pop(selectAll ? '*' : selectedColumns.join(', '))
+                  : null,
+              child: Text(catalog.text('common.ok')),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<String?> _pickInlineOptionOverlay({
@@ -3756,6 +3909,9 @@ class _NodeView extends ConsumerWidget {
     if (value.startsWith('__REMOVE__:')) {
       final col = value.substring('__REMOVE__:'.length);
       return col; // UI decides how to render the remove action.
+    }
+    if (value == '*') {
+      return simpleAllColumnsLabel(localeCode);
     }
     if (value == 'ASC' || value == 'DESC') {
       return _localizedOrderLabel(value, localeCode);
