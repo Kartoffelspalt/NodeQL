@@ -19,7 +19,7 @@ dependencies:
   go_router: ^14.8.1
   http: ^1.6.0
   file_picker: ^8.3.7
-  package_info_plus: ^8.3.0
+  package_info_plus: ^9.0.1
   path: ^1.9.1
   path_provider: ^2.1.5
   sqlite3: ^3.3.3
