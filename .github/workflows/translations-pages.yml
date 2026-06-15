@@ -35,7 +35,7 @@ jobs:
       - run: flutter pub get
       - run: dart run tool/validate_translations.dart
       - run: dart run tool/build_translation_site.dart
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
           path: build/translation-site
