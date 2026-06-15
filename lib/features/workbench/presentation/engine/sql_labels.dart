@@ -1,6 +1,23 @@
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 
+String simpleAllColumnsLabel(String languageCode) {
+  final normalizedCode = languageCode.toLowerCase().split(RegExp('[-_]')).first;
+  return switch (normalizedCode) {
+    'de' => 'Alles',
+    'fr' => 'Tout',
+    'es' => 'Todo',
+    'it' => 'Tutto',
+    'pt' => 'Tudo',
+    'tr' => 'Tümü',
+    'ar' => 'الكل',
+    'ja' => 'すべて',
+    'ko' => '모두',
+    'zh' => '全部',
+    _ => 'Everything',
+  };
+}
+
 String sqlLabelFor(
   BlockType type,
   SqlAbstractionMode mode,
@@ -86,7 +103,7 @@ String sqlLabelFor(
 
   final simpleDe = <BlockType, String>{
     BlockType.eventGreenFlag: 'QUERY AUSFUEHREN',
-    BlockType.sqlSelect: 'zeige [columns] aus Tabelle [table_name]',
+    BlockType.sqlSelect: 'Zeige [columns] aus Tabelle [table_name]',
     BlockType.sqlColumn: '[column]',
     BlockType.sqlText: 'Text {text}',
     BlockType.sqlFrom: 'aus Tabelle [table_name]',
@@ -167,7 +184,7 @@ String sqlLabelFor(
 
   final simpleEn = <BlockType, String>{
     BlockType.eventGreenFlag: 'RUN QUERY',
-    BlockType.sqlSelect: 'show [columns] from table [table_name]',
+    BlockType.sqlSelect: 'Show [columns] from table [table_name]',
     BlockType.sqlColumn: '[column]',
     BlockType.sqlText: 'text {text}',
     BlockType.sqlFrom: 'from table [table_name]',
@@ -244,7 +261,7 @@ String sqlLabelFor(
   final map = mode == SqlAbstractionMode.advanced ? adv : simple;
   if (type == BlockType.sqlSelect && inputs['separate_from'] == true) {
     if (mode == SqlAbstractionMode.advanced) return 'SELECT [columns]';
-    return languageCode == 'de' ? 'zeige [columns]' : 'show [columns]';
+    return languageCode == 'de' ? 'Zeige [columns]' : 'Show [columns]';
   }
   return map[type] ?? simpleBase[type] ?? adv[type] ?? type.name;
 }

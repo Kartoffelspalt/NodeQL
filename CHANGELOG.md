@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Replaced the SQL wildcard `*` with localized, beginner-friendly wording such
+  as "Alles" in Simple Mode while preserving the generated SQL.
+- Added an exclusive "Everything" option above the column list: selecting it
+  disables individual columns in both Simple and Advanced Mode.
+- Persisted the selected Simple or Advanced editing mode across app restarts.
 - Added a screenshot gallery near the top of the public README with dedicated
   contribution guidance for future app images.
 - Added a trademark policy that separates the MIT-licensed source code from
