@@ -26,6 +26,12 @@ on demand and list downloadable manifests. NodeQL requires HTTPS for remote
 catalogs, limits catalog and manifest sizes, verifies SHA-256, validates the
 manifest, and checks catalog ID/version consistency before installation.
 
+The public example catalog is hosted at:
+
+```text
+https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json
+```
+
 ## Compatibility
 
 - SDK v1 manifests remain supported.
