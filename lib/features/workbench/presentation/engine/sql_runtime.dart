@@ -103,9 +103,14 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     }
   }
 
-  Future<String> createEmptyDatabase({String? preferredName}) async {
-    final supportDir = await getApplicationSupportDirectory();
-    final dbDir = Directory(p.join(supportDir.path, 'nodeql_db'));
+  Future<String> createEmptyDatabase({
+    String? preferredName,
+    String? directoryPath,
+  }) async {
+    final dbDir = Directory(
+      directoryPath ??
+          p.join((await getApplicationSupportDirectory()).path, 'nodeql_db'),
+    );
     if (!await dbDir.exists()) {
       await dbDir.create(recursive: true);
     }
@@ -113,7 +118,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         ? 'project_${DateTime.now().millisecondsSinceEpoch}'
         : preferredName.trim();
     final fileName = base.endsWith('.db') ? base : '$base.db';
-    final targetPath = p.join(dbDir.path, fileName);
+    final targetPath = await _uniqueDatabasePath(dbDir.path, fileName);
     final database = sqlite3.open(targetPath);
     try {
       database.execute('PRAGMA user_version = 1;');
@@ -147,6 +152,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         lastSql: sql,
         lastRows: clipped,
         lastMessage: message,
+        schemas: needsSnapshot ? _reflectSchema(dbPath) : null,
       );
     } catch (e) {
       if (snapshot != null) {
@@ -251,6 +257,18 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       }
       database.close();
     }
+  }
+
+  Future<String> _uniqueDatabasePath(String directory, String fileName) async {
+    final extension = p.extension(fileName);
+    final baseName = p.basenameWithoutExtension(fileName);
+    var candidate = p.join(directory, fileName);
+    var suffix = 1;
+    while (await File(candidate).exists()) {
+      candidate = p.join(directory, '$baseName-$suffix$extension');
+      suffix += 1;
+    }
+    return candidate;
   }
 
   Future<String> _copyIntoSandbox({

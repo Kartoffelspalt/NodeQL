@@ -55,4 +55,43 @@ void main() {
       startsWith('Failed to open database:'),
     );
   });
+
+  test('creates a new database in the requested project directory', () async {
+    final tempDir = await Directory.systemTemp.createTemp('nodeql_project_db');
+    addTearDown(() => tempDir.delete(recursive: true));
+
+    final controller = SqlRuntimeController();
+    final path = await controller.createEmptyDatabase(
+      preferredName: 'project_data',
+      directoryPath: tempDir.path,
+    );
+
+    expect(path, '${tempDir.path}${Platform.pathSeparator}project_data.db');
+    expect(await File(path).exists(), isTrue);
+    expect(controller.state.dbPath, path);
+  });
+
+  test('refreshes schema after successful write statements', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'nodeql_schema_write',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+    final path = '${tempDir.path}${Platform.pathSeparator}runtime.db';
+    final database = sqlite3.open(path);
+    database.execute('PRAGMA user_version = 1;');
+    database.close();
+
+    final controller = SqlRuntimeController();
+    await controller.attachDatabasePath(path);
+    expect(controller.state.schemas, isEmpty);
+
+    await controller.executeWithSnapshot(
+      'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);',
+    );
+
+    expect(controller.state.lastMessage, 'OK');
+    expect(controller.state.schemas, hasLength(1));
+    expect(controller.state.schemas.single.name, 'notes');
+    expect(controller.state.schemas.single.columns, <String>['id', 'body']);
+  });
 }

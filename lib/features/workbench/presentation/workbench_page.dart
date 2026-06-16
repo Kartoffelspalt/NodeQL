@@ -28,6 +28,7 @@ import 'package:nodeql/localization/translation_models.dart';
 import 'package:nodeql/localization/translation_repository.dart';
 import 'package:nodeql/localization/supported_languages.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
 import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
@@ -287,7 +288,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
           if (await File(_activeProjectPath!).exists()) {
             final source = await File(_activeProjectPath!).readAsString();
             if (source.trim().isNotEmpty) {
-              await _loadProjectPayload(source);
+              await _loadProjectPayload(
+                source,
+                projectPath: _activeProjectPath,
+              );
               return;
             }
           }
@@ -325,7 +329,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _newProject(BuildContext context) async {
     final catalog = ref.read(translationControllerProvider).catalog;
-    final createDb = ValueNotifier<bool>(false);
+    final createDb = ValueNotifier<bool>(true);
+    final projectName = TextEditingController(text: 'NodeQL Project');
     final dbName = TextEditingController(text: 'nodeql_project');
     final yes = await showDialog<bool>(
       context: context,
@@ -337,6 +342,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(catalog.text('project.new.reset')),
+              const SizedBox(height: 10),
+              TextField(
+                controller: projectName,
+                decoration: InputDecoration(
+                  isDense: true,
+                  labelText: catalog.text('project.new.projectName'),
+                ),
+              ),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -373,12 +386,30 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       ),
     );
     if (yes == true) {
+      final selectedDirectory = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: catalog.text('project.new.directoryDialog'),
+      );
+      if (selectedDirectory == null) {
+        dbName.dispose();
+        projectName.dispose();
+        createDb.dispose();
+        return;
+      }
+      final projectDirectory = Directory(selectedDirectory);
+      await projectDirectory.create(recursive: true);
+      final projectPath = p.join(projectDirectory.path, 'project.nodeql');
+      final rawProjectName = projectName.text.trim().isEmpty
+          ? catalog.text('project.untitled')
+          : projectName.text.trim();
       ref.read(workspaceProvider.notifier).resetWithRoot();
       if (createDb.value) {
         try {
           await ref
               .read(sqlRuntimeProvider.notifier)
-              .createEmptyDatabase(preferredName: dbName.text);
+              .createEmptyDatabase(
+                preferredName: dbName.text,
+                directoryPath: projectDirectory.path,
+              );
         } catch (e) {
           ref
               .read(sqlRuntimeProvider.notifier)
@@ -388,14 +419,19 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         }
       }
       setState(() {
-        _activeProjectPath = null;
+        _activeProjectPath = projectPath;
         _activeProjectId = 'project_${DateTime.now().millisecondsSinceEpoch}';
-        _activeProjectName = catalog.text('project.untitled');
+        _activeProjectName = rawProjectName;
+        _upsertRecentProject();
       });
+      await File(
+        projectPath,
+      ).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
       await _saveProjectRegistry();
       await _syncRecentProjectsToNativeMenu();
     }
     dbName.dispose();
+    projectName.dispose();
     createDb.dispose();
   }
 
@@ -408,14 +444,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       allowedExtensions: <String>['nodeql'],
     );
     if (path == null) return;
-    await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
-    final sandboxPath = await _cacheProjectForSandbox(path);
     setState(() {
-      _activeProjectPath = sandboxPath;
+      _activeProjectPath = path;
       _activeProjectId = 'project_${DateTime.now().millisecondsSinceEpoch}';
       _activeProjectName = _projectNameFromPath(path);
       _upsertRecentProject();
     });
+    await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
   }
@@ -442,14 +477,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     );
     final path = result?.files.single.path;
     if (path == null) return;
-    final sandboxPath = await _cacheProjectForSandbox(path);
-    final source = await File(sandboxPath).readAsString();
-    await _loadProjectPayload(source);
+    final source = await File(path).readAsString();
+    await _loadProjectPayload(source, projectPath: path);
     setState(() {
-      _activeProjectPath = sandboxPath;
-      final existing = _recentProjects
-          .where((p) => p['path'] == sandboxPath)
-          .toList();
+      _activeProjectPath = path;
+      final existing = _recentProjects.where((p) => p['path'] == path).toList();
       _activeProjectId = existing.isEmpty
           ? 'project_${DateTime.now().millisecondsSinceEpoch}'
           : '${existing.first['id']}';
@@ -857,18 +889,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     return file;
   }
 
-  Future<String> _cacheProjectForSandbox(String sourcePath) async {
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory('${support.path}/nodeql_projects');
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    final filename = sourcePath.split(Platform.pathSeparator).last;
-    final target = File('${dir.path}/$filename');
-    await File(sourcePath).copy(target.path);
-    return target.path;
-  }
-
   Map<String, dynamic> _projectEnvelope() {
     final workspace =
         jsonDecode(ref.read(workspaceProvider.notifier).toJsonString())
@@ -877,11 +897,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final mode = ref.read(sqlModeProvider);
     final locale = ref.read(translationControllerProvider).locale;
     final theme = ref.read(nodeQlThemeProvider);
+    final dbPath = runtime.dbPath;
+    final projectPath = _activeProjectPath;
+    final dbRelativePath = dbPath != null && projectPath != null
+        ? _relativePathIfInsideProject(dbPath, projectPath)
+        : null;
+    final runtimePayload = <String, dynamic>{'dbPath': dbPath};
+    if (dbRelativePath != null) {
+      runtimePayload['dbRelativePath'] = dbRelativePath;
+    }
     return <String, dynamic>{
       'format': 'nodeql_project_v2',
       'version': 2,
       'workspace': workspace,
-      'runtime': <String, dynamic>{'dbPath': runtime.dbPath},
+      'runtime': runtimePayload,
       'ui': <String, dynamic>{
         'mode': mode.name,
         'locale': locale.languageCode,
@@ -890,7 +919,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     };
   }
 
-  Future<void> _loadProjectPayload(String source) async {
+  String? _relativePathIfInsideProject(String dbPath, String projectPath) {
+    final projectDir = p.dirname(projectPath);
+    if (!p.isWithin(projectDir, dbPath) && p.normalize(dbPath) != projectDir) {
+      return null;
+    }
+    return p.relative(dbPath, from: projectDir);
+  }
+
+  Future<void> _loadProjectPayload(String source, {String? projectPath}) async {
     Map<String, dynamic>? decoded;
     try {
       decoded = jsonDecode(source) as Map<String, dynamic>;
@@ -908,10 +945,27 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         .loadFromJsonString(jsonEncode(workspace));
 
     final runtime = decoded['runtime'] as Map<String, dynamic>? ?? {};
-    final dbPath = runtime['dbPath'] as String?;
+    final dbPath = _resolveProjectDbPath(
+      runtime['dbPath'] as String?,
+      runtime['dbRelativePath'] as String?,
+      projectPath,
+    );
     if (dbPath != null && dbPath.trim().isNotEmpty) {
       await ref.read(sqlRuntimeProvider.notifier).attachDatabasePath(dbPath);
     }
+  }
+
+  String? _resolveProjectDbPath(
+    String? dbPath,
+    String? dbRelativePath,
+    String? projectPath,
+  ) {
+    if (projectPath != null &&
+        dbRelativePath != null &&
+        dbRelativePath.trim().isNotEmpty) {
+      return p.normalize(p.join(p.dirname(projectPath), dbRelativePath));
+    }
+    return dbPath;
   }
 
   bool _isProjectEnvelopeFormat(Object? format) {
@@ -968,7 +1022,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final path = target.first['path'] as String?;
     if (path == null || !await File(path).exists()) return;
     final source = await File(path).readAsString();
-    await _loadProjectPayload(source);
+    await _loadProjectPayload(source, projectPath: path);
     setState(() {
       _activeProjectId = projectId;
       _activeProjectName = '${target.first['name']}';
