@@ -13,6 +13,8 @@
     "project.untitled": "Untitled",
     "project.new.title": "New Project",
     "project.new.reset": "Reset current canvas?",
+    "project.new.projectName": "Project name",
+    "project.new.directoryDialog": "Choose project folder",
     "project.new.createDatabase": "Create empty SQLite DB",
     "project.new.databaseName": "Database name",
     "project.createDatabaseFailed": "Failed to create DB: {error}",
