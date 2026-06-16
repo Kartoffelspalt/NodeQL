@@ -50,6 +50,15 @@ Repository owners can validate catalogs against
 The `docs/plugins/examples/repository.catalog.json` file demonstrates a
 complete catalog with a real SHA-256 digest.
 
+The public NodeQL example plugin repository is available at:
+
+```text
+https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json
+```
+
+Add this URL in **Settings > Manage Plugins > Repositories** to test the
+repository workflow with the maintained example plugins.
+
 ### Publish a repository with GitHub Pages
 
 1. Create a public GitHub repository, for example `nodeql-plugins`.

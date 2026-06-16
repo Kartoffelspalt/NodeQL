@@ -68,6 +68,18 @@ libraries, scripts, or executables. Translation packages are restricted to
 approved HTTPS hosts and verified by schema, size, metadata, placeholders, and
 SHA-256.
 
+## Example plugin repository
+
+NodeQL can install community plugin catalogs from static HTTPS URLs. The
+official example repository can be added in **Settings > Manage Plugins >
+Repositories**:
+
+```text
+https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json
+```
+
+The repository demonstrates the public catalog format and SDK example plugins.
+
 ## Development
 
 Requirements:
