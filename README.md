@@ -63,7 +63,7 @@ crash reporting. The optional network behavior is documented in
 [PRIVACY.md](PRIVACY.md). Vulnerabilities should be reported according to
 [SECURITY.md](SECURITY.md), not through public issues.
 
-Plugin API v1 is declarative. It does not execute third-party Dart code, native
+Plugin API v2 is declarative. It does not execute third-party Dart code, native
 libraries, scripts, or executables. Translation packages are restricted to
 approved HTTPS hosts and verified by schema, size, metadata, placeholders, and
 SHA-256.
