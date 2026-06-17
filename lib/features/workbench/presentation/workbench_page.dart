@@ -1342,13 +1342,6 @@ class _TopBar extends StatelessWidget {
                     icon: const Icon(Icons.school_outlined),
                   ),
                   IconButton(
-                    key: const ValueKey('open-block-tests'),
-                    onPressed: onDiagnostics,
-                    tooltip: 'Block-Tests',
-                    color: workbenchColors.topBarForeground,
-                    icon: const Icon(Icons.fact_check_outlined),
-                  ),
-                  IconButton(
                     onPressed: onSettings,
                     tooltip: catalog.text('toolbar.settings'),
                     color: workbenchColors.topBarForeground,
