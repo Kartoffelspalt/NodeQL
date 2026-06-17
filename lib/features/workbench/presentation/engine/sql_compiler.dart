@@ -27,6 +27,7 @@ class SqlCompiler {
         root.next!,
         pluginBlocks: pluginBlocks,
         warnings: warnings,
+        visited: <String>{root.id},
       ).trim();
       if (sql.isNotEmpty) {
         statements.add(sql.endsWith(';') ? sql : '$sql;');
@@ -39,15 +40,25 @@ class SqlCompiler {
     BlockNode node, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
     required List<String> warnings,
+    Set<String>? visited,
   }) {
+    final seen = visited ?? <String>{};
+    if (!seen.add(node.id)) {
+      warnings.add(
+        'Cycle detected at block "${node.id}". The repeated chain was skipped.',
+      );
+      return '';
+    }
     final current = _compileSingle(
       node,
       pluginBlocks: pluginBlocks,
       warnings: warnings,
+      visited: seen,
     );
     final next = node.next == null
         ? ''
-        : ' ${_compileNode(node.next!, pluginBlocks: pluginBlocks, warnings: warnings)}';
+        : ' ${_compileNode(node.next!, pluginBlocks: pluginBlocks, warnings: warnings, visited: seen)}';
+    seen.remove(node.id);
     return '$current$next'.trim();
   }
 
@@ -55,6 +66,7 @@ class SqlCompiler {
     BlockNode node, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
     required List<String> warnings,
+    Set<String>? visited,
   }) {
     final pluginBlockId = node.inputs[pluginBlockKeyInput] as String?;
     if (pluginBlockId != null) {
@@ -80,6 +92,7 @@ class SqlCompiler {
               node.children,
               pluginBlocks: pluginBlocks,
               warnings: warnings,
+              visited: visited,
             ),
           );
         } on Object catch (error) {
@@ -98,7 +111,7 @@ class SqlCompiler {
         return 'ORDER BY ${(node.inputs['degrees'] ?? 15)}';
       case BlockType.controlRepeat:
       case BlockType.controlForever:
-        return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings)}; COMMIT';
+        return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}; COMMIT';
       case BlockType.operatorAdd:
         return node.inputs['expr'] as String? ?? 'id';
       case BlockType.variableSet:
@@ -112,6 +125,7 @@ class SqlCompiler {
           node.children,
           pluginBlocks: pluginBlocks,
           warnings: warnings,
+          visited: visited,
         ).trim();
         final reporterColumns = _compileReporterInput(
           node,
@@ -119,6 +133,7 @@ class SqlCompiler {
           '',
           pluginBlocks: pluginBlocks,
           warnings: warnings,
+          visited: visited,
         );
         final cols = reporterColumns.isNotEmpty
             ? reporterColumns
@@ -184,27 +199,27 @@ class SqlCompiler {
       case BlockType.sqlSubqueryAll:
         return '${node.inputs['lhs'] as String? ?? 'id'} = ALL (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
       case BlockType.sqlCount:
-        return 'COUNT(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? '*'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'COUNT(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? '*'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlSum:
-        return 'SUM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'SUM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlAvg:
-        return 'AVG(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'AVG(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlMin:
-        return 'MIN(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'MIN(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlMax:
-        return 'MAX(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'MAX(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlConcat:
-        return 'CONCAT(${_compileReporterInput(node, 'a', '${node.inputs['a'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)}, ${_compileReporterInput(node, 'b', '${node.inputs['b'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'CONCAT(${_compileReporterInput(node, 'a', '${node.inputs['a'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}, ${_compileReporterInput(node, 'b', '${node.inputs['b'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlSubstring:
-        return 'SUBSTRING(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)}, ${node.inputs['start'] as String? ?? '1'}, ${node.inputs['len'] as String? ?? '1'})';
+        return 'SUBSTRING(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}, ${node.inputs['start'] as String? ?? '1'}, ${node.inputs['len'] as String? ?? '1'})';
       case BlockType.sqlLength:
-        return 'LENGTH(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'LENGTH(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlUpper:
-        return 'UPPER(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'UPPER(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlLower:
-        return 'LOWER(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'LOWER(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlTrim:
-        return 'TRIM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings)})';
+        return 'TRIM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlLeft:
         return 'LEFT(${node.inputs['expr'] as String? ?? "''"}, ${node.inputs['n'] as String? ?? '1'})';
       case BlockType.sqlRight:
@@ -269,7 +284,7 @@ class SqlCompiler {
         return 'SET TRANSACTION ISOLATION LEVEL ${node.inputs['level'] as String? ?? 'READ COMMITTED'}';
       case BlockType.sqlLoop:
         // NodeQL loop compiles contained statements as transaction body.
-        return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings)}; COMMIT';
+        return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}; COMMIT';
     }
   }
 
@@ -291,11 +306,17 @@ class SqlCompiler {
     List<BlockNode> children, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
     required List<String> warnings,
+    Set<String>? visited,
   }) {
     final parts = <String>[];
     for (final head in children) {
       parts.add(
-        _compileNode(head, pluginBlocks: pluginBlocks, warnings: warnings),
+        _compileNode(
+          head,
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited == null ? null : <String>{...visited},
+        ),
       );
     }
     return parts.where((p) => p.trim().isNotEmpty).join(', ');
@@ -307,6 +328,7 @@ class SqlCompiler {
     String fallback, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
     required List<String> warnings,
+    Set<String>? visited,
   }) {
     final reporter = reporterForInput(node, key);
     if (reporter == null) return fallback;
@@ -314,6 +336,7 @@ class SqlCompiler {
       reporter,
       pluginBlocks: pluginBlocks,
       warnings: warnings,
+      visited: <String>{...?visited},
     ).trim();
   }
 }

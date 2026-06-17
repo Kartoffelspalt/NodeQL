@@ -94,4 +94,40 @@ void main() {
     expect(controller.state.schemas.single.name, 'notes');
     expect(controller.state.schemas.single.columns, <String>['id', 'body']);
   });
+
+  test(
+    'limits large SELECT previews while executing on a worker isolate',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'nodeql_large_preview',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final path = '${tempDir.path}${Platform.pathSeparator}large.db';
+      final database = sqlite3.open(path);
+      database.execute('''
+      CREATE TABLE a (id INTEGER PRIMARY KEY);
+      CREATE TABLE b (id INTEGER PRIMARY KEY);
+      CREATE TABLE c (id INTEGER PRIMARY KEY);
+      WITH RECURSIVE seq(x) AS (
+        SELECT 1
+        UNION ALL
+        SELECT x + 1 FROM seq WHERE x < 12
+      )
+      INSERT INTO a (id) SELECT x FROM seq;
+      INSERT INTO b (id) SELECT id FROM a;
+      INSERT INTO c (id) SELECT id FROM a;
+    ''');
+      database.close();
+
+      final controller = SqlRuntimeController();
+      await controller.attachDatabasePath(path);
+      await controller.executeWithSnapshot(
+        'SELECT a.id AS a_id, b.id AS b_id, c.id AS c_id '
+        'FROM a INNER JOIN b ON 1 = 1 INNER JOIN c ON 1 = 1;',
+      );
+
+      expect(controller.state.lastRows, hasLength(500));
+      expect(controller.state.lastMessage, 'OK (showing first 500 rows)');
+    },
+  );
 }

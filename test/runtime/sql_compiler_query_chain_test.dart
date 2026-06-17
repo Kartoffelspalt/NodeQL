@@ -111,6 +111,39 @@ void main() {
     expect(compile('NATURAL'), 'NATURAL JOIN orders;');
   });
 
+  test('stops compiling when a chain cycle is detected', () {
+    final root = EventBlock(id: 'run', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: {'columns': '*'},
+    );
+    final joinOne = OperatorBlock(
+      id: 'join-one',
+      position: Offset.zero,
+      operatorType: BlockType.sqlLeftJoin,
+      inputs: {'table': 'orders', 'on': 'orders.customer_id = customers.id'},
+    );
+    final joinTwo = OperatorBlock(
+      id: 'join-two',
+      position: Offset.zero,
+      operatorType: BlockType.sqlInnerJoin,
+      inputs: {'table': 'payments', 'on': 'payments.order_id = orders.id'},
+    );
+
+    root.next = select;
+    select.next = joinOne;
+    joinOne.next = joinTwo;
+    joinTwo.next = joinOne;
+
+    final result = const SqlCompiler().compileWorkspace([root]);
+
+    expect(result.sql, contains('LEFT JOIN orders'));
+    expect(result.sql, contains('INNER JOIN payments'));
+    expect(result.warnings.single, contains('Cycle detected'));
+  });
+
   test('compiles nested aggregate, column and text reporters', () {
     final root = EventBlock(id: 'run', position: Offset.zero);
     final select = OperatorBlock(

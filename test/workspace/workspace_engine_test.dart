@@ -70,6 +70,86 @@ void main() {
     expect(event.next?.next?.next?.next?.type, BlockType.sqlWhere);
   });
 
+  test('adds two INNER JOIN blocks in one query chain without cycling', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 284));
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 360));
+
+    final event = controller.state.roots.single;
+    expect(event.next?.type, BlockType.sqlSelect);
+    expect(event.next?.next?.type, BlockType.sqlFrom);
+    expect(event.next?.next?.next?.type, BlockType.sqlInnerJoin);
+    expect(event.next?.next?.next?.next?.type, BlockType.sqlInnerJoin);
+    expect(event.next?.next?.next?.next?.next, isNull);
+    expect(controller.allBlocks(), hasLength(5));
+  });
+
+  test('inserts two INNER JOIN blocks into the starter query chain', () {
+    final controller = WorkspaceController();
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 352));
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 428));
+
+    final event = controller.state.roots.single;
+    expect(event.next?.type, BlockType.sqlSelect);
+    expect(event.next?.next?.type, BlockType.sqlFrom);
+    expect(event.next?.next?.next?.type, BlockType.sqlLeftJoin);
+    expect(event.next?.next?.next?.next?.type, BlockType.sqlInnerJoin);
+    expect(event.next?.next?.next?.next?.next?.type, BlockType.sqlInnerJoin);
+    expect(event.next?.next?.next?.next?.next?.next?.type, BlockType.sqlWhere);
+    expect(
+      event.next?.next?.next?.next?.next?.next?.next?.type,
+      BlockType.sqlOrderBy,
+    );
+    expect(controller.allBlocks(), hasLength(8));
+  });
+
+  test('traverses a corrupted two-JOIN cycle without hanging', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    final root = controller.state.roots.single;
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+    );
+    final from = OperatorBlock(
+      id: 'from',
+      position: Offset.zero,
+      operatorType: BlockType.sqlFrom,
+    );
+    final joinOne = OperatorBlock(
+      id: 'join-one',
+      position: Offset.zero,
+      operatorType: BlockType.sqlLeftJoin,
+    );
+    final joinTwo = OperatorBlock(
+      id: 'join-two',
+      position: Offset.zero,
+      operatorType: BlockType.sqlInnerJoin,
+    );
+
+    root.next = select;
+    select.next = from;
+    from.next = joinOne;
+    joinOne.next = joinTwo;
+    joinTwo.next = joinOne;
+
+    expect(controller.allBlocks().map((node) => node.id), <String>[
+      'event_root',
+      'select',
+      'from',
+      'join-one',
+      'join-two',
+    ]);
+    expect(controller.toJsonString(), contains('join-two'));
+
+    controller.updateInput(joinTwo, 'table', 'payments');
+
+    expect(joinTwo.next, isNull);
+    expect(controller.allBlocks(), hasLength(5));
+  });
+
   test('does not attach HAVING without GROUP BY', () {
     final controller = WorkspaceController()..resetWithRoot();
     controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));

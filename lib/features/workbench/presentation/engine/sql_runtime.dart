@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
@@ -141,16 +142,16 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       snapshot = await _createSnapshot(dbPath);
     }
     try {
-      final rows = await _runQuery(dbPath, sql);
-      final clipped = rows.length > _maxPreviewRows
-          ? rows.take(_maxPreviewRows).toList(growable: false)
-          : rows;
-      final message = rows.length > _maxPreviewRows
-          ? 'OK (${rows.length} rows, showing first $_maxPreviewRows)'
+      final result = await Isolate.run(
+        () => _runQuery(dbPath, sql, _maxPreviewRows),
+      );
+      final rows = result.rows;
+      final message = result.truncated
+          ? 'OK (showing first $_maxPreviewRows rows)'
           : 'OK';
       state = state.copyWith(
         lastSql: sql,
-        lastRows: clipped,
+        lastRows: rows,
         lastMessage: message,
         schemas: needsSnapshot ? _reflectSchema(dbPath) : null,
       );
@@ -233,24 +234,32 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     await snapshot.copy(dbPath);
   }
 
-  Future<List<Map<String, String>>> _runQuery(String path, String sql) async {
+  static _QueryResult _runQuery(String path, String sql, int maxRows) {
     final database = sqlite3.open(path);
     final statements = database.prepareMultiple(sql);
     try {
       var rows = const <Map<String, String>>[];
+      var truncated = false;
       for (final statement in statements) {
-        final result = statement.select();
-        if (result.columnNames.isNotEmpty) {
-          rows = <Map<String, String>>[
-            for (final row in result)
-              <String, String>{
-                for (final column in result.columnNames)
-                  column: '${row[column] ?? ''}',
-              },
-          ];
+        final cursor = statement.selectCursor();
+        final statementRows = <Map<String, String>>[];
+        while (cursor.moveNext()) {
+          if (cursor.columnNames.isEmpty) continue;
+          if (statementRows.length >= maxRows) {
+            truncated = true;
+            break;
+          }
+          final row = cursor.current;
+          statementRows.add(<String, String>{
+            for (final column in cursor.columnNames)
+              column: '${row[column] ?? ''}',
+          });
+        }
+        if (cursor.columnNames.isNotEmpty) {
+          rows = statementRows;
         }
       }
-      return rows;
+      return _QueryResult(rows: rows, truncated: truncated);
     } finally {
       for (final statement in statements) {
         statement.close();
@@ -291,4 +300,11 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     await File(sourcePath).copy(targetPath);
     return targetPath;
   }
+}
+
+class _QueryResult {
+  const _QueryResult({required this.rows, required this.truncated});
+
+  final List<Map<String, String>> rows;
+  final bool truncated;
 }
