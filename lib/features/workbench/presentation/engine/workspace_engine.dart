@@ -596,16 +596,19 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _touch();
   }
 
-  Iterable<BlockNode> _walk(BlockNode node) sync* {
+  Iterable<BlockNode> _walk(BlockNode node, [Set<String>? visited]) sync* {
+    final seen = visited ?? <String>{};
+    if (!seen.add(node.id)) return;
     yield node;
 
     for (final childHead in node.children) {
-      yield* _walk(childHead);
+      yield* _walk(childHead, seen);
     }
 
     if (node.next != null) {
-      yield* _walk(node.next!);
+      yield* _walk(node.next!, seen);
     }
+    seen.remove(node.id);
   }
 
   BlockNode _createNode(BlockType type, Offset worldPos) {
@@ -862,6 +865,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   }
 
   bool _canSnap(BlockNode dragged, BlockNode target, SnapZone zone) {
+    if (_subTreeIds(dragged).contains(target.id)) return false;
     if (dragged.type == BlockType.eventGreenFlag) {
       return false;
     }
@@ -915,16 +919,22 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     return null;
   }
 
-  BlockNode? _predecessorInNode(BlockNode current, BlockNode target) {
+  BlockNode? _predecessorInNode(
+    BlockNode current,
+    BlockNode target, [
+    Set<String>? visited,
+  ]) {
+    final seen = visited ?? <String>{};
+    if (!seen.add(current.id)) return null;
     if (current.next?.id == target.id) return current;
     for (final child in current.children) {
       if (child.id == target.id) return current;
-      final nested = _predecessorInNode(child, target);
+      final nested = _predecessorInNode(child, target, seen);
       if (nested != null) return nested;
     }
     return current.next == null
         ? null
-        : _predecessorInNode(current.next!, target);
+        : _predecessorInNode(current.next!, target, seen);
   }
 
   List<_SlotTarget> _buildSlotTargets({required Set<String> excludedIds}) {
@@ -997,13 +1007,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   }
 
   void _insertBySnap(BlockNode dragged, BlockNode target, SnapZone zone) {
+    if (_subTreeIds(dragged).contains(target.id)) return;
     _detachNode(dragged, preserveSubTree: true, healParent: false);
 
     if (zone == SnapZone.topOuter) {
       final oldNext = target.next;
       target.next = dragged;
-      if (oldNext != null) {
-        _chainTail(dragged).next = oldNext;
+      if (oldNext != null && !_subTreeIds(dragged).contains(oldNext.id)) {
+        _attachAfterTail(dragged, oldNext);
       }
       dragged.position = Offset(
         target.position.dx,
@@ -1026,7 +1037,9 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         target.children = <BlockNode>[dragged];
       } else {
         final existing = target.children.first;
-        _chainTail(dragged).next = existing;
+        if (!_subTreeIds(dragged).contains(existing.id)) {
+          _attachAfterTail(dragged, existing);
+        }
         target.children[0] = dragged;
       }
       dragged.position = _innerMouthEntryPoint(target);
@@ -1057,7 +1070,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     for (var i = 0; i < state.roots.length; i++) {
       final root = state.roots[i];
       if (root.id != target.id) continue;
-      _chainTail(dragged).next = root;
+      if (_subTreeIds(dragged).contains(root.id)) return;
+      _attachAfterTail(dragged, root);
       dragged.position = root.position;
       final updated = [...state.roots]..[i] = dragged;
       state = state.copyWith(
@@ -1081,11 +1095,16 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   bool _insertBeforeInNode(
     BlockNode current,
     BlockNode target,
-    BlockNode dragged,
-  ) {
+    BlockNode dragged, [
+    Set<String>? visited,
+  ]) {
+    final seen = visited ?? <String>{};
+    if (!seen.add(current.id)) return false;
     if (current.next?.id == target.id) {
       current.next = dragged;
-      _chainTail(dragged).next = target;
+      if (!_subTreeIds(dragged).contains(target.id)) {
+        _attachAfterTail(dragged, target);
+      }
       dragged.position = target.position;
       return true;
     }
@@ -1093,16 +1112,17 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     for (var i = 0; i < current.children.length; i++) {
       final head = current.children[i];
       if (head.id == target.id) {
-        _chainTail(dragged).next = head;
+        if (_subTreeIds(dragged).contains(head.id)) return false;
+        _attachAfterTail(dragged, head);
         dragged.position = head.position;
         current.children[i] = dragged;
         return true;
       }
-      if (_insertBeforeInNode(head, target, dragged)) return true;
+      if (_insertBeforeInNode(head, target, dragged, seen)) return true;
     }
 
     if (current.next != null) {
-      return _insertBeforeInNode(current.next!, target, dragged);
+      return _insertBeforeInNode(current.next!, target, dragged, seen);
     }
 
     return false;
@@ -1179,7 +1199,10 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     BlockNode target, {
     required bool preserveSubTree,
     required bool healParent,
+    Set<String>? visited,
   }) {
+    final seen = visited ?? <String>{};
+    if (!seen.add(current.id)) return false;
     if (current.next?.id == target.id) {
       current.next = healParent ? target.next : null;
       if (!preserveSubTree) target.next = null;
@@ -1204,6 +1227,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         target,
         preserveSubTree: preserveSubTree,
         healParent: healParent,
+        visited: seen,
       )) {
         return true;
       }
@@ -1215,6 +1239,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         target,
         preserveSubTree: preserveSubTree,
         healParent: healParent,
+        visited: seen,
       );
     }
 
@@ -1274,10 +1299,16 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
   BlockNode _chainTail(BlockNode head) {
     BlockNode current = head;
-    while (current.next != null) {
+    final visited = <String>{current.id};
+    while (current.next != null && visited.add(current.next!.id)) {
       current = current.next!;
     }
     return current;
+  }
+
+  void _attachAfterTail(BlockNode head, BlockNode next) {
+    if (_subTreeIds(head).contains(next.id)) return;
+    _chainTail(head).next = next;
   }
 
   BlockNode? _lastNestedTail(ControlBlock block) {
@@ -1301,7 +1332,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   double _verticalChainHeight(BlockNode head) {
     double total = 0;
     BlockNode? current = head;
-    while (current != null) {
+    final visited = <String>{};
+    while (current != null && visited.add(current.id)) {
       total += blockHeight(current);
       current = current.next;
     }
@@ -1312,7 +1344,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     double widest = blockWidth;
     for (final head in block.children) {
       BlockNode? current = head;
-      while (current != null) {
+      final visited = <String>{};
+      while (current != null && visited.add(current.id)) {
         widest = max(widest, nodeWidth(current));
         current = current.next;
       }
@@ -1326,7 +1359,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
   void _propagateTableSelection(BlockNode node, String table) {
     BlockNode? current = node;
-    while (current != null) {
+    final visited = <String>{};
+    while (current != null && visited.add(current.id)) {
       if (current.type == BlockType.sqlSelect ||
           current.type == BlockType.sqlFrom ||
           current.type == BlockType.sqlWhere ||
@@ -1350,23 +1384,31 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   String? _contextTableInChain(
     BlockNode current,
     String targetId,
-    String? lastTable,
-  ) {
+    String? lastTable, [
+    Set<String>? visited,
+  ]) {
+    final seen = visited ?? <String>{};
     String? activeTable = _tableFromNode(current) ?? lastTable;
     BlockNode? cursor = current;
-    while (cursor != null) {
+    while (cursor != null && seen.add(cursor.id)) {
       activeTable = _tableFromNode(cursor) ?? activeTable;
       if (cursor.id == targetId) {
         if (activeTable != null) return activeTable;
         BlockNode? lookahead = cursor.next;
-        while (lookahead != null) {
+        final lookaheadSeen = <String>{...seen};
+        while (lookahead != null && lookaheadSeen.add(lookahead.id)) {
           final ahead = _tableFromNode(lookahead);
           if (ahead != null) return ahead;
           lookahead = lookahead.next;
         }
       }
       for (final child in cursor.children) {
-        final childResult = _contextTableInChain(child, targetId, activeTable);
+        final childResult = _contextTableInChain(
+          child,
+          targetId,
+          activeTable,
+          seen,
+        );
         if (childResult != null) return childResult;
       }
       cursor = cursor.next;
@@ -1392,14 +1434,16 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     return null;
   }
 
-  void _layoutNodeSubTree(BlockNode root) {
+  void _layoutNodeSubTree(BlockNode root, [Set<String>? visited]) {
+    final seen = visited ?? <String>{};
+    if (!seen.add(root.id)) return;
     if (root is ControlBlock) {
       var y = root.position.dy + cUpperBar;
       for (final head in root.children) {
         BlockNode? current = head;
-        while (current != null) {
+        while (current != null && !seen.contains(current.id)) {
           current.position = Offset(root.position.dx + childIndent, y);
-          _layoutNodeSubTree(current);
+          _layoutNodeSubTree(current, seen);
           y += blockHeight(current);
           current = current.next;
         }
@@ -1411,21 +1455,47 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         root.position.dx,
         root.position.dy + blockHeight(root),
       );
-      _layoutNodeSubTree(root.next!);
+      _layoutNodeSubTree(root.next!, seen);
     }
   }
 
   void _shiftSequentialChain(BlockNode head, double deltaY) {
     BlockNode? current = head;
-    while (current != null) {
+    final visited = <String>{};
+    while (current != null && visited.add(current.id)) {
       current.position = current.position.translate(0, deltaY);
       current = current.next;
     }
   }
 
   void _relayoutAll() {
+    _breakSequentialCycles();
     for (final root in state.roots) {
-      _layoutNodeSubTree(root);
+      _layoutNodeSubTree(root, <String>{});
+    }
+  }
+
+  void _breakSequentialCycles() {
+    for (final root in state.roots) {
+      _breakSequentialCyclesFrom(root, <String>{});
+    }
+  }
+
+  void _breakSequentialCyclesFrom(BlockNode head, Set<String> ancestors) {
+    final seen = <String>{...ancestors};
+    BlockNode? current = head;
+    while (current != null) {
+      if (!seen.add(current.id)) return;
+      for (final child in current.children) {
+        _breakSequentialCyclesFrom(child, seen);
+      }
+      final next = current.next;
+      if (next == null) return;
+      if (seen.contains(next.id)) {
+        current.next = null;
+        return;
+      }
+      current = next;
     }
   }
 
@@ -1435,11 +1505,43 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
   String toJsonString() {
     final payload = <String, dynamic>{
-      'roots': state.roots.map((n) => n.toJson()).toList(growable: false),
+      'roots': state.roots
+          .map((n) => _nodeToJson(n, <String>{}))
+          .toList(growable: false),
       'scale': state.scale,
       'pan': <String, double>{'dx': state.pan.dx, 'dy': state.pan.dy},
     };
     return jsonEncode(payload);
+  }
+
+  Map<String, dynamic> _nodeToJson(BlockNode node, Set<String> visited) {
+    if (!visited.add(node.id)) {
+      return <String, dynamic>{
+        'kind': node.runtimeType.toString(),
+        'id': node.id,
+        'type': node.type.name,
+        'position': <String, dynamic>{
+          'dx': node.position.dx,
+          'dy': node.position.dy,
+        },
+        'children': <dynamic>[],
+        'inputs': node.inputs,
+      };
+    }
+    return <String, dynamic>{
+      'kind': node.runtimeType.toString(),
+      'id': node.id,
+      'type': node.type.name,
+      'position': <String, dynamic>{
+        'dx': node.position.dx,
+        'dy': node.position.dy,
+      },
+      'next': node.next == null ? null : _nodeToJson(node.next!, visited),
+      'children': node.children
+          .map((child) => _nodeToJson(child, visited))
+          .toList(),
+      'inputs': node.inputs,
+    };
   }
 
   void loadFromJsonString(String source) {
