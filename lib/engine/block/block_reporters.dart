@@ -35,6 +35,7 @@ bool isReporterType(BlockType type) {
 bool slotAcceptsReporter(String rawToken, String inputKey) {
   if (rawToken.startsWith('{') || rawToken.endsWith('}')) return true;
   return const <String>{
+    'aggregate',
     'column',
     'columns',
     'column_name',
@@ -52,13 +53,30 @@ bool slotAcceptsReporter(String rawToken, String inputKey) {
   }.contains(inputKey);
 }
 
+bool slotAcceptsReporterType(
+  String rawToken,
+  String inputKey,
+  BlockType reporterType,
+) {
+  if (!slotAcceptsReporter(rawToken, inputKey)) return false;
+  if (inputKey != 'aggregate') return isReporterType(reporterType);
+  return switch (reporterType) {
+    BlockType.sqlCount ||
+    BlockType.sqlSum ||
+    BlockType.sqlAvg ||
+    BlockType.sqlMin ||
+    BlockType.sqlMax => true,
+    _ => false,
+  };
+}
+
 String? primaryReporterInputKey(BlockType type) {
   return switch (type) {
     BlockType.sqlCount ||
     BlockType.sqlSum ||
     BlockType.sqlAvg ||
     BlockType.sqlMin ||
-    BlockType.sqlMax ||
+    BlockType.sqlMax => 'column',
     BlockType.sqlSubstring ||
     BlockType.sqlLength ||
     BlockType.sqlUpper ||

@@ -163,6 +163,36 @@ void main() {
     );
   });
 
+  test('snaps HAVING after GROUP BY', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlGroupBy, const Offset(120, 284));
+    controller.addTemplate(BlockType.sqlHaving, const Offset(120, 334));
+
+    final event = controller.state.roots.single;
+    expect(event.next?.type, BlockType.sqlSelect);
+    expect(event.next?.next?.type, BlockType.sqlFrom);
+    expect(event.next?.next?.next?.type, BlockType.sqlGroupBy);
+    expect(event.next?.next?.next?.next?.type, BlockType.sqlHaving);
+  });
+
+  test('suggests a valid palette-click position for HAVING after GROUP BY', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlGroupBy, const Offset(120, 284));
+
+    controller.addTemplate(
+      BlockType.sqlHaving,
+      controller.suggestedTemplatePosition(BlockType.sqlHaving),
+    );
+
+    final event = controller.state.roots.single;
+    expect(event.next?.next?.next?.type, BlockType.sqlGroupBy);
+    expect(event.next?.next?.next?.next?.type, BlockType.sqlHaving);
+  });
+
   test('stores nested Scratch-style reporters inside an input slot', () {
     final controller = WorkspaceController();
     final select = controller.state.roots.first.next!;

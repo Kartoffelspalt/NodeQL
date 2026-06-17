@@ -126,7 +126,7 @@ void main() {
 
     expect(crossLabel, isNot(contains('ON')));
     expect(naturalLabel, isNot(contains('ON')));
-    expect(leftLabel, contains('ON [join_condition]'));
+    expect(leftLabel, contains('ON [left_column] = [right_column]'));
   });
 
   test('simple SELECT uses beginner-friendly all-columns wording', () {
@@ -137,10 +137,46 @@ void main() {
         const <String, dynamic>{},
         'de',
       ),
-      'Zeige [columns] aus Tabelle [table_name]',
+      'Zeige [Spalten] aus Tabelle [table_name]',
     );
     expect(simpleAllColumnsLabel('de-DE'), 'Alles');
     expect(simpleAllColumnsLabel('en'), 'Everything');
+  });
+
+  test('simple German labels use localized column placeholders', () {
+    final labels =
+        <BlockType>[
+          BlockType.sqlSelect,
+          BlockType.sqlColumn,
+          BlockType.sqlWhere,
+          BlockType.sqlOrderBy,
+          BlockType.sqlGroupBy,
+          BlockType.sqlHaving,
+          BlockType.sqlInnerJoin,
+          BlockType.sqlInsert,
+          BlockType.sqlUpdate,
+          BlockType.sqlDelete,
+          BlockType.sqlCreateTable,
+          BlockType.sqlAlterTable,
+          BlockType.sqlSubqueryIn,
+          BlockType.sqlCount,
+          BlockType.sqlSum,
+          BlockType.sqlAvg,
+          BlockType.sqlMin,
+          BlockType.sqlMax,
+        ].map(
+          (type) => sqlLabelFor(
+            type,
+            SqlAbstractionMode.simple,
+            const <String, dynamic>{},
+            'de',
+          ),
+        );
+
+    for (final label in labels) {
+      expect(label, isNot(contains('column')));
+      expect(label, isNot(contains('columns')));
+    }
   });
 
   test('gives the execute query trigger a dedicated start cap height', () {

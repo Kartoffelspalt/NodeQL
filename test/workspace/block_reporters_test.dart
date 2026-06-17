@@ -35,4 +35,19 @@ void main() {
     expect(isReporterType(BlockType.sqlAvg), isTrue);
     expect(isReporterType(BlockType.sqlFrom), isFalse);
   });
+
+  test('aggregate slots only accept aggregate reporter blocks', () {
+    expect(
+      slotAcceptsReporterType('aggregate', 'aggregate', BlockType.sqlSum),
+      isTrue,
+    );
+    expect(
+      slotAcceptsReporterType('aggregate', 'aggregate', BlockType.sqlColumn),
+      isFalse,
+    );
+    expect(
+      slotAcceptsReporterType('value', 'value', BlockType.sqlColumn),
+      isTrue,
+    );
+  });
 }

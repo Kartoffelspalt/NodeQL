@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/core/app/nodeql_app.dart';
 import 'package:nodeql/features/workbench/presentation/workbench_page.dart';
@@ -24,6 +25,31 @@ void main() {
     expect(find.byType(WorkbenchPage), findsOneWidget);
     expect(find.text('NodeQL'), findsOneWidget);
     expect(find.text('SQL-Command Output'), findsOneWidget);
+  });
+
+  testWidgets('opens block snap diagnostics from the top bar', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1300, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _ReadyTranslationController(),
+          ),
+        ],
+        child: const NodeQlApp(),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+
+    await tester.tap(find.byKey(const ValueKey('open-block-tests')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Block-Tests'), findsOneWidget);
+    expect(find.textContaining('Geprüft:'), findsOneWidget);
+    expect(find.text('Erlaubte Snap-Konstellationen'), findsOneWidget);
+    expect(find.text('Live-Test starten'), findsOneWidget);
   });
 }
 

@@ -10,6 +10,7 @@ import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
@@ -92,6 +93,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Timer? _autosaveDebounce;
   double _paletteWidth = 250;
   bool _tutorialWasPresented = false;
+  bool _blockDiagnosticsRunning = false;
+  int _blockDiagnosticsRunToken = 0;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
 
   @override
@@ -192,6 +195,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   ref.read(sqlModeProvider.notifier).setMode(next),
               onSettings: () => _openSettings(context),
               onTutorial: () => _openTutorial(context),
+              onDiagnostics: () => _openBlockDiagnostics(context),
             ),
             Expanded(
               child: Row(
@@ -209,13 +213,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     catalog: catalog,
                     width: _paletteWidth,
                     pluginEntries: pluginState.entries,
-                    onAdd: (type, defaults) => ref
-                        .read(workspaceProvider.notifier)
-                        .addTemplate(
-                          type,
-                          const Offset(120, 100),
-                          defaults: defaults,
-                        ),
+                    onAdd: (type, defaults) {
+                      final controller = ref.read(workspaceProvider.notifier);
+                      controller.addTemplate(
+                        type,
+                        controller.suggestedTemplatePosition(type),
+                        defaults: defaults,
+                      );
+                    },
                   ),
                   MouseRegion(
                     cursor: SystemMouseCursors.resizeLeftRight,
@@ -559,6 +564,153 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openBlockDiagnostics(BuildContext context) async {
+    final report = buildBlockSnapDiagnosticReport();
+    final allowedCases = report.allowedCases;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Block-Tests'),
+        content: SizedBox(
+          width: 680,
+          height: 520,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Geprüft: ${report.total} Kombinationen, '
+                '${report.allowed} erlaubt, ${report.blocked} blockiert.',
+              ),
+              const SizedBox(height: 8),
+              const Text('Erlaubte Snap-Konstellationen'),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: allowedCases.length,
+                  itemBuilder: (context, index) {
+                    final entry = allowedCases[index];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.check_circle_outline),
+                      title: Text(
+                        '${_diagnosticLabel(entry.previous)} -> '
+                        '${_diagnosticLabel(entry.next)}',
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton.icon(
+            onPressed: _blockDiagnosticsRunning
+                ? null
+                : () {
+                    Navigator.of(context).pop();
+                    _runVisibleBlockDiagnostics(allowedCases);
+                  },
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Live-Test starten'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Schließen'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _diagnosticLabel(BlockType type) {
+    return sqlLabelFor(
+      type,
+      SqlAbstractionMode.advanced,
+      const <String, dynamic>{},
+      'de',
+    ).replaceAll('\n', ' ');
+  }
+
+  Future<void> _runVisibleBlockDiagnostics(
+    List<BlockSnapDiagnosticCase> cases,
+  ) async {
+    if (_blockDiagnosticsRunning || cases.isEmpty) return;
+    final controller = ref.read(workspaceProvider.notifier);
+    final originalWorkspace = controller.toJsonString();
+    final token = ++_blockDiagnosticsRunToken;
+
+    setState(() => _blockDiagnosticsRunning = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Live-Block-Test gestartet (${cases.length} Fälle)'),
+        duration: const Duration(milliseconds: 1500),
+      ),
+    );
+
+    try {
+      for (var index = 0; index < cases.length; index++) {
+        if (!mounted ||
+            token != _blockDiagnosticsRunToken ||
+            !_blockDiagnosticsRunning) {
+          break;
+        }
+        await _playSnapDiagnosticCase(cases[index]);
+      }
+    } finally {
+      if (mounted && token == _blockDiagnosticsRunToken) {
+        controller.restorePreviewSnapshot(originalWorkspace);
+        setState(() => _blockDiagnosticsRunning = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Live-Block-Test abgeschlossen'),
+            duration: Duration(milliseconds: 1500),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _playSnapDiagnosticCase(BlockSnapDiagnosticCase testCase) async {
+    final controller = ref.read(workspaceProvider.notifier);
+    controller.resetWithRoot(recordUndo: false);
+    final target = testCase.previous == BlockType.eventGreenFlag
+        ? ref.read(workspaceProvider).roots.single
+        : controller.addTemplate(
+            testCase.previous,
+            const Offset(260, 180),
+            autoSnap: false,
+            recordUndo: false,
+          );
+    final dragged = controller.addTemplate(
+      testCase.next,
+      const Offset(600, 180),
+      autoSnap: false,
+      recordUndo: false,
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    controller.startDrag(
+      dragged.position + const Offset(10, 10),
+      recordUndo: false,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    final destination = Offset(
+      target.position.dx,
+      target.position.dy + controller.blockHeight(target),
+    );
+    final totalDelta = destination - dragged.position;
+    const steps = 12;
+    final stepDelta = totalDelta / steps.toDouble();
+    for (var step = 0; step < steps; step++) {
+      controller.updateDrag(stepDelta);
+      await Future<void>.delayed(const Duration(milliseconds: 18));
+    }
+    controller.endDrag(recordUndo: false);
+    await Future<void>.delayed(const Duration(milliseconds: 90));
   }
 
   Future<void> _openTutorial(BuildContext context) async {
@@ -1090,6 +1242,7 @@ class _TopBar extends StatelessWidget {
     required this.onModeChanged,
     required this.onSettings,
     required this.onTutorial,
+    required this.onDiagnostics,
   });
 
   final TranslationCatalog catalog;
@@ -1102,6 +1255,7 @@ class _TopBar extends StatelessWidget {
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onSettings;
   final VoidCallback onTutorial;
+  final VoidCallback onDiagnostics;
 
   @override
   Widget build(BuildContext context) {
@@ -1186,6 +1340,13 @@ class _TopBar extends StatelessWidget {
                     tooltip: catalog.text('toolbar.tutorial'),
                     color: workbenchColors.topBarForeground,
                     icon: const Icon(Icons.school_outlined),
+                  ),
+                  IconButton(
+                    key: const ValueKey('open-block-tests'),
+                    onPressed: onDiagnostics,
+                    tooltip: 'Block-Tests',
+                    color: workbenchColors.topBarForeground,
+                    icon: const Icon(Icons.fact_check_outlined),
                   ),
                   IconButton(
                     onPressed: onSettings,
@@ -2755,7 +2916,7 @@ class _NodeView extends ConsumerWidget {
       ),
     );
 
-    return Stack(
+    final blockContent = Stack(
       clipBehavior: Clip.none,
       children: [
         SizedBox(
@@ -2787,13 +2948,25 @@ class _NodeView extends ConsumerWidget {
                   top: 9 + slot.rect.top,
                   child: DragTarget<_PaletteDragData>(
                     onWillAcceptWithDetails: (details) =>
-                        acceptsReporter && isReporterType(details.data.type),
+                        acceptsReporter &&
+                        slotAcceptsReporterType(
+                          slot.rawKey,
+                          slot.inputKey,
+                          details.data.type,
+                        ),
                     onAcceptWithDetails: (details) {
                       final reporter = slot.reporter;
                       final nestedKey = reporter == null
                           ? null
                           : primaryReporterInputKey(reporter.type);
-                      if (reporter != null && nestedKey != null) {
+                      if (slot.inputKey == 'aggregate') {
+                        engine.setReporterInput(
+                          node,
+                          slot.inputKey,
+                          details.data.type,
+                          defaults: details.data.defaults,
+                        );
+                      } else if (reporter != null && nestedKey != null) {
                         engine.setNestedReporterInput(
                           node,
                           slot.inputKey,
@@ -2886,10 +3059,11 @@ class _NodeView extends ConsumerWidget {
                                   color: _colorForNodeType(slot.reporter!.type),
                                   width: slot.rect.width,
                                   height: slot.rect.height,
-                                  label: _reporterLabel(
+                                  label: _reporterLabelForSlot(
                                     slot.reporter!,
                                     localeCode,
                                     mode,
+                                    slot.inputKey,
                                   ),
                                   isHighlighted: highlighted,
                                 ),
@@ -2904,6 +3078,31 @@ class _NodeView extends ConsumerWidget {
         ),
       ],
     );
+
+    if (node.type == BlockType.sqlHaving) {
+      return DragTarget<_PaletteDragData>(
+        onWillAcceptWithDetails: (details) => slotAcceptsReporterType(
+          'aggregate',
+          'aggregate',
+          details.data.type,
+        ),
+        onAcceptWithDetails: (details) {
+          engine.setReporterInput(
+            node,
+            'aggregate',
+            details.data.type,
+            defaults: details.data.defaults,
+          );
+        },
+        builder: (context, candidates, _) => AnimatedScale(
+          scale: candidates.isEmpty ? 1 : 1.02,
+          duration: const Duration(milliseconds: 100),
+          child: blockContent,
+        ),
+      );
+    }
+
+    return blockContent;
   }
 
   String _templateForNode(
@@ -2952,6 +3151,25 @@ class _NodeView extends ConsumerWidget {
         localeCode,
       ),
     };
+  }
+
+  String _reporterLabelForSlot(
+    BlockNode reporter,
+    String localeCode,
+    SqlAbstractionMode mode,
+    String? inputKey,
+  ) {
+    if (inputKey == 'aggregate') {
+      return switch (reporter.type) {
+        BlockType.sqlCount => 'COUNT',
+        BlockType.sqlSum => 'SUM',
+        BlockType.sqlAvg => 'AVG',
+        BlockType.sqlMin => 'MIN',
+        BlockType.sqlMax => 'MAX',
+        _ => _reporterLabel(reporter, localeCode, mode),
+      };
+    }
+    return _reporterLabel(reporter, localeCode, mode);
   }
 
   Future<void> _editReporterSlot({
@@ -3202,27 +3420,10 @@ class _NodeView extends ConsumerWidget {
         style,
         localeCode,
         mode,
+        inputKey: inputKey,
       );
-      final gapWidth = _slotGap();
-      var dynamicReduction = 0.0;
-      var extraBeforeNextText = 0.0;
-      if (inputKey == 'columns') {
-        final columnItems = _selectedColumns('${values[inputKey] ?? ''}');
-        final visibleColumnCount = columnItems.length.clamp(
-          0,
-          _maxVisibleColumnSelections,
-        );
-        dynamicReduction = (visibleColumnCount * 6.0).clamp(0.0, 12.0);
-        // Small breathing room before trailing static text like "FROM".
-        extraBeforeNextText = 8.0;
-      }
       final reservedChars =
-          ((slotWidth +
-                      gapWidth +
-                      extraBeforeNextText -
-                      12.0 -
-                      dynamicReduction) /
-                  safeSpaceWidth)
+          (_reservedInlineSlotWidth(slotWidth, inputKey) / safeSpaceWidth)
               .ceil();
       buffer.write(' ' * reservedChars);
       cursor = m.end;
@@ -3269,6 +3470,7 @@ class _NodeView extends ConsumerWidget {
         style,
         localeCode,
         mode,
+        inputKey: inputKey,
       );
       final slotHeight = reporter == null ? 20.0 : 34.0;
       if (x < maxWidth) {
@@ -3287,8 +3489,7 @@ class _NodeView extends ConsumerWidget {
           ),
         );
       }
-      x += _slotGap();
-      x += slotWidth;
+      x += _reservedInlineSlotWidth(slotWidth, inputKey);
       cursor = m.end;
     }
     return slots;
@@ -3326,14 +3527,17 @@ class _NodeView extends ConsumerWidget {
       final display = _slotDisplay(values[inputKey], rawKey, localeCode, mode);
       lineWidth +=
           _slotLeadingGap(before, inputKey) +
-          _slotWidthForContent(
-            display,
-            reporterForInput(node, inputKey),
-            style,
-            localeCode,
-            mode,
-          ) +
-          _slotGap();
+          _reservedInlineSlotWidth(
+            _slotWidthForContent(
+              display,
+              reporterForInput(node, inputKey),
+              style,
+              localeCode,
+              mode,
+              inputKey: inputKey,
+            ),
+            inputKey,
+          );
       cursor = m.end;
     }
     final trailing = template.substring(cursor);
@@ -3364,11 +3568,26 @@ class _NodeView extends ConsumerWidget {
     BlockNode? reporter,
     TextStyle style,
     String localeCode,
-    SqlAbstractionMode mode,
-  ) {
+    SqlAbstractionMode mode, {
+    String? inputKey,
+  }) {
     if (reporter == null) return _slotWidthForDisplay(display, style);
-    final label = _reporterLabel(reporter, localeCode, mode);
+    final label = _reporterLabelForSlot(reporter, localeCode, mode, inputKey);
     return (_measureText(label, style) + 32).clamp(72.0, 260.0);
+  }
+
+  double _reservedInlineSlotWidth(double slotWidth, String inputKey) {
+    final safetyGap = switch (inputKey) {
+      'columns' ||
+      'column' ||
+      'column_name' ||
+      'where_column' ||
+      'left_column' ||
+      'right_column' ||
+      'condition_column' => 8.0,
+      _ => 4.0,
+    };
+    return slotWidth + _slotGap() + safetyGap;
   }
 
   double _measureText(String text, TextStyle style) {
@@ -3394,7 +3613,9 @@ class _NodeView extends ConsumerWidget {
     if (normalized == rawLower) return '';
     if (normalized == 'table_name' ||
         normalized == 'column' ||
+        normalized == 'spalte' ||
         normalized == 'column_name' ||
+        normalized == 'spaltenname' ||
         normalized == 'columns') {
       final defaultDisplay = _slotDefaultDisplay(rawKey);
       if (mode == SqlAbstractionMode.simple &&
@@ -3409,6 +3630,12 @@ class _NodeView extends ConsumerWidget {
     }
     if (_slotInputKey(rawKey) == 'join_type') {
       return _normalizeJoinValue(text);
+    }
+    if (_slotInputKey(rawKey) == 'operator') {
+      return _normalizeOperatorValue(text);
+    }
+    if (_slotInputKey(rawKey) == 'aggregate') {
+      return _normalizeAggregateValue(text);
     }
     if (_slotInputKey(rawKey) == 'columns') {
       if (mode == SqlAbstractionMode.simple && text == '*') {
@@ -3429,14 +3656,34 @@ class _NodeView extends ConsumerWidget {
   String _slotDefaultDisplay(String rawKey) {
     switch (rawKey) {
       case 'columns':
+      case 'Spalten':
         return '*';
       case 'column':
+      case 'Spalte':
       case 'column_name':
+      case 'Spaltenname':
+      case 'where_column':
+      case 'Filter_Spalte':
+      case 'left_column':
+      case 'linke_Spalte':
+      case 'right_column':
+      case 'rechte_Spalte':
+      case 'condition_column':
+      case 'Bedingungs_Spalte':
         return 'id';
+      case 'operator':
+        return '=';
+      case 'aggregate':
+        return 'COUNT';
+      case 'value':
+      case 'where_value':
+      case 'condition_value':
+        return '1';
       case 'table':
       case 'table_name':
         return '';
       case 'column_definitions':
+      case 'Spaltendefinitionen':
         return 'id INTEGER PRIMARY KEY';
       case 'ASC|DESC':
       case 'aufsteigend|absteigend':
@@ -3459,6 +3706,7 @@ class _NodeView extends ConsumerWidget {
     if (node.type == BlockType.sqlWhere) return 'predicate';
     if (node.type == BlockType.sqlOrderBy) return 'expr';
     if (node.type == BlockType.sqlGroupBy) return 'expr';
+    if (node.type == BlockType.sqlHaving) return 'value';
     if (node.type == BlockType.sqlFrom ||
         node.type == BlockType.sqlJoin ||
         node.type == BlockType.sqlInsert ||
@@ -3599,8 +3847,21 @@ class _NodeView extends ConsumerWidget {
       'table',
       'table_name',
       'column',
+      'Spalte',
       'column_name',
+      'Spaltenname',
+      'where_column',
+      'Filter_Spalte',
+      'left_column',
+      'linke_Spalte',
+      'right_column',
+      'rechte_Spalte',
+      'condition_column',
+      'Bedingungs_Spalte',
       'columns',
+      'Spalten',
+      'aggregate',
+      'operator',
       'JOIN_TYPE',
       'datatype',
       'ASC|DESC',
@@ -3610,8 +3871,21 @@ class _NodeView extends ConsumerWidget {
     final dropdownMapped = <String>{
       'table',
       'column',
+      'Spalte',
       'column_name',
+      'Spaltenname',
+      'where_column',
+      'Filter_Spalte',
+      'left_column',
+      'linke_Spalte',
+      'right_column',
+      'rechte_Spalte',
+      'condition_column',
+      'Bedingungs_Spalte',
       'columns',
+      'Spalten',
+      'aggregate',
+      'operator',
       'join_type',
       'datatype',
       'order',
@@ -3629,7 +3903,22 @@ class _NodeView extends ConsumerWidget {
       case 'table_name':
         return 'table';
       case 'column_definitions':
+      case 'Spaltendefinitionen':
         return 'definition';
+      case 'Spalten':
+        return 'columns';
+      case 'Spalte':
+        return 'column';
+      case 'Spaltenname':
+        return 'column_name';
+      case 'Filter_Spalte':
+        return 'where_column';
+      case 'linke_Spalte':
+        return 'left_column';
+      case 'rechte_Spalte':
+        return 'right_column';
+      case 'Bedingungs_Spalte':
+        return 'condition_column';
       case 'JOIN_TYPE':
         return 'join_type';
       case 'ASC|DESC':
@@ -3655,7 +3944,11 @@ class _NodeView extends ConsumerWidget {
 
     if (mappedKey == 'columns' ||
         mappedKey == 'column' ||
-        mappedKey == 'column_name') {
+        mappedKey == 'column_name' ||
+        mappedKey == 'where_column' ||
+        mappedKey == 'left_column' ||
+        mappedKey == 'right_column' ||
+        mappedKey == 'condition_column') {
       final cols = _availableColumns(node, runtime, engine);
       if (mappedKey == 'columns') {
         final currentRaw = '${node.inputs['columns'] ?? '*'}';
@@ -3680,6 +3973,14 @@ class _NodeView extends ConsumerWidget {
         'NATURAL',
         'SELF',
       ];
+    }
+
+    if (mappedKey == 'aggregate') {
+      return const <String>['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+    }
+
+    if (mappedKey == 'operator') {
+      return const <String>['=', '!=', '<>', '>', '>=', '<', '<=', 'LIKE'];
     }
 
     if (mappedKey == 'datatype') {
@@ -4165,9 +4466,39 @@ class _NodeView extends ConsumerWidget {
     return normalized;
   }
 
+  String _normalizeAggregateValue(String input) {
+    final normalized = input.trim().toUpperCase();
+    const known = <String>{'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'};
+    return known.contains(normalized) ? normalized : 'COUNT';
+  }
+
+  String _normalizeOperatorValue(String input) {
+    final normalized = input.trim().toUpperCase();
+    const known = <String>{
+      '=',
+      '!=',
+      '<>',
+      '>',
+      '>=',
+      '<',
+      '<=',
+      'LIKE',
+      'NOT LIKE',
+    };
+    if (known.contains(normalized)) return normalized;
+    if (normalized == '=>') return '>=';
+    if (normalized == '=<') return '<=';
+    if (normalized == '==' || normalized == 'IST' || normalized == 'IS') {
+      return '=';
+    }
+    return '=';
+  }
+
   String _normalizeInputValue(String mappedKey, String value) {
     if (mappedKey == 'order') return _normalizeOrderValue(value);
     if (mappedKey == 'join_type') return _normalizeJoinValue(value);
+    if (mappedKey == 'operator') return _normalizeOperatorValue(value);
+    if (mappedKey == 'aggregate') return _normalizeAggregateValue(value);
     return value;
   }
 

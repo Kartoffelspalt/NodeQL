@@ -175,25 +175,51 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(pan: state.pan + delta);
   }
 
-  void addTemplate(
+  BlockNode addTemplate(
     BlockType type,
     Offset worldPos, {
     Map<String, dynamic>? defaults,
+    bool autoSnap = true,
+    bool recordUndo = true,
   }) {
-    _pushUndoSnapshot();
+    if (recordUndo) _pushUndoSnapshot();
     final node = _createNode(type, worldPos);
     if (defaults != null && defaults.isNotEmpty) {
       node.inputs.addAll(defaults);
     }
     state = state.copyWith(roots: <BlockNode>[...state.roots, node]);
 
-    final snap = _findBestSnap(node, excludedIds: <String>{node.id});
-    if (snap != null) {
-      _insertBySnap(node, snap.target, snap.zone);
+    if (autoSnap) {
+      final snap = _findBestSnap(node, excludedIds: <String>{node.id});
+      if (snap != null) {
+        _insertBySnap(node, snap.target, snap.zone);
+      }
     }
 
     _relayoutAll();
     _touch();
+    return node;
+  }
+
+  Offset suggestedTemplatePosition(BlockType type) {
+    final probe = _createNode(type, Offset.zero);
+    final targets = allBlocks().toList(growable: false).reversed;
+    for (final target in targets) {
+      if (!hasBottomConnector(target) || !hasTopConnector(probe)) continue;
+      if (!_canConnectSequentially(target, probe)) continue;
+      final successor = target.next;
+      if (successor != null &&
+          !_canConnectSequentially(_chainTail(probe), successor)) {
+        continue;
+      }
+      return Offset(
+        target.position.dx,
+        target.position.dy + blockHeight(target),
+      );
+    }
+
+    final rootCount = state.roots.length;
+    return Offset(120, 120 + (rootCount * 72));
   }
 
   void updateInput(BlockNode node, String key, dynamic value) {
@@ -309,10 +335,13 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _touch();
   }
 
-  void startDrag(Offset worldPos) {
+  void startDrag(Offset worldPos, {bool recordUndo = true}) {
     final hit = _hitTest(worldPos);
-    if (hit != null) {
+    if (hit != null && recordUndo) {
       _dragStartSnapshot = toJsonString();
+      _dragChanged = false;
+    } else if (!recordUndo) {
+      _dragStartSnapshot = null;
       _dragChanged = false;
     }
     if (hit != null) {
@@ -345,7 +374,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     );
   }
 
-  void endDrag({bool deleteDragged = false}) {
+  void endDrag({bool deleteDragged = false, bool recordUndo = true}) {
     final draggedId = state.draggingId;
     if (draggedId == null) {
       state = state.copyWith(
@@ -363,10 +392,10 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     final zone = state.highlightZone;
 
     if (dragged != null && deleteDragged) {
-      _pushDragUndoSnapshotIfNeeded();
+      if (recordUndo) _pushDragUndoSnapshotIfNeeded();
       _deleteSingleNode(dragged);
     } else if (dragged != null && target != null && zone != null) {
-      _pushDragUndoSnapshotIfNeeded();
+      if (recordUndo) _pushDragUndoSnapshotIfNeeded();
       _insertBySnap(dragged, target, zone);
     } else {
       _dragStartSnapshot = null;
@@ -643,16 +672,20 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           id: 'count_$suffix',
           position: worldPos,
           operatorType: type,
-        )..inputs['expr'] = '*';
+        )..inputs.addAll(<String, dynamic>{'expr': '*', 'column': '*'});
       case BlockType.sqlSum:
       case BlockType.sqlAvg:
       case BlockType.sqlMin:
       case BlockType.sqlMax:
         return OperatorBlock(
-          id: 'aggregate_$suffix',
-          position: worldPos,
-          operatorType: type,
-        )..inputs['expr'] = 'amount';
+            id: 'aggregate_$suffix',
+            position: worldPos,
+            operatorType: type,
+          )
+          ..inputs.addAll(<String, dynamic>{
+            'expr': 'amount',
+            'column': 'amount',
+          });
       case BlockType.sqlFrom:
         return OperatorBlock(
           id: 'from_$suffix',
@@ -664,7 +697,12 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           id: 'where_$suffix',
           position: worldPos,
           motionType: BlockType.sqlWhere,
-          inputs: <String, dynamic>{'predicate': '1 = 1'},
+          inputs: <String, dynamic>{
+            'column': 'id',
+            'operator': '=',
+            'value': '1',
+            'predicate': 'id = 1',
+          },
         );
       case BlockType.sqlJoin:
       case BlockType.sqlInnerJoin:
@@ -674,6 +712,15 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       case BlockType.sqlCrossJoin:
       case BlockType.sqlSelfJoin:
       case BlockType.sqlNaturalJoin:
+        final joinType = switch (type) {
+          BlockType.sqlLeftJoin => 'LEFT',
+          BlockType.sqlRightJoin => 'RIGHT',
+          BlockType.sqlFullJoin => 'FULL',
+          BlockType.sqlCrossJoin => 'CROSS',
+          BlockType.sqlNaturalJoin => 'NATURAL',
+          BlockType.sqlSelfJoin => 'SELF',
+          _ => 'INNER',
+        };
         return OperatorBlock(
             id: 'join_$suffix',
             position: worldPos,
@@ -682,20 +729,30 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           ..inputs.addAll(<String, dynamic>{
             'table': 'table_name',
             'on': '1 = 1',
-            'join_type': 'INNER',
+            'left_column': 'id',
+            'operator': '=',
+            'right_column': 'id',
+            'join_type': joinType,
           });
       case BlockType.sqlGroupBy:
         return OperatorBlock(
           id: 'group_$suffix',
           position: worldPos,
           operatorType: type,
-        )..inputs['expr'] = 'id';
+        )..inputs.addAll(<String, dynamic>{'expr': 'id', 'column': 'id'});
       case BlockType.sqlHaving:
         return OperatorBlock(
-          id: 'having_$suffix',
-          position: worldPos,
-          operatorType: type,
-        )..inputs['predicate'] = 'COUNT(*) > 0';
+            id: 'having_$suffix',
+            position: worldPos,
+            operatorType: type,
+          )
+          ..inputs.addAll(<String, dynamic>{
+            'aggregate': 'COUNT',
+            'column': '*',
+            'operator': '>',
+            'value': '0',
+            'predicate': 'COUNT(*) > 0',
+          });
       case BlockType.sqlOrderBy:
         return MotionBlock(
           id: 'order_$suffix',
@@ -722,13 +779,24 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           ..inputs.addAll(<String, dynamic>{
             'table': 'table_name',
             'set': 'col = val',
+            'column': 'column_name',
+            'value': 'value',
+            'where_column': 'id',
+            'operator': '=',
+            'where_value': '1',
           });
       case BlockType.sqlDelete:
         return OperatorBlock(
-          id: 'delete_$suffix',
-          position: worldPos,
-          operatorType: type,
-        )..inputs['table'] = 'table_name';
+            id: 'delete_$suffix',
+            position: worldPos,
+            operatorType: type,
+          )
+          ..inputs.addAll(<String, dynamic>{
+            'table': 'table_name',
+            'where_column': 'id',
+            'operator': '=',
+            'where_value': '1',
+          });
       case BlockType.sqlCreateTable:
       case BlockType.sqlAlterTable:
       case BlockType.sqlTruncate:
@@ -776,6 +844,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           ..inputs.addAll(<String, dynamic>{
             'table': 'new_table',
             'definition': 'id INTEGER PRIMARY KEY',
+            'condition_column': 'id',
+            'operator': '=',
+            'condition_value': '1',
+            'when': 'id = 1',
+            'cond': 'id = 1',
+            'result': "'yes'",
+            'default': "'no'",
+            'value': "'yes'",
           });
       case BlockType.sqlDropTable:
         return OperatorBlock(
@@ -1552,8 +1628,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _applySerializedWorkspace(source);
   }
 
-  void resetWithRoot() {
-    _pushUndoSnapshot();
+  void restorePreviewSnapshot(String source) {
+    _dragStartSnapshot = null;
+    _dragChanged = false;
+    _applySerializedWorkspace(source);
+  }
+
+  void resetWithRoot({bool recordUndo = true}) {
+    if (recordUndo) _pushUndoSnapshot();
     state = WorkspaceState(
       roots: <BlockNode>[
         EventBlock(id: 'event_root', position: const Offset(120, 120))
