@@ -151,11 +151,11 @@ class SqlCompiler {
       case BlockType.sqlFrom:
         return 'FROM ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlWhere:
-        return 'WHERE ${node.inputs['predicate'] as String? ?? '1 = 1'}';
+        return 'WHERE ${_predicateFromInputs(node, fallback: '1 = 1')}';
       case BlockType.sqlJoin:
         final joinType = _normalizedJoinType(node.inputs['join_type']);
         final table = node.inputs['table'] as String? ?? 'table_name';
-        final condition = node.inputs['on'] as String? ?? '1 = 1';
+        final condition = _joinConditionFromInputs(node);
         return switch (joinType) {
           'CROSS' => 'CROSS JOIN $table',
           'NATURAL' => 'NATURAL JOIN $table',
@@ -167,25 +167,25 @@ class SqlCompiler {
           _ => 'JOIN $table ON $condition',
         };
       case BlockType.sqlInnerJoin:
-        return 'INNER JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${node.inputs['on'] as String? ?? '1 = 1'}';
+        return 'INNER JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlLeftJoin:
-        return 'LEFT JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${node.inputs['on'] as String? ?? '1 = 1'}';
+        return 'LEFT JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlRightJoin:
-        return 'RIGHT JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${node.inputs['on'] as String? ?? '1 = 1'}';
+        return 'RIGHT JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlFullJoin:
-        return 'FULL JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${node.inputs['on'] as String? ?? '1 = 1'}';
+        return 'FULL JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlCrossJoin:
         return 'CROSS JOIN ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlSelfJoin:
-        return 'JOIN ${node.inputs['table'] as String? ?? 'table_name'} AS t2 ON ${node.inputs['on'] as String? ?? 't1.id = t2.id'}';
+        return 'JOIN ${node.inputs['table'] as String? ?? 'table_name'} AS t2 ON ${_joinConditionFromInputs(node, fallback: 't1.id = t2.id')}';
       case BlockType.sqlNaturalJoin:
         return 'NATURAL JOIN ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlGroupBy:
-        return 'GROUP BY ${node.inputs['expr'] as String? ?? 'id'}';
+        return 'GROUP BY ${node.inputs['column'] as String? ?? node.inputs['expr'] as String? ?? 'id'}';
       case BlockType.sqlHaving:
-        return 'HAVING ${node.inputs['predicate'] as String? ?? 'COUNT(*) > 0'}';
+        return 'HAVING ${_havingPredicateFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlOrderBy:
-        return 'ORDER BY ${node.inputs['expr'] as String? ?? 'id'}';
+        return 'ORDER BY ${_orderByFromInputs(node)}';
       case BlockType.sqlUnion:
         return 'UNION ${node.inputs['sql'] as String? ?? 'SELECT 1'}';
       case BlockType.sqlIntersect:
@@ -199,15 +199,15 @@ class SqlCompiler {
       case BlockType.sqlSubqueryAll:
         return '${node.inputs['lhs'] as String? ?? 'id'} = ALL (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
       case BlockType.sqlCount:
-        return 'COUNT(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? '*'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return 'COUNT(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? '*'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlSum:
-        return 'SUM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return 'SUM(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlAvg:
-        return 'AVG(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return 'AVG(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlMin:
-        return 'MIN(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return 'MIN(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlMax:
-        return 'MAX(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return 'MAX(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlConcat:
         return 'CONCAT(${_compileReporterInput(node, 'a', '${node.inputs['a'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}, ${_compileReporterInput(node, 'b', '${node.inputs['b'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlSubstring:
@@ -247,9 +247,9 @@ class SqlCompiler {
       case BlockType.sqlDateDiff:
         return 'DATEDIFF(${node.inputs['a'] as String? ?? 'CURRENT_DATE'}, ${node.inputs['b'] as String? ?? 'CURRENT_DATE'})';
       case BlockType.sqlCase:
-        return 'CASE WHEN ${node.inputs['when'] as String? ?? '1=1'} THEN ${node.inputs['then'] as String? ?? "'x'"} ELSE ${node.inputs['else'] as String? ?? "'y'"} END';
+        return 'CASE WHEN ${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['when'] as String? ?? '1 = 1')} THEN ${node.inputs['then'] as String? ?? node.inputs['result'] as String? ?? "'x'"} ELSE ${node.inputs['else'] as String? ?? node.inputs['default'] as String? ?? "'y'"} END';
       case BlockType.sqlIf:
-        return 'IF(${node.inputs['cond'] as String? ?? '1=1'}, ${node.inputs['a'] as String? ?? "'x'"}, ${node.inputs['b'] as String? ?? "'y'"})';
+        return 'IF(${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['cond'] as String? ?? '1 = 1')}, ${node.inputs['a'] as String? ?? node.inputs['value'] as String? ?? "'x'"}, ${node.inputs['b'] as String? ?? node.inputs['default'] as String? ?? "'y'"})';
       case BlockType.sqlCoalesce:
         return 'COALESCE(${node.inputs['a'] as String? ?? 'NULL'}, ${node.inputs['b'] as String? ?? 'NULL'})';
       case BlockType.sqlNullIf:
@@ -257,9 +257,9 @@ class SqlCompiler {
       case BlockType.sqlInsert:
         return 'INSERT INTO ${node.inputs['table'] as String? ?? 'table_name'} VALUES (${node.inputs['values'] as String? ?? ''})';
       case BlockType.sqlUpdate:
-        return 'UPDATE ${node.inputs['table'] as String? ?? 'table_name'} SET ${node.inputs['set'] as String? ?? 'col = value'}';
+        return 'UPDATE ${node.inputs['table'] as String? ?? 'table_name'} SET ${node.inputs['column'] as String? ?? 'column_name'} = ${node.inputs['value'] as String? ?? 'value'} WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: 'id = 1')}';
       case BlockType.sqlDelete:
-        return 'DELETE FROM ${node.inputs['table'] as String? ?? 'table_name'}';
+        return 'DELETE FROM ${node.inputs['table'] as String? ?? 'table_name'} WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: 'id = 1')}';
       case BlockType.sqlCreateTable:
         return 'CREATE TABLE ${node.inputs['table'] as String? ?? 'new_table'} (${node.inputs['definition'] as String? ?? 'id INTEGER PRIMARY KEY'})';
       case BlockType.sqlAlterTable:
@@ -302,6 +302,123 @@ class SqlCompiler {
     return supported.contains(normalized) ? normalized : '';
   }
 
+  String _orderByFromInputs(BlockNode node) {
+    final column =
+        node.inputs['column'] as String? ??
+        node.inputs['expr'] as String? ??
+        'id';
+    final order = _normalizedComparisonOperator(
+      node.inputs['order'],
+      defaultValue: 'ASC',
+    );
+    if (column.toUpperCase().endsWith(' ASC') ||
+        column.toUpperCase().endsWith(' DESC')) {
+      return column;
+    }
+    return '$column $order';
+  }
+
+  String _predicateFromInputs(
+    BlockNode node, {
+    String columnKey = 'column',
+    String operatorKey = 'operator',
+    String valueKey = 'value',
+    required String fallback,
+  }) {
+    final column = '${node.inputs[columnKey] ?? ''}'.trim();
+    final operator = _normalizedComparisonOperator(node.inputs[operatorKey]);
+    final value = '${node.inputs[valueKey] ?? ''}'.trim();
+    if (column.isEmpty || value.isEmpty) {
+      return node.inputs['predicate'] as String? ?? fallback;
+    }
+    return '$column $operator $value';
+  }
+
+  String _joinConditionFromInputs(BlockNode node, {String fallback = '1 = 1'}) {
+    final left = '${node.inputs['left_column'] ?? ''}'.trim();
+    final operator = _normalizedComparisonOperator(node.inputs['operator']);
+    final right = '${node.inputs['right_column'] ?? ''}'.trim();
+    if (left.isEmpty || right.isEmpty) {
+      return node.inputs['on'] as String? ?? fallback;
+    }
+    return '$left $operator $right';
+  }
+
+  String _havingPredicateFromInputs(
+    BlockNode node, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+    Set<String>? visited,
+  }) {
+    final aggregateReporter = reporterForInput(node, 'aggregate');
+    final aggregate = _aggregateFunctionFromReporter(
+      aggregateReporter,
+      fallback: node.inputs['aggregate'],
+    );
+    final column = '${node.inputs['column'] ?? '*'}'.trim();
+    final reporterExpr = _compileReporterInput(
+      node,
+      'expr',
+      '',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
+    final expr = reporterExpr.isNotEmpty
+        ? reporterExpr
+        : '${node.inputs['expr'] ?? ''}'.trim();
+    final operator = _normalizedComparisonOperator(node.inputs['operator']);
+    final value = '${node.inputs['value'] ?? '0'}'.trim();
+    if (value.isEmpty) {
+      return node.inputs['predicate'] as String? ?? 'COUNT(*) > 0';
+    }
+    if (aggregateReporter != null || node.inputs.containsKey('aggregate')) {
+      return '$aggregate(${column.isEmpty ? '*' : column}) $operator $value';
+    }
+    if (expr.isNotEmpty) return '$expr $operator $value';
+
+    return '$aggregate(${column.isEmpty ? '*' : column}) $operator $value';
+  }
+
+  String _aggregateFunctionFromReporter(
+    BlockNode? reporter, {
+    dynamic fallback,
+  }) {
+    if (reporter != null) {
+      final typeName = switch (reporter.type) {
+        BlockType.sqlCount => 'COUNT',
+        BlockType.sqlSum => 'SUM',
+        BlockType.sqlAvg => 'AVG',
+        BlockType.sqlMin => 'MIN',
+        BlockType.sqlMax => 'MAX',
+        _ => null,
+      };
+      if (typeName != null) return typeName;
+    }
+    final normalized = '${fallback ?? 'COUNT'}'.trim().toUpperCase();
+    const supported = <String>{'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'};
+    return supported.contains(normalized) ? normalized : 'COUNT';
+  }
+
+  String _normalizedComparisonOperator(
+    dynamic value, {
+    String defaultValue = '=',
+  }) {
+    final normalized = '${value ?? defaultValue}'.trim().toUpperCase();
+    const supported = <String>{
+      '=',
+      '!=',
+      '<>',
+      '>',
+      '>=',
+      '<',
+      '<=',
+      'LIKE',
+      'NOT LIKE',
+    };
+    return supported.contains(normalized) ? normalized : defaultValue;
+  }
+
   String _compileChildren(
     List<BlockNode> children, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
@@ -338,6 +455,28 @@ class SqlCompiler {
       warnings: warnings,
       visited: <String>{...?visited},
     ).trim();
+  }
+
+  String _compileReporterInputAny(
+    BlockNode node,
+    List<String> keys,
+    String fallback, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+    Set<String>? visited,
+  }) {
+    for (final key in keys) {
+      final compiled = _compileReporterInput(
+        node,
+        key,
+        '',
+        pluginBlocks: pluginBlocks,
+        warnings: warnings,
+        visited: visited,
+      );
+      if (compiled.isNotEmpty) return compiled;
+    }
+    return fallback;
   }
 }
 

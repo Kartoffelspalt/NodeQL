@@ -1,0 +1,1707 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="NodeQL SQL Workshop: ein interaktives Tutorial zum Lernen von SQL mit visuellen NodeQL-Blöcken.">
+  <title>NodeQL SQL Workshop</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172026;
+      --muted: #5d6872;
+      --paper: #fbfaf6;
+      --panel: #ffffff;
+      --line: #d9ded9;
+      --green: #18725a;
+      --mint: #dff6e9;
+      --amber: #f3b13e;
+      --amber-soft: #fff0cb;
+      --rose: #d94d6a;
+      --rose-soft: #ffe3e9;
+      --blue: #2e6bd9;
+      --blue-soft: #dfeaff;
+      --violet: #7457d8;
+      --code: #101820;
+      --code-soft: #18242d;
+      --shadow: 0 20px 60px rgba(23, 32, 38, 0.13);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+    }
+
+    .skip-link {
+      position: absolute;
+      left: 16px;
+      top: 12px;
+      z-index: 20;
+      transform: translateY(-160%);
+      background: var(--ink);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 6px;
+      text-decoration: none;
+    }
+
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid rgba(23, 32, 38, 0.1);
+      background: rgba(251, 250, 246, 0.92);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav-links a,
+    .nav-links button,
+    .link-button {
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 9px 11px;
+      background: transparent;
+      color: var(--muted);
+      text-decoration: none;
+      cursor: pointer;
+      min-height: 40px;
+    }
+
+    .nav-links a:hover,
+    .nav-links a:focus-visible,
+    .nav-links button:hover,
+    .nav-links button:focus-visible,
+    .link-button:hover,
+    .link-button:focus-visible {
+      outline: none;
+      color: var(--ink);
+      border-color: var(--line);
+      background: #fff;
+    }
+
+    .hero {
+      border-bottom: 1px solid rgba(23, 32, 38, 0.09);
+      background:
+        linear-gradient(120deg, rgba(223, 246, 233, 0.95), rgba(255, 240, 203, 0.82) 48%, rgba(223, 234, 255, 0.78)),
+        var(--paper);
+    }
+
+    .hero-inner {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      min-height: calc(100vh - 68px);
+      display: grid;
+      grid-template-columns: minmax(0, 0.92fr) minmax(360px, 1.08fr);
+      gap: 44px;
+      align-items: center;
+      padding: 54px 0 34px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+      color: var(--green);
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 760px;
+      font-size: clamp(2.5rem, 6vw, 5.9rem);
+    }
+
+    h2 {
+      font-size: clamp(2rem, 4vw, 3.7rem);
+    }
+
+    h3 {
+      font-size: 1.28rem;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .lead {
+      max-width: 660px;
+      margin-top: 20px;
+      color: #34414b;
+      font-size: clamp(1.06rem, 2vw, 1.3rem);
+    }
+
+    .hero-actions,
+    .button-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 28px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      min-height: 44px;
+      padding: 11px 15px;
+      border: 1px solid var(--ink);
+      border-radius: 8px;
+      background: var(--ink);
+      color: #fff;
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 760;
+      box-shadow: 0 8px 18px rgba(23, 32, 38, 0.14);
+    }
+
+    .button.secondary {
+      background: #fff;
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    .button.ghost {
+      border-color: var(--line);
+      background: transparent;
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    .button:hover,
+    .button:focus-visible {
+      outline: 3px solid rgba(46, 107, 217, 0.22);
+      outline-offset: 2px;
+    }
+
+    .hero-visual {
+      min-width: 0;
+    }
+
+    .screenshot-frame {
+      overflow: hidden;
+      border: 1px solid rgba(23, 32, 38, 0.16);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .screenshot-frame img {
+      width: 100%;
+      height: auto;
+    }
+
+    .hero-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stat {
+      min-height: 80px;
+      border: 1px solid rgba(23, 32, 38, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.75);
+      padding: 12px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1.18rem;
+      line-height: 1.1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .section {
+      padding: 82px 0;
+    }
+
+    .section.alt {
+      background: #f1f5ef;
+      border-block: 1px solid rgba(23, 32, 38, 0.08);
+    }
+
+    .wrap {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    .section-head p {
+      max-width: 580px;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+
+    .progress-shell {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 14px;
+      border-radius: 8px;
+      min-width: min(100%, 320px);
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+    }
+
+    .progress-track {
+      height: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e7ebe6;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--blue), var(--amber));
+      transition: width 0.25s ease;
+    }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .module {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 18px;
+      min-height: 190px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .module.done {
+      border-color: rgba(24, 114, 90, 0.45);
+      background: linear-gradient(180deg, #fff, var(--mint));
+    }
+
+    .module small {
+      color: var(--muted);
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .module p {
+      color: var(--muted);
+    }
+
+    .module button {
+      margin-top: auto;
+      width: 100%;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .tab-list {
+      position: sticky;
+      top: 88px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .tab-button {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 11px;
+      align-items: center;
+      min-height: 58px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      padding: 10px;
+      text-align: left;
+    }
+
+    .tab-button span:first-child {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: #edf1ed;
+      font-weight: 850;
+      color: var(--green);
+    }
+
+    .tab-button[aria-selected="true"] {
+      border-color: rgba(24, 114, 90, 0.55);
+      background: var(--mint);
+    }
+
+    .lesson {
+      display: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      min-height: 600px;
+    }
+
+    .lesson.active {
+      display: block;
+    }
+
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.04fr) minmax(320px, 0.96fr);
+      gap: 0;
+    }
+
+    .lesson-copy,
+    .lesson-lab {
+      padding: clamp(22px, 4vw, 34px);
+    }
+
+    .lesson-copy {
+      border-right: 1px solid var(--line);
+    }
+
+    .lesson-copy p,
+    .lesson-copy li {
+      color: #3f4b55;
+    }
+
+    .lesson-copy ul,
+    .lesson-copy ol {
+      padding-left: 22px;
+    }
+
+    .lesson-copy li + li {
+      margin-top: 8px;
+    }
+
+    .lesson-copy h3 + p,
+    .lesson-copy p + p,
+    .lesson-copy p + ul,
+    .lesson-copy p + ol,
+    .lesson-copy ul + p,
+    .lesson-copy ol + p {
+      margin-top: 14px;
+    }
+
+    .node-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .node {
+      border: 2px solid rgba(23, 32, 38, 0.16);
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: #102018;
+      font-weight: 760;
+      box-shadow: inset 0 -4px 0 rgba(23, 32, 38, 0.08);
+    }
+
+    .node small {
+      display: block;
+      margin-top: 5px;
+      color: rgba(16, 32, 24, 0.68);
+      font-weight: 600;
+    }
+
+    .node.select {
+      background: #dff6e9;
+      border-color: #8ad6b4;
+    }
+
+    .node.from {
+      background: #dfeaff;
+      border-color: #9bb9f2;
+    }
+
+    .node.where {
+      background: #fff0cb;
+      border-color: #f4ca70;
+    }
+
+    .node.join {
+      background: #f0e8ff;
+      border-color: #b8a1ef;
+    }
+
+    .node.group {
+      background: #ffe3e9;
+      border-color: #ee99aa;
+    }
+
+    .sql-window {
+      overflow: hidden;
+      border-radius: 8px;
+      background: var(--code);
+      color: #eaf7ef;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .sql-titlebar {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      background: var(--code-soft);
+      color: #b5c7d4;
+      font-size: 0.86rem;
+    }
+
+    .copy-sql {
+      min-height: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 6px;
+      padding: 5px 8px;
+      background: transparent;
+      color: #eaf7ef;
+      cursor: pointer;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .sql-window pre {
+      padding: 16px;
+      min-height: 122px;
+      font-size: 0.94rem;
+    }
+
+    .lab-controls {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 740;
+    }
+
+    .field select,
+    .field input,
+    .field textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      padding: 10px 11px;
+      min-height: 42px;
+    }
+
+    .field textarea {
+      min-height: 142px;
+      resize: vertical;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      line-height: 1.45;
+    }
+
+    .mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      overflow: hidden;
+      border-radius: 8px;
+      font-size: 0.92rem;
+    }
+
+    .mini-table th,
+    .mini-table td {
+      border: 1px solid var(--line);
+      padding: 9px;
+      text-align: left;
+    }
+
+    .mini-table th {
+      background: #eef3ef;
+      color: #26343d;
+    }
+
+    .feedback {
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .feedback.ok {
+      border-color: rgba(24, 114, 90, 0.45);
+      background: var(--mint);
+      color: #145944;
+    }
+
+    .feedback.warn {
+      border-color: rgba(217, 77, 106, 0.4);
+      background: var(--rose-soft);
+      color: #8f2540;
+    }
+
+    .exercise-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .exercise {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 18px;
+      min-height: 350px;
+    }
+
+    .exercise p {
+      color: var(--muted);
+    }
+
+    .exercise textarea {
+      min-height: 152px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      resize: vertical;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .workshop-split {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .data-browser {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 18px;
+    }
+
+    .schema-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .schema-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fafcf9;
+    }
+
+    .schema-item button {
+      white-space: nowrap;
+    }
+
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .figure {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .figure figcaption {
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .quiz {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .quiz-panel,
+    .cheat-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 22px;
+    }
+
+    .quiz-options {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .quiz-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .quiz-option.correct {
+      border-color: rgba(24, 114, 90, 0.5);
+      background: var(--mint);
+    }
+
+    .quiz-option.incorrect {
+      border-color: rgba(217, 77, 106, 0.45);
+      background: var(--rose-soft);
+    }
+
+    .cheat-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .cheat-item {
+      border-left: 4px solid var(--blue);
+      padding: 11px 12px;
+      background: #f8fafc;
+    }
+
+    .cheat-item:nth-child(2n) {
+      border-left-color: var(--green);
+    }
+
+    .cheat-item:nth-child(3n) {
+      border-left-color: var(--amber);
+    }
+
+    .cheat-item strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .footer {
+      background: var(--ink);
+      color: #eaf7ef;
+      padding: 40px 0;
+    }
+
+    .footer .wrap {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .footer a {
+      color: #f9d991;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 980px) {
+      .hero-inner,
+      .tabs,
+      .lesson-layout,
+      .workshop-split,
+      .quiz {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-inner {
+        min-height: auto;
+      }
+
+      .tab-list {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .lesson-copy {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .module-grid,
+      .exercise-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 700px) {
+      .nav {
+        align-items: flex-start;
+        padding: 12px 0;
+        flex-direction: column;
+      }
+
+      .nav-links {
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      .nav-links a,
+      .nav-links button {
+        flex: 1 1 auto;
+      }
+
+      .hero-strip,
+      .module-grid,
+      .exercise-grid,
+      .screenshot-grid,
+      .tab-list {
+        grid-template-columns: 1fr;
+      }
+
+      .section-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .section {
+        padding: 58px 0;
+      }
+    }
+
+    @media print {
+      .site-header,
+      .hero-actions,
+      .tab-list,
+      .button,
+      .copy-sql,
+      .footer {
+        display: none !important;
+      }
+
+      body {
+        background: #fff;
+      }
+
+      .section,
+      .hero-inner {
+        padding: 24px 0;
+      }
+
+      .lesson {
+        display: block;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#workshop">Zum Workshop springen</a>
+  <header class="site-header">
+    <nav class="nav" aria-label="Hauptnavigation">
+      <a class="brand" href="#top" aria-label="NodeQL SQL Workshop Start">
+        <div>
+          <img src="../assets/appicon/icon.png" width="32" height="32" alt="NodeQL Logo">
+        </div>
+        <span>NodeQL SQL Workshop</span>
+      </a>
+      <div class="nav-links">
+        <a href="#pfad">Lernpfad</a>
+        <a href="#workshop">Workshop</a>
+        <a href="#uebungen">Übungen</a>
+        <a href="#quiz">Quiz</a>
+        <button type="button" id="resetProgress">Zurücksetzen</button>
+      </div>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-inner">
+        <div>
+          <p class="eyebrow">SQL lernen mit echten NodeQL-Abläufen</p>
+          <h1 id="hero-title">Baue SQL visuell, verstehe jede Zeile.</h1>
+          <p class="lead">Ein kompletter Workshop für Einsteiger und Umsteiger: von Tabellen über SELECT, WHERE und JOIN bis zu Aggregationen, Fehlerdiagnose und lokalem SQLite-Arbeiten in NodeQL.</p>
+          <div class="hero-actions">
+            <a class="button" href="#workshop" aria-label="Workshop starten">▶ Workshop starten</a>
+            <a class="button secondary" href="#cheatsheet" aria-label="Cheat Sheet öffnen">▣ Cheat-Sheet</a>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <div class="screenshot-frame">
+            <img src="screenshots/darkmode-preview.png" alt="NodeQL Arbeitsfläche mit visuellen SQL-Blöcken im Dark Mode">
+          </div>
+          <div class="hero-strip" aria-label="Workshop Kennzahlen">
+            <div class="stat"><strong>8</strong><span>Module</span></div>
+            <div class="stat"><strong>14</strong><span>SQL-Muster</span></div>
+            <div class="stat"><strong>6</strong><span>Checks</span></div>
+            <div class="stat"><strong>100%</strong><span>lokal übbar</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pfad" class="section" aria-labelledby="path-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Lernpfad</p>
+            <h2 id="path-title">Vom ersten Block zur belastbaren Abfrage.</h2>
+          </div>
+          <div class="progress-shell" aria-live="polite">
+            <div class="progress-meta">
+              <span>Fortschritt</span>
+              <strong id="progressText">0 von 8</strong>
+            </div>
+            <div class="progress-track" aria-hidden="true">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+          </div>
+        </div>
+        <div class="module-grid" id="moduleGrid" aria-label="Workshop Module"></div>
+      </div>
+    </section>
+
+    <section id="workshop" class="section alt" aria-labelledby="workshop-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Workshop</p>
+            <h2 id="workshop-title">Acht Module, direkt an NodeQL gespiegelt.</h2>
+          </div>
+          <p>Jedes Modul verbindet eine SQL-Idee mit der Denkweise von NodeQL: Blöcke oben nach unten lesen, SQL-Vorschau prüfen, dann gegen eine lokale SQLite-Datenbank ausführen.</p>
+        </div>
+
+        <div class="tabs">
+          <div class="tab-list" role="tablist" aria-label="Workshop Module" id="tabList"></div>
+          <div id="lessonPanels"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="builder-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Query-Lab</p>
+            <h2 id="builder-title">Setze Blöcke zusammen und lies das SQL.</h2>
+          </div>
+          <p>Dieses Lab simuliert den Kern von NodeQL: Du wählst visuelle Bestandteile, die SQL-Vorschau entsteht sofort. Danach prüfst du, ob die Klauseln in einer sinnvollen Reihenfolge stehen.</p>
+        </div>
+
+        <div class="workshop-split">
+          <div class="data-browser">
+            <h3>Beispieldatenbank: Lernshop</h3>
+            <p class="lead" style="font-size:1rem;margin-top:10px;">Drei Tabellen reichen für viele SQL-Grundlagen. In NodeQL würdest du dafür eine lokale SQLite-Datei verbinden.</p>
+            <div class="schema-list">
+              <div class="schema-item">
+                <span><strong>customers</strong><br><small>id, name, city</small></span>
+                <button class="link-button" type="button" data-table="customers">anzeigen</button>
+              </div>
+              <div class="schema-item">
+                <span><strong>orders</strong><br><small>id, customer_id, total, status</small></span>
+                <button class="link-button" type="button" data-table="orders">anzeigen</button>
+              </div>
+              <div class="schema-item">
+                <span><strong>products</strong><br><small>id, name, category, price</small></span>
+                <button class="link-button" type="button" data-table="products">anzeigen</button>
+              </div>
+            </div>
+            <table class="mini-table" id="dataTable" aria-label="Tabellenvorschau"></table>
+          </div>
+
+          <div class="data-browser">
+            <div class="lab-controls">
+              <div class="field">
+                <label for="builderSelect">SELECT</label>
+                <select id="builderSelect">
+                  <option value="*">alle Spalten</option>
+                  <option value="name, city">name, city</option>
+                  <option value="city, COUNT(*) AS customer_count">city, COUNT(*) AS customer_count</option>
+                  <option value="customers.name, orders.total">customers.name, orders.total</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="builderFrom">FROM</label>
+                <select id="builderFrom">
+                  <option value="customers">customers</option>
+                  <option value="orders">orders</option>
+                  <option value="products">products</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="builderJoin">JOIN</label>
+                <select id="builderJoin">
+                  <option value="">kein Join</option>
+                  <option value="INNER JOIN orders ON customers.id = orders.customer_id">INNER JOIN orders ON customers.id = orders.customer_id</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="builderWhere">WHERE</label>
+                <select id="builderWhere">
+                  <option value="">kein Filter</option>
+                  <option value="city = 'Berlin'">city = 'Berlin'</option>
+                  <option value="total >= 100">total >= 100</option>
+                  <option value="status = 'paid'">status = 'paid'</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="builderGroup">GROUP BY</label>
+                <select id="builderGroup">
+                  <option value="">keine Gruppierung</option>
+                  <option value="city">city</option>
+                  <option value="status">status</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="builderOrder">ORDER BY</label>
+                <select id="builderOrder">
+                  <option value="">keine Sortierung</option>
+                  <option value="name ASC">name ASC</option>
+                  <option value="total DESC">total DESC</option>
+                  <option value="customer_count DESC">customer_count DESC</option>
+                </select>
+              </div>
+            </div>
+            <div class="node-stack" aria-label="Visuelle NodeQL Blockfolge" id="builderNodes"></div>
+            <div class="sql-window" style="margin-top:16px;">
+              <div class="sql-titlebar">
+                <span>SQL-Vorschau</span>
+                <button class="copy-sql" type="button" data-copy-target="builderSql">kopieren</button>
+              </div>
+              <pre><code id="builderSql"></code></pre>
+            </div>
+            <div class="feedback" id="builderFeedback">Wähle Bestandteile aus, um die SQL-Struktur zu prüfen.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="uebungen" class="section alt" aria-labelledby="exercise-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Übungen</p>
+            <h2 id="exercise-title">Schreibe SQL, dann denke es als Blöcke.</h2>
+          </div>
+          <p>Die Checks sind bewusst tolerant: Sie suchen nach den entscheidenden SQL-Bausteinen. In NodeQL würdest du dieselben Bausteine per Palette zusammensetzen.</p>
+        </div>
+        <div class="exercise-grid" id="exerciseGrid"></div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="visual-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">NodeQL Orientierung</p>
+            <h2 id="visual-title">Die App bleibt der rote Faden.</h2>
+          </div>
+          <p>Der Workshop ist bewusst auf die reale App bezogen: Arbeitsbereich, SQL-Ausgabe, interaktives Tutorial und Plugin-Blöcke.</p>
+        </div>
+        <div class="screenshot-grid">
+          <figure class="figure">
+            <img src="screenshots/NodeQL-Einfuehrung.png" alt="NodeQL interaktives Einführungstutorial">
+            <figcaption>Das eingebaute Tutorial erklärt die Oberfläche. Dieser Workshop vertieft danach die SQL-Konzepte.</figcaption>
+          </figure>
+          <figure class="figure">
+            <img src="screenshots/Plugins.png" alt="NodeQL Plugin-Blöcke in der Arbeitsfläche">
+            <figcaption>Plugin-Blöcke können SQL erweitern. Die Grundregel bleibt gleich: Blockfolge prüfen, SQL-Vorschau lesen, lokal ausführen.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="quiz" class="section alt" aria-labelledby="quiz-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Abschluss</p>
+            <h2 id="quiz-title">Teste, ob die Struktur sitzt.</h2>
+          </div>
+          <p>Ein kurzer Check für die wichtigsten Entscheidungen: Welche Klausel macht was, wann brauchst du JOIN, und warum ist die SQL-Vorschau so wertvoll?</p>
+        </div>
+        <div class="quiz">
+          <div class="quiz-panel">
+            <h3 id="quizQuestion">Frage wird geladen</h3>
+            <div class="quiz-options" id="quizOptions"></div>
+            <div class="feedback" id="quizFeedback">Wähle eine Antwort.</div>
+            <div class="button-row">
+              <button class="button" type="button" id="nextQuestion">Nächste Frage</button>
+              <button class="button ghost" type="button" id="restartQuiz">Neu starten</button>
+            </div>
+          </div>
+          <div class="cheat-panel" id="cheatsheet">
+            <h3>NodeQL SQL Cheat-Sheet</h3>
+            <div class="cheat-list">
+              <div class="cheat-item"><strong>SELECT</strong><code>SELECT name, city</code> wählt die sichtbaren Spalten.</div>
+              <div class="cheat-item"><strong>FROM</strong><code>FROM customers</code> bestimmt die Tabelle.</div>
+              <div class="cheat-item"><strong>WHERE</strong><code>WHERE city = 'Berlin'</code> filtert einzelne Zeilen.</div>
+              <div class="cheat-item"><strong>JOIN</strong><code>INNER JOIN orders ON customers.id = orders.customer_id</code> verbindet Tabellen über Schlüssel.</div>
+              <div class="cheat-item"><strong>GROUP BY</strong><code>GROUP BY city</code> bildet Gruppen für <code>COUNT</code>, <code>SUM</code> oder <code>AVG</code>.</div>
+              <div class="cheat-item"><strong>ORDER BY</strong><code>ORDER BY total DESC</code> sortiert das Ergebnis.</div>
+              <div class="cheat-item"><strong>NodeQL-Regel</strong>Wenn die Blöcke logisch aussehen, lies trotzdem die SQL-Ausgabe vor dem Ausführen.</div>
+            </div>
+            <div class="button-row">
+              <button class="button secondary" type="button" onclick="window.print()">Drucken</button>
+              <a class="button ghost" href="https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json">Plugin-Beispielrepo</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p><strong>NodeQL SQL Workshop</strong><br>Lokales Lernen mit visuellen Blöcken, SQLite und prüfbarer SQL-Ausgabe.</p>
+      <p><a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">README</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/plugins/README.md">Plugin SDK</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/RELEASING.md">Release-Hinweise</a></p>
+    </div>
+  </footer>
+
+  <script>
+    const modules = [
+      {
+        title: "Orientierung",
+        tag: "Modul 1",
+        summary: "Verstehe Palette, Arbeitsbereich und SQL-Ausgabe.",
+        sql: "SELECT name, city\nFROM customers;",
+        nodes: [
+          ["select", "SELECT name, city", "Welche Spalten sollen sichtbar sein?"],
+          ["from", "FROM customers", "Aus welcher Tabelle kommen die Daten?"]
+        ],
+        body: [
+          "NodeQL ist kein Ersatz für SQL-Verständnis, sondern eine Lernoberfläche: Du baust eine Abfrage mit Blöcken und siehst parallel die echte SQL-Anweisung.",
+          "Lies eine Abfrage in NodeQL von oben nach unten. Der Start löst die Ausführung aus, darunter folgen SQL-Klauseln in der Reihenfolge, die SQLite erwartet."
+        ],
+        tips: ["Beginne jede Übung mit SELECT und FROM.", "Nutze die SQL-Vorschau als Kontrollblick, bevor du ausführst."]
+      },
+      {
+        title: "Tabellen & Spalten",
+        tag: "Modul 2",
+        summary: "Wähle gezielt Daten statt immer alles abzufragen.",
+        sql: "SELECT name, city\nFROM customers\nORDER BY name ASC;",
+        nodes: [
+          ["select", "SELECT name, city", "Nur die Spalten wählen, die du brauchst."],
+          ["from", "FROM customers", "Eine klare Quelle."],
+          ["where", "ORDER BY name ASC", "Lesbare Sortierung."]
+        ],
+        body: [
+          "SELECT * ist bequem, aber selten die beste Lerngewohnheit. Wenn du Spalten bewusst auswählst, verstehst du schneller, welche Daten dein Ergebnis wirklich trägt.",
+          "In NodeQL entspricht das einem SELECT-Block mit bearbeitbaren Spaltenwerten. Ändere eine Spalte und beobachte, wie sich die SQL-Vorschau verändert."
+        ],
+        tips: ["Nutze sprechende Spaltennamen.", "Sortiere frühe Beispiele, damit Ergebnisse leichter prüfbar sind."]
+      },
+      {
+        title: "Filter mit WHERE",
+        tag: "Modul 3",
+        summary: "Reduziere Zeilen mit Bedingungen.",
+        sql: "SELECT name, city\nFROM customers\nWHERE city = 'Berlin';",
+        nodes: [
+          ["select", "SELECT name, city", "Ausgabe festlegen."],
+          ["from", "FROM customers", "Tabelle wählen."],
+          ["where", "WHERE city = 'Berlin'", "Nur passende Zeilen behalten."]
+        ],
+        body: [
+          "WHERE entscheidet, welche Zeilen in deinem Ergebnis bleiben. Textwerte stehen in einfachen Anführungszeichen, Zahlen meistens nicht.",
+          "In NodeQL hilft die Blockform dabei, Bedingung, Operator und Wert sauber zu trennen. Das reduziert typische Syntaxfehler."
+        ],
+        tips: ["Text: 'Berlin'. Zahl: 100.", "Prüfe Operatoren wie =, >=, LIKE und IN bewusst."]
+      },
+      {
+        title: "Sortieren & Begrenzen",
+        tag: "Modul 4",
+        summary: "Mache Ergebnisse lesbar und kontrollierbar.",
+        sql: "SELECT id, total, status\nFROM orders\nWHERE status = 'paid'\nORDER BY total DESC\nLIMIT 5;",
+        nodes: [
+          ["select", "SELECT id, total, status", "Die wichtigsten Werte anzeigen."],
+          ["from", "FROM orders", "Bestellungen als Quelle."],
+          ["where", "WHERE status = 'paid'", "Nur bezahlte Bestellungen."],
+          ["where", "ORDER BY total DESC", "Höchste Beträge zuerst."]
+        ],
+        body: [
+          "ORDER BY ändert nicht die Daten, sondern ihre Reihenfolge im Ergebnis. DESC bedeutet absteigend, ASC aufsteigend.",
+          "LIMIT ist ideal zum Lernen: Du bekommst eine kleine, prüfbare Ergebnismenge und kannst schneller erkennen, ob deine Logik stimmt."
+        ],
+        tips: ["Sortiere nach der Spalte, die deine Frage beantwortet.", "Nutze LIMIT beim Experimentieren mit großen Tabellen."]
+      },
+      {
+        title: "JOIN verstehen",
+        tag: "Modul 5",
+        summary: "Verbinde Tabellen über Schlüssel.",
+        sql: "SELECT customers.name, orders.total\nFROM customers\nINNER JOIN orders ON customers.id = orders.customer_id\nWHERE orders.total >= 100;",
+        nodes: [
+          ["select", "SELECT customers.name, orders.total", "Spalten aus zwei Tabellen."],
+          ["from", "FROM customers", "Starttabelle."],
+          ["join", "INNER JOIN orders", "Bestellungen verbinden."],
+          ["where", "ON customers.id = orders.customer_id", "Schlüsselbeziehung."],
+          ["where", "WHERE orders.total >= 100", "Ergebnis filtern."]
+        ],
+        body: [
+          "JOIN ist der Moment, in dem SQL besonders nützlich wird. Du verbindest Tabellen, die getrennt gespeichert sind, aber fachlich zusammengehören.",
+          "Die ON-Bedingung ist kein Zusatzdetail. Sie ist die Brücke zwischen Primärschlüssel und Fremdschlüssel. Ohne sie entstehen falsche Kombinationen."
+        ],
+        tips: ["Qualifiziere Spalten mit Tabellennamen, wenn Namen mehrfach vorkommen.", "INNER JOIN zeigt nur passende Paare."]
+      },
+      {
+        title: "Gruppieren",
+        tag: "Modul 6",
+        summary: "Zähle, summiere und verdichte Daten.",
+        sql: "SELECT city, COUNT(*) AS customer_count\nFROM customers\nGROUP BY city\nORDER BY customer_count DESC;",
+        nodes: [
+          ["select", "SELECT city, COUNT(*) AS customer_count", "Gruppenwert plus Kennzahl."],
+          ["from", "FROM customers", "Kundentabelle."],
+          ["group", "GROUP BY city", "Eine Gruppe pro Stadt."],
+          ["where", "ORDER BY customer_count DESC", "Größte Gruppen zuerst."]
+        ],
+        body: [
+          "GROUP BY macht aus vielen Zeilen Gruppen. Aggregatfunktionen wie COUNT, SUM und AVG berechnen dann Werte pro Gruppe.",
+          "Die wichtigste Regel: Alles im SELECT ist entweder gruppiert oder aggregiert. Das hält Ergebnisse fachlich sauber."
+        ],
+        tips: ["COUNT(*) zählt Zeilen.", "SUM(total) addiert Beträge.", "AVG(price) berechnet Durchschnittswerte."]
+      },
+      {
+        title: "Fehler lesen",
+        tag: "Modul 7",
+        summary: "Nutze Fehlermeldungen als Debug-Hilfe.",
+        sql: "SELECT name city\nFROM customers\nWHERE city = Berlin;",
+        nodes: [
+          ["select", "SELECT name city", "Komma fehlt."],
+          ["from", "FROM customers", "Quelle stimmt."],
+          ["where", "WHERE city = Berlin", "Textwert braucht Anführungszeichen."]
+        ],
+        body: [
+          "Fehler sind beim SQL-Lernen normal. NodeQL hilft, weil du die Blockstruktur und die erzeugte SQL-Zeile nebeneinander prüfen kannst.",
+          "Suche zuerst nach einfachen Ursachen: fehlende Kommas, falsche Anführungszeichen, vertauschte Klauseln oder Spalten, die in der Tabelle nicht existieren."
+        ],
+        tips: ["Vergleiche Block und SQL-Zeile.", "Reduziere die Abfrage, bis der kleinste Teil wieder funktioniert."]
+      },
+      {
+        title: "Lokaler Workflow",
+        tag: "Modul 8",
+        summary: "Arbeite mit SQLite-Dateien nachvollziehbar.",
+        sql: "SELECT products.category, AVG(products.price) AS avg_price\nFROM products\nGROUP BY products.category\nORDER BY avg_price DESC;",
+        nodes: [
+          ["select", "SELECT category, AVG(price)", "Kategorie plus Durchschnitt."],
+          ["from", "FROM products", "Lokale Produkttabelle."],
+          ["group", "GROUP BY category", "Eine Gruppe pro Kategorie."],
+          ["where", "ORDER BY avg_price DESC", "Teuerste Kategorien zuerst."]
+        ],
+        body: [
+          "NodeQL ist local-first: Projekte, Einstellungen, Plugins und Datenbanken bleiben auf dem Gerät. Das passt gut zum Lernen, weil du ohne Cloud-Abhängigkeit experimentierst.",
+          "Der professionelle Ablauf ist einfach: Frage formulieren, Blöcke bauen, SQL lesen, lokal ausführen, Ergebnis prüfen, dann schrittweise erweitern."
+        ],
+        tips: ["Speichere Lernprojekte pro Thema.", "Dokumentiere gute Abfragen als Beispiele für spätere Projekte."]
+      }
+    ];
+
+    const exercises = [
+      {
+        title: "1. Kundinnen aus Berlin",
+        task: "Zeige name und city aus customers, aber nur für Berlin.",
+        starter: "SELECT \nFROM \nWHERE ;",
+        checks: [/select\s+name\s*,\s*city/i, /from\s+customers/i, /where\s+city\s*=\s*'berlin'/i],
+        ok: "Passt. Du hast Spaltenwahl, Tabelle und Textfilter korrekt kombiniert."
+      },
+      {
+        title: "2. Große Bestellungen",
+        task: "Zeige id und total aus orders für bezahlte Bestellungen ab 100, höchste zuerst.",
+        starter: "SELECT id, total\nFROM orders\nWHERE \nORDER BY ;",
+        checks: [/select\s+id\s*,\s*total/i, /from\s+orders/i, /status\s*=\s*'paid'/i, /total\s*>=\s*100/i, /order\s+by\s+total\s+desc/i],
+        ok: "Gut. Genau so würdest du den WHERE-Block schrittweise ausbauen."
+      },
+      {
+        title: "3. Städte zählen",
+        task: "Zähle customers pro city und sortiere die größte Gruppe zuerst.",
+        starter: "SELECT city, COUNT(*) AS customer_count\nFROM customers\nGROUP BY \nORDER BY ;",
+        checks: [/select\s+city\s*,\s*count\s*\(\s*\*\s*\)/i, /from\s+customers/i, /group\s+by\s+city/i, /order\s+by\s+customer_count\s+desc/i],
+        ok: "Richtig. SELECT enthält den Gruppenwert und die Aggregation."
+      }
+    ];
+
+    const rows = {
+      customers: [
+        { id: 1, name: "Aylin", city: "Berlin" },
+        { id: 2, name: "Milan", city: "Hamburg" },
+        { id: 3, name: "Noah", city: "Berlin" },
+        { id: 4, name: "Sara", city: "Köln" }
+      ],
+      orders: [
+        { id: 11, customer_id: 1, total: 149, status: "paid" },
+        { id: 12, customer_id: 2, total: 42, status: "open" },
+        { id: 13, customer_id: 1, total: 230, status: "paid" },
+        { id: 14, customer_id: 3, total: 89, status: "paid" }
+      ],
+      products: [
+        { id: 21, name: "Keyboard", category: "Hardware", price: 79 },
+        { id: 22, name: "SQLite Guide", category: "Books", price: 24 },
+        { id: 23, name: "Dock", category: "Hardware", price: 129 },
+        { id: 24, name: "Workshop Pass", category: "Learning", price: 49 }
+      ]
+    };
+
+    const quiz = [
+      {
+        question: "Welche Klausel legt fest, aus welcher Tabelle die Daten kommen?",
+        options: ["FROM", "WHERE", "ORDER BY"],
+        answer: 0,
+        note: "FROM ist die Datenquelle. SELECT entscheidet danach, was sichtbar wird."
+      },
+      {
+        question: "Warum ist die SQL-Vorschau in NodeQL wichtig?",
+        options: ["Sie ersetzt jede Datenbank.", "Sie zeigt die echte Abfrage, bevor du sie ausführst.", "Sie löscht ungültige Zeilen automatisch."],
+        answer: 1,
+        note: "Die Vorschau macht aus visuellen Blöcken überprüfbares SQL."
+      },
+      {
+        question: "Wann brauchst du einen JOIN?",
+        options: ["Wenn du zwei fachlich verbundene Tabellen gemeinsam abfragen willst.", "Wenn du nur die ersten fünf Zeilen sehen willst.", "Wenn du eine Tabelle alphabetisch sortierst."],
+        answer: 0,
+        note: "JOIN verbindet Tabellen über passende Schlüssel."
+      },
+      {
+        question: "Was ist bei GROUP BY besonders wichtig?",
+        options: ["Jede SELECT-Spalte ist entweder gruppiert oder aggregiert.", "GROUP BY steht immer vor FROM.", "COUNT funktioniert nur mit Textspalten."],
+        answer: 0,
+        note: "Diese Regel verhindert fachlich unklare Gruppenergebnisse."
+      }
+    ];
+
+    const progressKey = "nodeql-sql-workshop-progress";
+    let completed = new Set(JSON.parse(localStorage.getItem(progressKey) || "[]"));
+    let activeLesson = 0;
+    let quizIndex = 0;
+    let quizScore = 0;
+
+    function saveProgress() {
+      localStorage.setItem(progressKey, JSON.stringify([...completed]));
+      renderProgress();
+    }
+
+    function renderProgress() {
+      const count = completed.size;
+      document.getElementById("progressText").textContent = `${count} von ${modules.length}`;
+      document.getElementById("progressFill").style.width = `${(count / modules.length) * 100}%`;
+      document.querySelectorAll("[data-module-card]").forEach((card) => {
+        card.classList.toggle("done", completed.has(Number(card.dataset.moduleCard)));
+      });
+    }
+
+    function renderModules() {
+      const grid = document.getElementById("moduleGrid");
+      grid.innerHTML = modules.map((module, index) => `
+        <article class="module" data-module-card="${index}">
+          <small>${module.tag}</small>
+          <h3>${module.title}</h3>
+          <p>${module.summary}</p>
+          <button class="button secondary" type="button" data-open-module="${index}">öffnen</button>
+        </article>
+      `).join("");
+
+      grid.querySelectorAll("[data-open-module]").forEach((button) => {
+        button.addEventListener("click", () => {
+          openLesson(Number(button.dataset.openModule));
+          document.getElementById("workshop").scrollIntoView({ behavior: "smooth" });
+        });
+      });
+    }
+
+    function renderLessons() {
+      const tabList = document.getElementById("tabList");
+      const panels = document.getElementById("lessonPanels");
+      tabList.innerHTML = modules.map((module, index) => `
+        <button class="tab-button" id="tab-${index}" role="tab" aria-selected="${index === activeLesson}" aria-controls="lesson-${index}" type="button" data-tab="${index}">
+          <span>${index + 1}</span>
+          <span><strong>${module.title}</strong><br><small>${module.summary}</small></span>
+        </button>
+      `).join("");
+
+      panels.innerHTML = modules.map((module, index) => `
+        <article class="lesson ${index === activeLesson ? "active" : ""}" id="lesson-${index}" role="tabpanel" aria-labelledby="tab-${index}">
+          <div class="lesson-layout">
+            <div class="lesson-copy">
+              <p class="eyebrow">${module.tag}</p>
+              <h3>${module.title}</h3>
+              ${module.body.map((paragraph) => `<p>${paragraph}</p>`).join("")}
+              <ul>${module.tips.map((tip) => `<li>${tip}</li>`).join("")}</ul>
+              <div class="button-row">
+                <button class="button" type="button" data-complete="${index}">Modul erledigt</button>
+                <button class="button ghost" type="button" data-next="${index}">weiter</button>
+              </div>
+            </div>
+            <div class="lesson-lab">
+              <div class="node-stack">
+                ${module.nodes.map(([type, label, hint]) => `<div class="node ${type}">${label}<small>${hint}</small></div>`).join("")}
+              </div>
+              <div class="sql-window" style="margin-top:16px;">
+                <div class="sql-titlebar">
+                  <span>Erzeugtes SQL</span>
+                  <button class="copy-sql" type="button" data-copy-text="${encodeURIComponent(module.sql)}">kopieren</button>
+                </div>
+                <pre><code>${escapeHtml(module.sql)}</code></pre>
+              </div>
+            </div>
+          </div>
+        </article>
+      `).join("");
+
+      tabList.querySelectorAll("[data-tab]").forEach((button) => {
+        button.addEventListener("click", () => openLesson(Number(button.dataset.tab)));
+      });
+      panels.querySelectorAll("[data-complete]").forEach((button) => {
+        button.addEventListener("click", () => {
+          completed.add(Number(button.dataset.complete));
+          saveProgress();
+        });
+      });
+      panels.querySelectorAll("[data-next]").forEach((button) => {
+        button.addEventListener("click", () => openLesson((Number(button.dataset.next) + 1) % modules.length));
+      });
+      panels.querySelectorAll(".copy-sql").forEach(bindCopyButton);
+    }
+
+    function openLesson(index) {
+      activeLesson = index;
+      renderLessons();
+    }
+
+    function renderTable(name) {
+      const table = document.getElementById("dataTable");
+      const data = rows[name];
+      const columns = Object.keys(data[0]);
+      table.innerHTML = `
+        <thead><tr>${columns.map((column) => `<th>${column}</th>`).join("")}</tr></thead>
+        <tbody>${data.map((row) => `<tr>${columns.map((column) => `<td>${row[column]}</td>`).join("")}</tr>`).join("")}</tbody>
+      `;
+    }
+
+    function renderBuilder() {
+      const selected = document.getElementById("builderSelect").value;
+      const from = document.getElementById("builderFrom").value;
+      const join = document.getElementById("builderJoin").value;
+      const where = document.getElementById("builderWhere").value;
+      const group = document.getElementById("builderGroup").value;
+      const order = document.getElementById("builderOrder").value;
+      const lines = [`SELECT ${selected}`, `FROM ${from}`];
+      if (join) lines.push(join);
+      if (where) lines.push(`WHERE ${where}`);
+      if (group) lines.push(`GROUP BY ${group}`);
+      if (order) lines.push(`ORDER BY ${order}`);
+      const sql = `${lines.join("\n")};`;
+
+      document.getElementById("builderSql").textContent = sql;
+      document.getElementById("builderNodes").innerHTML = lines.map((line) => {
+        const type = line.startsWith("SELECT") ? "select" : line.startsWith("FROM") ? "from" : line.includes("JOIN") ? "join" : line.startsWith("GROUP") ? "group" : "where";
+        return `<div class="node ${type}">${escapeHtml(line)}<small>${nodeHint(line)}</small></div>`;
+      }).join("");
+
+      const feedback = document.getElementById("builderFeedback");
+      if (selected.includes("COUNT") && !group) {
+        feedback.className = "feedback warn";
+        feedback.textContent = "COUNT ohne GROUP BY kann sinnvoll sein, aber für eine Kennzahl pro Stadt brauchst du GROUP BY city.";
+      } else if (join && from !== "customers") {
+        feedback.className = "feedback warn";
+        feedback.textContent = "Der gewählte JOIN startet bei customers. Stelle FROM auf customers, damit die ON-Bedingung fachlich passt.";
+      } else {
+        feedback.className = "feedback ok";
+        feedback.textContent = "Die Klauselreihenfolge ist sauber. Lies die SQL-Zeilen jetzt von oben nach unten.";
+      }
+    }
+
+    function nodeHint(line) {
+      if (line.startsWith("SELECT")) return "Ausgabe";
+      if (line.startsWith("FROM")) return "Quelle";
+      if (line.includes("JOIN")) return "Tabellen verbinden";
+      if (line.startsWith("WHERE")) return "Zeilen filtern";
+      if (line.startsWith("GROUP")) return "Gruppen bilden";
+      return "Ergebnis sortieren";
+    }
+
+    function renderExercises() {
+      const grid = document.getElementById("exerciseGrid");
+      grid.innerHTML = exercises.map((exercise, index) => `
+        <article class="exercise">
+          <h3>${exercise.title}</h3>
+          <p>${exercise.task}</p>
+          <textarea aria-label="${exercise.title} SQL Eingabe" spellcheck="false" id="exercise-${index}">${exercise.starter}</textarea>
+          <button class="button secondary" type="button" data-check-exercise="${index}">prüfen</button>
+          <div class="feedback" id="exercise-feedback-${index}">Noch nicht geprüft.</div>
+        </article>
+      `).join("");
+      grid.querySelectorAll("[data-check-exercise]").forEach((button) => {
+        button.addEventListener("click", () => checkExercise(Number(button.dataset.checkExercise)));
+      });
+    }
+
+    function checkExercise(index) {
+      const exercise = exercises[index];
+      const value = document.getElementById(`exercise-${index}`).value.replace(/\s+/g, " ").trim();
+      const missing = exercise.checks.filter((check) => !check.test(value)).length;
+      const feedback = document.getElementById(`exercise-feedback-${index}`);
+      if (missing === 0) {
+        feedback.className = "feedback ok";
+        feedback.textContent = exercise.ok;
+        completed.add(Math.min(index + 2, modules.length - 1));
+        saveProgress();
+      } else {
+        feedback.className = "feedback warn";
+        feedback.textContent = `${missing} wichtiger Baustein fehlt noch. Prüfe SELECT, FROM, WHERE, GROUP BY oder ORDER BY.`;
+      }
+    }
+
+    function renderQuiz() {
+      const current = quiz[quizIndex];
+      document.getElementById("quizQuestion").textContent = current.question;
+      document.getElementById("quizFeedback").className = "feedback";
+      document.getElementById("quizFeedback").textContent = `Frage ${quizIndex + 1} von ${quiz.length}. Punktestand: ${quizScore}`;
+      document.getElementById("quizOptions").innerHTML = current.options.map((option, index) => `
+        <button class="quiz-option" type="button" data-answer="${index}">${option}</button>
+      `).join("");
+      document.querySelectorAll("[data-answer]").forEach((button) => {
+        button.addEventListener("click", () => answerQuiz(Number(button.dataset.answer)));
+      });
+    }
+
+    function answerQuiz(answer) {
+      const current = quiz[quizIndex];
+      const buttons = document.querySelectorAll("[data-answer]");
+      buttons.forEach((button) => {
+        button.disabled = true;
+        const index = Number(button.dataset.answer);
+        button.classList.toggle("correct", index === current.answer);
+        button.classList.toggle("incorrect", index === answer && index !== current.answer);
+      });
+      const feedback = document.getElementById("quizFeedback");
+      if (answer === current.answer) {
+        quizScore += 1;
+        feedback.className = "feedback ok";
+        feedback.textContent = current.note;
+      } else {
+        feedback.className = "feedback warn";
+        feedback.textContent = current.note;
+      }
+      if (quizScore >= quiz.length) {
+        completed = new Set(modules.map((_, index) => index));
+        saveProgress();
+      }
+    }
+
+    function nextQuiz() {
+      quizIndex = (quizIndex + 1) % quiz.length;
+      renderQuiz();
+    }
+
+    function restartQuiz() {
+      quizIndex = 0;
+      quizScore = 0;
+      renderQuiz();
+    }
+
+    function bindCopyButton(button) {
+      if (button.dataset.copyBound === "true") return;
+      button.dataset.copyBound = "true";
+      button.addEventListener("click", async () => {
+        const target = button.dataset.copyTarget;
+        const text = target ? document.getElementById(target).textContent : decodeURIComponent(button.dataset.copyText || "");
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = "kopiert";
+          setTimeout(() => button.textContent = "kopieren", 1200);
+        } catch (_) {
+          button.textContent = "markieren";
+        }
+      });
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      })[char]);
+    }
+
+    renderModules();
+    renderLessons();
+    renderTable("customers");
+    renderBuilder();
+    renderExercises();
+    renderQuiz();
+    renderProgress();
+
+    document.querySelectorAll("[data-table]").forEach((button) => {
+      button.addEventListener("click", () => renderTable(button.dataset.table));
+    });
+    document.querySelectorAll("#builderSelect, #builderFrom, #builderJoin, #builderWhere, #builderGroup, #builderOrder").forEach((control) => {
+      control.addEventListener("change", renderBuilder);
+    });
+    document.querySelectorAll(".copy-sql").forEach(bindCopyButton);
+    document.getElementById("nextQuestion").addEventListener("click", nextQuiz);
+    document.getElementById("restartQuiz").addEventListener("click", restartQuiz);
+    document.getElementById("resetProgress").addEventListener("click", () => {
+      completed = new Set();
+      localStorage.removeItem(progressKey);
+      renderProgress();
+    });
+  </script>
+</body>
+</html>

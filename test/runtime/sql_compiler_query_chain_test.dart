@@ -111,6 +111,185 @@ void main() {
     expect(compile('NATURAL'), 'NATURAL JOIN orders;');
   });
 
+  test('compiles beginner-friendly structured filters', () {
+    final root = EventBlock(id: 'run', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: {'columns': '*', 'table': 'orders', 'separate_from': true},
+    );
+    final from = OperatorBlock(
+      id: 'from',
+      position: Offset.zero,
+      operatorType: BlockType.sqlFrom,
+      inputs: {'table': 'orders'},
+    );
+    final where = MotionBlock(
+      id: 'where',
+      position: Offset.zero,
+      motionType: BlockType.sqlWhere,
+      inputs: {'column': 'status', 'operator': '=', 'value': "'open'"},
+    );
+    final group = OperatorBlock(
+      id: 'group',
+      position: Offset.zero,
+      operatorType: BlockType.sqlGroupBy,
+      inputs: {'column': 'customer_id'},
+    );
+    final having = OperatorBlock(
+      id: 'having',
+      position: Offset.zero,
+      operatorType: BlockType.sqlHaving,
+      inputs: {'column': 'total', 'operator': '>=', 'value': '100'},
+    );
+    final sum = OperatorBlock(
+      id: 'sum',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSum,
+      inputs: {'column': 'ignored_by_having'},
+    );
+    setReporterForInput(having, 'aggregate', sum);
+
+    root.next = select;
+    select.next = from;
+    from.next = where;
+    where.next = group;
+    group.next = having;
+
+    final result = const SqlCompiler().compileWorkspace([root]);
+
+    expect(
+      result.sql,
+      "SELECT * FROM orders WHERE status = 'open' "
+      'GROUP BY customer_id HAVING SUM(total) >= 100;',
+    );
+  });
+
+  test(
+    'having aggregate reporter wins over legacy COUNT expression default',
+    () {
+      final root = EventBlock(id: 'run', position: Offset.zero);
+      final having = OperatorBlock(
+        id: 'having',
+        position: Offset.zero,
+        operatorType: BlockType.sqlHaving,
+        inputs: {
+          'aggregate': 'COUNT',
+          'column': 'film_id',
+          'expr': 'COUNT(*)',
+          'operator': '=',
+          'value': '350',
+        },
+      );
+      final sum = OperatorBlock(
+        id: 'sum',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSum,
+        inputs: {'column': 'ignored'},
+      );
+      setReporterForInput(having, 'aggregate', sum);
+      root.next = having;
+
+      expect(
+        const SqlCompiler().compileWorkspace([root]).sql,
+        'HAVING SUM(film_id) = 350;',
+      );
+    },
+  );
+
+  test('compiles structured UPDATE and DELETE conditions', () {
+    final updateRoot = EventBlock(id: 'update-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'update',
+        position: Offset.zero,
+        operatorType: BlockType.sqlUpdate,
+        inputs: {
+          'table': 'students',
+          'column': 'grade',
+          'value': "'A'",
+          'where_column': 'points',
+          'operator': '>=',
+          'where_value': '90',
+        },
+      );
+    final deleteRoot = EventBlock(id: 'delete-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'delete',
+        position: Offset.zero,
+        operatorType: BlockType.sqlDelete,
+        inputs: {
+          'table': 'students',
+          'where_column': 'active',
+          'operator': '=',
+          'where_value': '0',
+        },
+      );
+
+    expect(
+      const SqlCompiler().compileWorkspace([updateRoot]).sql,
+      "UPDATE students SET grade = 'A' WHERE points >= 90;",
+    );
+    expect(
+      const SqlCompiler().compileWorkspace([deleteRoot]).sql,
+      'DELETE FROM students WHERE active = 0;',
+    );
+  });
+
+  test('compiles structured JOIN and conditional expression blocks', () {
+    final joinRoot = EventBlock(id: 'join-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'join',
+        position: Offset.zero,
+        operatorType: BlockType.sqlInnerJoin,
+        inputs: {
+          'table': 'orders',
+          'left_column': 'orders.customer_id',
+          'operator': '=',
+          'right_column': 'customers.id',
+        },
+      );
+    final caseRoot = EventBlock(id: 'case-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'case',
+        position: Offset.zero,
+        operatorType: BlockType.sqlCase,
+        inputs: {
+          'condition_column': 'points',
+          'operator': '>=',
+          'condition_value': '90',
+          'result': "'bestanden'",
+          'default': "'ueben'",
+        },
+      );
+    final ifRoot = EventBlock(id: 'if-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'if',
+        position: Offset.zero,
+        operatorType: BlockType.sqlIf,
+        inputs: {
+          'condition_column': 'active',
+          'operator': '=',
+          'condition_value': '1',
+          'value': "'ja'",
+          'default': "'nein'",
+        },
+      );
+
+    expect(
+      const SqlCompiler().compileWorkspace([joinRoot]).sql,
+      'INNER JOIN orders ON orders.customer_id = customers.id;',
+    );
+    expect(
+      const SqlCompiler().compileWorkspace([caseRoot]).sql,
+      "CASE WHEN points >= 90 THEN 'bestanden' ELSE 'ueben' END;",
+    );
+    expect(
+      const SqlCompiler().compileWorkspace([ifRoot]).sql,
+      "IF(active = 1, 'ja', 'nein');",
+    );
+  });
+
   test('stops compiling when a chain cycle is detected', () {
     final root = EventBlock(id: 'run', position: Offset.zero);
     final select = OperatorBlock(
