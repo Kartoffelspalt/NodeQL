@@ -12,8 +12,10 @@ class BlockShape extends StatelessWidget {
     required this.label,
     this.pluginShape,
     this.isHighlighted = false,
+    this.isErrorHighlighted = false,
     this.isSelected = false,
     this.showInnerHighlight = false,
+    this.showLabel = true,
   });
 
   final BlockNode node;
@@ -23,8 +25,10 @@ class BlockShape extends StatelessWidget {
   final String label;
   final String? pluginShape;
   final bool isHighlighted;
+  final bool isErrorHighlighted;
   final bool isSelected;
   final bool showInnerHighlight;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +47,7 @@ class BlockShape extends StatelessWidget {
         color: color,
         node: node,
         isHighlighted: isHighlighted,
+        isErrorHighlighted: isErrorHighlighted,
         isSelected: isSelected,
         showInnerHighlight: showInnerHighlight,
         pluginShape: pluginShape,
@@ -61,7 +66,9 @@ class BlockShape extends StatelessWidget {
               width:
                   width -
                   (isTrigger ? 28 : (isJoin ? 38 : (isPlugin ? 42 : 26))),
-              child: isTrigger
+              child: !showLabel
+                  ? const SizedBox.shrink()
+                  : isTrigger
                   ? Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -96,6 +103,7 @@ class _ScratchBlockPainter extends CustomPainter {
     required this.color,
     required this.node,
     required this.isHighlighted,
+    required this.isErrorHighlighted,
     required this.isSelected,
     required this.showInnerHighlight,
     required this.pluginShape,
@@ -104,6 +112,7 @@ class _ScratchBlockPainter extends CustomPainter {
   final Color color;
   final BlockNode node;
   final bool isHighlighted;
+  final bool isErrorHighlighted;
   final bool isSelected;
   final bool showInnerHighlight;
   final String? pluginShape;
@@ -133,6 +142,7 @@ class _ScratchBlockPainter extends CustomPainter {
 
     canvas.drawShadow(path, Colors.black.withValues(alpha: 0.28), 8, false);
     canvas.drawPath(path, Paint()..color = color);
+    _paintBlockBoundary(canvas, path);
 
     if (kind == BlockVisualKind.join) {
       final separatorPaint = Paint()
@@ -202,17 +212,40 @@ class _ScratchBlockPainter extends CustomPainter {
       );
     }
 
-    if (isHighlighted || isSelected) {
+    if (isHighlighted || isSelected || isErrorHighlighted) {
       canvas.drawPath(
         path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..color = isSelected
+          ..strokeWidth = isErrorHighlighted ? 4 : 3
+          ..color = isErrorHighlighted
+              ? const Color(0xFFF87171)
+              : isSelected
               ? const Color(0xFFFFF176)
               : Colors.white.withValues(alpha: 0.65),
       );
     }
+  }
+
+  void _paintBlockBoundary(Canvas canvas, Path path) {
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.black.withValues(alpha: 0.32),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.white.withValues(alpha: 0.34),
+    );
   }
 
   Path _buildSimplePath(Size size) {
@@ -444,6 +477,7 @@ class _ScratchBlockPainter extends CustomPainter {
   bool shouldRepaint(covariant _ScratchBlockPainter oldDelegate) {
     return oldDelegate.color != color ||
         oldDelegate.isHighlighted != isHighlighted ||
+        oldDelegate.isErrorHighlighted != isErrorHighlighted ||
         oldDelegate.isSelected != isSelected ||
         oldDelegate.showInnerHighlight != showInnerHighlight ||
         oldDelegate.pluginShape != pluginShape ||
@@ -459,16 +493,17 @@ class _BlockLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final usesMultipleLines = label.contains('\n');
     return Text(
       label,
-      maxLines: isJoin ? 2 : 1,
+      maxLines: usesMultipleLines ? 3 : (isJoin ? 2 : 1),
       overflow: TextOverflow.ellipsis,
       softWrap: false,
       style: const TextStyle(
         color: Colors.white,
         fontSize: 15,
         fontWeight: FontWeight.w700,
-      ).copyWith(height: isJoin ? 1.85 : 1),
+      ).copyWith(height: usesMultipleLines || isJoin ? 1.65 : 1),
     );
   }
 }

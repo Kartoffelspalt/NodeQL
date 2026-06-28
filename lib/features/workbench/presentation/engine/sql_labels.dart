@@ -39,19 +39,19 @@ String sqlLabelFor(
     BlockType.sqlGroupBy: 'GROUP BY [column]',
     BlockType.sqlHaving: 'HAVING [aggregate]([column]) [operator] [value]',
     BlockType.sqlJoin: genericJoinUsesCondition
-        ? '[JOIN_TYPE] JOIN [table]\nON [left_column] = [right_column]'
+        ? '[JOIN_TYPE] JOIN [table]\nON [left_column] [operator] [right_column]'
         : '[JOIN_TYPE] JOIN [table]',
     BlockType.sqlInnerJoin:
-        'INNER JOIN [table]\nON [left_column] = [right_column]',
+        'INNER JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlLeftJoin:
-        'LEFT JOIN [table]\nON [left_column] = [right_column]',
+        'LEFT JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlRightJoin:
-        'RIGHT JOIN [table]\nON [left_column] = [right_column]',
+        'RIGHT JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlFullJoin:
-        'FULL JOIN [table]\nON [left_column] = [right_column]',
+        'FULL JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlCrossJoin: 'CROSS JOIN [table]',
     BlockType.sqlSelfJoin:
-        'SELF JOIN [table]\nON [left_column] = [right_column]',
+        'SELF JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlNaturalJoin: 'NATURAL JOIN [table]',
     BlockType.sqlInsert: 'INSERT INTO [table] ([columns]) VALUES ([values])',
     BlockType.sqlUpdate:
@@ -115,36 +115,35 @@ String sqlLabelFor(
     BlockType.sqlColumn: '[Spalte]',
     BlockType.sqlText: 'Text {text}',
     BlockType.sqlFrom: 'aus Tabelle [table_name]',
-    BlockType.sqlWhere: 'nur Zeilen, bei denen [Spalte] [operator] [value] ist',
-    BlockType.sqlOrderBy: 'sortiere nach [Spalte] [aufsteigend|absteigend]',
+    BlockType.sqlWhere: 'filtere Zeilen\n[Spalte] [operator] [value]',
+    BlockType.sqlOrderBy: 'sortiere nach\n[Spalte] [aufsteigend|absteigend]',
     BlockType.sqlGroupBy: 'bilde Gruppen nach [Spalte]',
     BlockType.sqlHaving:
-        'zeige nur Gruppen, bei denen [aggregate] von [Spalte] [operator] [value] ist',
+        'filtere Gruppen\n[aggregate] von [Spalte] [operator] [value]',
     BlockType.sqlJoin: genericJoinUsesCondition
-        ? 'verbinde mit Tabelle [table] als [JOIN_TYPE]\nwenn [linke_Spalte] = [rechte_Spalte]'
-        : 'verbinde mittels [JOIN_TYPE] mit Tabelle [table]',
+        ? 'verbinde [JOIN_TYPE] mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]'
+        : 'verbinde [JOIN_TYPE] mit [table]',
     BlockType.sqlInnerJoin:
-        'verbinde passende Zeilen aus [table]\nwenn [linke_Spalte] = [rechte_Spalte]',
+        'verbinde Treffer aus [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
     BlockType.sqlLeftJoin:
-        'verbinde [table] und behalte alle bisherigen Zeilen\nwenn [linke_Spalte] = [rechte_Spalte]',
+        'verbinde links mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
     BlockType.sqlRightJoin:
-        'verbinde [table] und behalte alle neuen Zeilen\nwenn [linke_Spalte] = [rechte_Spalte]',
+        'verbinde rechts mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
     BlockType.sqlFullJoin:
-        'verbinde [table] und behalte alle Zeilen beider Tabellen\nwenn [linke_Spalte] = [rechte_Spalte]',
-    BlockType.sqlCrossJoin: 'verbinde kreuzweise mit Tabelle [table]',
+        'verbinde alles mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
+    BlockType.sqlCrossJoin: 'kombiniere jede Zeile mit [table]',
     BlockType.sqlSelfJoin:
-        'verbinde Tabelle [table] mit sich selbst\nwenn [linke_Spalte] = [rechte_Spalte]',
-    BlockType.sqlNaturalJoin: 'verbinde natuerlich mit Tabelle [table]',
-    BlockType.sqlInsert:
-        'fuege ein in [table] ([Spalten]) die Werte ([values])',
+        'verbinde [table] mit sich selbst\nüber [linke_Spalte] [operator] [rechte_Spalte]',
+    BlockType.sqlNaturalJoin: 'verbinde automatisch mit [table]',
+    BlockType.sqlInsert: 'fuege ein in [table]\n[Spalten] = [values]',
     BlockType.sqlUpdate:
-        'aendere in [table] das Feld [Spalte] auf [value], wenn [Filter_Spalte] [operator] [where_value] ist',
+        'aendere [table]: [Spalte] = [value]\nwenn [Filter_Spalte] [operator] [where_value]',
     BlockType.sqlDelete:
-        'loesche aus [table], wenn [Filter_Spalte] [operator] [where_value] ist',
+        'loesche aus [table]\nwenn [Filter_Spalte] [operator] [where_value]',
     BlockType.sqlCreateTable:
-        'erstelle neue Tabelle [table_name] mit den Spalten ([Spaltendefinitionen])',
+        'erstelle Tabelle [table_name]\nmit Spalten [Spaltendefinitionen]',
     BlockType.sqlAlterTable:
-        'aendere Tabelle [table_name] fuege Spalte [Spaltenname] vom Typ [datatype] hinzu',
+        'aendere Tabelle [table_name]\nfuege [Spaltenname] als [datatype] hinzu',
     BlockType.sqlDropTable: 'loesche Tabelle [table_name] permanent',
     BlockType.sqlTruncate: 'leere Tabelle [table_name] komplett',
     BlockType.sqlGrant: 'erlaube das Recht [privilege] auf [table] fuer [user]',
@@ -186,9 +185,9 @@ String sqlLabelFor(
     BlockType.sqlTimestampDiff: 'Zeitstempel-Differenz berechnen',
     BlockType.sqlDateDiff: 'Datums-Differenz berechnen',
     BlockType.sqlCase:
-        'falls [condition_column] [operator] [condition_value] ist, dann {result}, sonst {default}',
+        'falls [condition_column] [operator] [condition_value]\ndann {result}, sonst {default}',
     BlockType.sqlIf:
-        'wenn [condition_column] [operator] [condition_value] ist, dann {value}, sonst {default}',
+        'wenn [condition_column] [operator] [condition_value]\ndann {value}, sonst {default}',
     BlockType.sqlCoalesce: 'nutze {value} sonst {default}',
     BlockType.sqlNullIf: 'setze auf leer wenn {value} gleich {default}',
     BlockType.sqlSetTransaction: 'setze Transaktionsstufe [level]',
@@ -200,35 +199,35 @@ String sqlLabelFor(
     BlockType.sqlColumn: '[column]',
     BlockType.sqlText: 'text {text}',
     BlockType.sqlFrom: 'from table [table_name]',
-    BlockType.sqlWhere: 'only rows where [column] [operator] [value]',
-    BlockType.sqlOrderBy: 'sort by [column] [ascending|descending]',
+    BlockType.sqlWhere: 'filter rows\n[column] [operator] [value]',
+    BlockType.sqlOrderBy: 'sort by\n[column] [ascending|descending]',
     BlockType.sqlGroupBy: 'make groups by [column]',
     BlockType.sqlHaving:
-        'keep groups where [aggregate] of [column] [operator] [value]',
+        'filter groups\n[aggregate] of [column] [operator] [value]',
     BlockType.sqlJoin: genericJoinUsesCondition
-        ? 'join with [table] using [JOIN_TYPE]\nwhen [left_column] = [right_column]'
+        ? 'join [JOIN_TYPE] with [table]\non [left_column] [operator] [right_column]'
         : 'join with [table] using [JOIN_TYPE]',
     BlockType.sqlInnerJoin:
-        'join matching rows from [table]\nwhen [left_column] = [right_column]',
+        'join matches from [table]\non [left_column] [operator] [right_column]',
     BlockType.sqlLeftJoin:
-        'join [table] and keep all previous rows\nwhen [left_column] = [right_column]',
+        'left-join [table]\non [left_column] [operator] [right_column]',
     BlockType.sqlRightJoin:
-        'join [table] and keep all new rows\nwhen [left_column] = [right_column]',
+        'right-join [table]\non [left_column] [operator] [right_column]',
     BlockType.sqlFullJoin:
-        'join [table] and keep all rows from both tables\nwhen [left_column] = [right_column]',
-    BlockType.sqlCrossJoin: 'cross-join with table [table]',
+        'full-join [table]\non [left_column] [operator] [right_column]',
+    BlockType.sqlCrossJoin: 'combine every row with [table]',
     BlockType.sqlSelfJoin:
-        'join table [table] with itself\nwhen [left_column] = [right_column]',
-    BlockType.sqlNaturalJoin: 'natural-join with table [table]',
-    BlockType.sqlInsert: 'add to [table] ([columns]) values ([values])',
+        'join [table] with itself\non [left_column] [operator] [right_column]',
+    BlockType.sqlNaturalJoin: 'auto-join with [table]',
+    BlockType.sqlInsert: 'add to [table]\n[columns] = [values]',
     BlockType.sqlUpdate:
-        'change [table] set [column] to [value] when [where_column] [operator] [where_value]',
+        'change [table]: [column] = [value]\nwhen [where_column] [operator] [where_value]',
     BlockType.sqlDelete:
-        'delete from [table] when [where_column] [operator] [where_value]',
+        'delete from [table]\nwhen [where_column] [operator] [where_value]',
     BlockType.sqlCreateTable:
-        'create new table [table_name] with columns ([column_definitions])',
+        'create table [table_name]\nwith columns [column_definitions]',
     BlockType.sqlAlterTable:
-        'change table [table_name] add column [column_name] with type [datatype]',
+        'change table [table_name]\nadd [column_name] as [datatype]',
     BlockType.sqlDropTable: 'delete table [table_name] permanently',
     BlockType.sqlTruncate: 'clear table [table_name] completely',
     BlockType.sqlGrant: 'allow [privilege] on [table] for [user]',
@@ -268,9 +267,9 @@ String sqlLabelFor(
     BlockType.sqlTimestampDiff: 'timestamp difference',
     BlockType.sqlDateDiff: 'date difference',
     BlockType.sqlCase:
-        'if [condition_column] [operator] [condition_value] then {result} else {default}',
+        'if [condition_column] [operator] [condition_value]\nthen {result} else {default}',
     BlockType.sqlIf:
-        'if [condition_column] [operator] [condition_value] then {value} else {default}',
+        'if [condition_column] [operator] [condition_value]\nthen {value} else {default}',
     BlockType.sqlCoalesce: 'use {value} otherwise {default}',
     BlockType.sqlNullIf: 'set empty if {value} equals {default}',
     BlockType.sqlSetTransaction: 'set transaction level [level]',

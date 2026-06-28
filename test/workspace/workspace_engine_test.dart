@@ -86,6 +86,37 @@ void main() {
     expect(controller.allBlocks(), hasLength(5));
   });
 
+  test('reports the source table before a JOIN separately from join table', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 284));
+
+    final from = controller.state.roots.first.next!.next!;
+    final join = from.next!;
+    controller.updateInput(from, 'table', 'customers');
+    controller.updateInput(join, 'table', 'orders');
+
+    expect(controller.contextTableBeforeNode(join.id), 'customers');
+    expect(controller.contextTableForNode(join.id), 'orders');
+  });
+
+  test('changing the source table does not overwrite JOIN target table', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 284));
+
+    final from = controller.state.roots.first.next!.next!;
+    final join = from.next!;
+    controller.updateInput(join, 'table', 'orders');
+    controller.updateInput(from, 'table', 'customers');
+
+    expect(from.inputs['table'], 'customers');
+    expect(join.inputs['table'], 'orders');
+    expect(controller.contextTableBeforeNode(join.id), 'customers');
+  });
+
   test('inserts two INNER JOIN blocks into the starter query chain', () {
     final controller = WorkspaceController();
     controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 352));
@@ -161,6 +192,31 @@ void main() {
       controller.state.roots.where((node) => node.type == BlockType.sqlHaving),
       hasLength(1),
     );
+  });
+
+  test('previews rejected snap target while dragging invalid SQL order', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlHaving, const Offset(520, 420));
+
+    final select = controller.state.roots.first.next!;
+    final having = controller.state.roots.singleWhere(
+      (node) => node.type == BlockType.sqlHaving,
+    );
+
+    controller.startDrag(having.position + const Offset(10, 10));
+    controller.updateDrag(
+      Offset(
+        select.position.dx - having.position.dx,
+        select.position.dy +
+            controller.blockHeight(select) -
+            having.position.dy,
+      ),
+    );
+
+    expect(controller.state.highlightTargetId, isNull);
+    expect(controller.state.rejectedTargetId, select.id);
+    expect(controller.state.rejectedZone, SnapZone.topOuter);
   });
 
   test('snaps HAVING after GROUP BY', () {

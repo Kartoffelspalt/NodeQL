@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -33,6 +34,324 @@ import 'package:path/path.dart' as p;
 import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
+const double _inlineLineHeight = 28;
+
+class _SimpleNodeDiagnostic {
+  const _SimpleNodeDiagnostic({required this.title, required this.message});
+
+  final String title;
+  final String message;
+}
+
+Map<String, _SimpleNodeDiagnostic> _simpleNodeDiagnostics({
+  required SqlAbstractionMode mode,
+  required List<BlockNode> roots,
+  required SqlRuntimeState runtime,
+  required SqlCompileResult compileResult,
+}) {
+  if (mode != SqlAbstractionMode.simple) {
+    return const <String, _SimpleNodeDiagnostic>{};
+  }
+  final diagnostics = <String, _SimpleNodeDiagnostic>{};
+  for (final warning in compileResult.warnings) {
+    final node = _nodeForCompilerWarning(roots, warning);
+    if (node != null) {
+      diagnostics[node.id] = _SimpleNodeDiagnostic(
+        title: 'Problem in dieser Blockkette',
+        message: _friendlyCompileWarning(warning),
+      );
+    }
+  }
+  final runtimeMessage = runtime.lastMessage;
+  if (runtimeMessage == null || runtimeMessage.trim().isEmpty) {
+    return diagnostics;
+  }
+  if (!_looksLikeRuntimeError(runtimeMessage)) return diagnostics;
+  final node = _nodeForRuntimeError(roots, runtimeMessage);
+  if (node == null) return diagnostics;
+  diagnostics[node.id] = _SimpleNodeDiagnostic(
+    title: 'Fehler an diesem Node',
+    message: _friendlyRuntimeError(runtimeMessage),
+  );
+  return diagnostics;
+}
+
+bool _looksLikeRuntimeError(String message) {
+  final normalized = message.toLowerCase();
+  return normalized.contains('error') ||
+      normalized.contains('exception') ||
+      normalized.contains('no such table') ||
+      normalized.contains('no such column') ||
+      normalized.contains('no database connected') ||
+      normalized.contains('database file not found') ||
+      normalized.contains('syntax error') ||
+      normalized.startsWith('rolled back:') ||
+      normalized.startsWith('failed ');
+}
+
+BlockNode? _nodeForCompilerWarning(List<BlockNode> roots, String warning) {
+  final idMatch = RegExp(r'"([^"]+)"').firstMatch(warning);
+  final id = idMatch?.group(1);
+  if (id == null) return null;
+  return _findNodeById(roots, id);
+}
+
+String _friendlyCompileWarning(String warning) {
+  if (warning.contains('not executable')) {
+    return 'Dieser Block ist nicht mit ABFRAGE AUSFÜHREN verbunden.';
+  }
+  if (warning.contains('Cycle detected')) {
+    return 'Diese Blockkette bildet eine Schleife. Trenne einen der verbundenen Blöcke.';
+  }
+  if (warning.contains('Plugin block')) {
+    return 'Dieser Plugin-Block ist nicht verfügbar oder passt nicht mehr zur installierten Version.';
+  }
+  if (warning.contains('failed:')) {
+    return 'Dieser Zusatz-Block konnte nicht übersetzt werden. Prüfe seine Eingaben oder installiere das Plugin neu.';
+  }
+  if (warning.contains('created with version')) {
+    return 'Dieser Plugin-Block wurde mit einer anderen Version erstellt. Prüfe, ob das Plugin aktualisiert wurde.';
+  }
+  return 'Dieser Block konnte noch nicht verständlich geprüft werden. Prüfe seine Verbindung und die eingetragenen Werte.';
+}
+
+String _visibleCompileWarnings({
+  required SqlAbstractionMode mode,
+  required List<String> warnings,
+}) {
+  if (mode != SqlAbstractionMode.simple) return warnings.join('\n');
+  return warnings.map(_friendlyCompileWarning).join('\n');
+}
+
+BlockNode? _nodeForRuntimeError(List<BlockNode> roots, String message) {
+  final normalized = message.toLowerCase();
+  final noSuchTable = RegExp(
+    r'no such table: ([^\s,)]+)',
+    caseSensitive: false,
+  ).firstMatch(message);
+  if (noSuchTable != null) {
+    final table = _stripSqlToken(noSuchTable.group(1)!);
+    return _firstNodeWhere(
+      roots,
+      (node) =>
+          node.inputs['table']?.toString() == table ||
+          node.inputs['table_name']?.toString() == table,
+    );
+  }
+  final noSuchColumn = RegExp(
+    r'no such column: ([^\s,)]+)',
+    caseSensitive: false,
+  ).firstMatch(message);
+  if (noSuchColumn != null) {
+    final column = _stripSqlToken(noSuchColumn.group(1)!);
+    return _firstNodeWhere(
+      roots,
+      (node) => node.inputs.values.any((value) {
+        final text = value?.toString() ?? '';
+        return text == column ||
+            text.endsWith('.$column') ||
+            text.split(',').map((part) => part.trim()).contains(column);
+      }),
+    );
+  }
+  final near = RegExp(
+    r'near "([^"]+)": syntax error',
+    caseSensitive: false,
+  ).firstMatch(message);
+  if (near != null) {
+    final token = near.group(1)!.toUpperCase();
+    final node = _firstNodeWhere(
+      roots,
+      (node) => _sqlKeywordForNode(node.type) == token,
+    );
+    if (node != null) return node;
+  }
+  if (normalized.contains('syntax error')) {
+    return _firstNodeWhere(roots, _likelySyntaxProblemNode);
+  }
+  if (normalized.contains('constraint')) {
+    return _firstNodeWhere(
+      roots,
+      (node) =>
+          node.type == BlockType.sqlInsert ||
+          node.type == BlockType.sqlUpdate ||
+          node.type == BlockType.sqlDelete,
+    );
+  }
+  return _firstNodeWhere(
+    roots,
+    (node) => node.type != BlockType.eventGreenFlag,
+  );
+}
+
+String _friendlyRuntimeError(String message) {
+  final normalized = message.toLowerCase();
+  final noSuchTable = RegExp(
+    r'no such table: ([^\s,)]+)',
+    caseSensitive: false,
+  ).firstMatch(message);
+  if (noSuchTable != null) {
+    return 'Diese Tabelle wurde in der geladenen Datenbank nicht gefunden. Prüfe den Tabellen-Slot.';
+  }
+  final noSuchColumn = RegExp(
+    r'no such column: ([^\s,)]+)',
+    caseSensitive: false,
+  ).firstMatch(message);
+  if (noSuchColumn != null) {
+    return 'Diese Spalte wurde nicht gefunden. Prüfe Spaltenauswahl, Join-Spalten oder Filter-Spalte.';
+  }
+  if (normalized.contains('ambiguous column')) {
+    return 'Diese Spalte gibt es in mehreren Tabellen. Wähle eindeutig, aus welcher Tabelle die Spalte kommt.';
+  }
+  if (normalized.contains('misuse of aggregate')) {
+    return 'Eine Rechenfunktion wie SUM oder COUNT steht an der falschen Stelle. Nutze sie meist in SELECT oder HAVING.';
+  }
+  if (normalized.contains('incomplete input')) {
+    return 'Die Abfrage ist unvollständig. Prüfe, ob ein Pflichtfeld leer ist oder ein Block fehlt.';
+  }
+  if (normalized.contains('syntax error') || normalized.contains('near "')) {
+    return 'Die SQL-Struktur ist an dieser Stelle ungültig. Prüfe die Reihenfolge und die Slots dieses Nodes.';
+  }
+  if (normalized.contains('unique constraint')) {
+    return 'Dieser Wert darf in der Tabelle nur einmal vorkommen. Wähle einen anderen Wert.';
+  }
+  if (normalized.contains('foreign key constraint')) {
+    return 'Dieser Wert verweist auf einen fehlenden Eintrag in einer anderen Tabelle.';
+  }
+  if (normalized.contains('not null constraint')) {
+    return 'Ein Pflichtfeld ist leer. Trage für diese Spalte einen Wert ein.';
+  }
+  if (normalized.contains('constraint')) {
+    return 'Die Datenbank lehnt diese Änderung wegen einer Regel ab. Prüfe Werte und Schlüssel.';
+  }
+  if (normalized.contains('datatype mismatch')) {
+    return 'Der Wert passt nicht zum Spaltentyp. Prüfe, ob du Zahl, Text oder Datum richtig eingetragen hast.';
+  }
+  if (normalized.contains('readonly') || normalized.contains('read-only')) {
+    return 'Die Datenbank kann gerade nicht beschrieben werden. Prüfe Datei- und Ordnerrechte.';
+  }
+  if (normalized.contains('database is locked')) {
+    return 'Die Datenbank ist gerade durch einen anderen Zugriff gesperrt. Schließe andere Programme oder versuche es erneut.';
+  }
+  if (normalized.contains('no database connected')) {
+    return 'Es ist keine Datenbank verbunden. Wähle zuerst eine .db-Datei aus.';
+  }
+  if (normalized.contains('database file not found')) {
+    return 'Die Datenbankdatei wurde nicht gefunden. Wähle die Datei erneut aus.';
+  }
+  if (normalized.contains('failed to open database')) {
+    return 'Die Datenbank konnte nicht geöffnet werden. Prüfe, ob es wirklich eine SQLite-.db-Datei ist.';
+  }
+  return 'Prüfe diesen Node und seine Slots. Die technische Meldung steht rechts im SQL-Ausgabebereich.';
+}
+
+String _friendlyVisibleRuntimeMessage({
+  required SqlAbstractionMode mode,
+  required String message,
+}) {
+  if (mode != SqlAbstractionMode.simple || !_looksLikeRuntimeError(message)) {
+    return message;
+  }
+  return _friendlyRuntimeError(message);
+}
+
+_SimpleNodeDiagnostic _dragRejectedDiagnostic(SqlAbstractionMode mode) {
+  if (mode == SqlAbstractionMode.simple) {
+    return const _SimpleNodeDiagnostic(
+      title: 'Block passt hier nicht',
+      message:
+          'Ziehe den Block an eine passende Stelle in der Reihenfolge: Anzeigen, Tabelle, Verbinden, Filtern, Gruppieren, Sortieren.',
+    );
+  }
+  return const _SimpleNodeDiagnostic(
+    title: 'Ungültige Verbindung',
+    message: 'Dieser Block kann an dieser Stelle nicht verbunden werden.',
+  );
+}
+
+String _stripSqlToken(String token) {
+  return token
+      .replaceAll('"', '')
+      .replaceAll('`', '')
+      .replaceAll('[', '')
+      .replaceAll(']', '')
+      .split('.')
+      .last
+      .trim();
+}
+
+bool _likelySyntaxProblemNode(BlockNode node) {
+  return switch (node.type) {
+    BlockType.sqlWhere ||
+    BlockType.sqlJoin ||
+    BlockType.sqlInnerJoin ||
+    BlockType.sqlLeftJoin ||
+    BlockType.sqlRightJoin ||
+    BlockType.sqlFullJoin ||
+    BlockType.sqlHaving ||
+    BlockType.sqlOrderBy ||
+    BlockType.sqlInsert ||
+    BlockType.sqlUpdate ||
+    BlockType.sqlDelete => true,
+    _ => false,
+  };
+}
+
+String? _sqlKeywordForNode(BlockType type) {
+  return switch (type) {
+    BlockType.sqlSelect => 'SELECT',
+    BlockType.sqlFrom => 'FROM',
+    BlockType.sqlWhere => 'WHERE',
+    BlockType.sqlJoin ||
+    BlockType.sqlInnerJoin ||
+    BlockType.sqlLeftJoin ||
+    BlockType.sqlRightJoin ||
+    BlockType.sqlFullJoin ||
+    BlockType.sqlCrossJoin ||
+    BlockType.sqlNaturalJoin ||
+    BlockType.sqlSelfJoin => 'JOIN',
+    BlockType.sqlGroupBy => 'GROUP',
+    BlockType.sqlHaving => 'HAVING',
+    BlockType.sqlOrderBy => 'ORDER',
+    BlockType.sqlInsert => 'INSERT',
+    BlockType.sqlUpdate => 'UPDATE',
+    BlockType.sqlDelete => 'DELETE',
+    BlockType.sqlCreateTable => 'CREATE',
+    BlockType.sqlAlterTable => 'ALTER',
+    BlockType.sqlDropTable => 'DROP',
+    _ => null,
+  };
+}
+
+BlockNode? _findNodeById(List<BlockNode> roots, String id) {
+  return _firstNodeWhere(roots, (node) => node.id == id);
+}
+
+BlockNode? _firstNodeWhere(
+  Iterable<BlockNode> roots,
+  bool Function(BlockNode node) predicate,
+) {
+  for (final root in roots) {
+    final found = _firstNodeInTree(root, predicate, <String>{});
+    if (found != null) return found;
+  }
+  return null;
+}
+
+BlockNode? _firstNodeInTree(
+  BlockNode node,
+  bool Function(BlockNode node) predicate,
+  Set<String> seen,
+) {
+  if (!seen.add(node.id)) return null;
+  if (predicate(node)) return node;
+  for (final child in node.children) {
+    final found = _firstNodeInTree(child, predicate, seen);
+    if (found != null) return found;
+  }
+  final next = node.next;
+  return next == null ? null : _firstNodeInTree(next, predicate, seen);
+}
 
 Color _sqlColorForType(BlockType type) {
   if (type == BlockType.eventGreenFlag) return ScratchPalette.events;
@@ -145,6 +464,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       pluginBlocks: pluginState.blocksByQualifiedId,
     );
     final sql = compileResult.sql;
+    final nodeDiagnostics = _simpleNodeDiagnostics(
+      mode: mode,
+      roots: workspaceRoots,
+      runtime: runtime,
+      compileResult: compileResult,
+    );
     _maybeAutosave(workspaceRevision);
 
     return Scaffold(
@@ -175,7 +500,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       .setMessage(
                         compileResult.warnings.isEmpty
                             ? catalog.text('runtime.noExecutable')
-                            : compileResult.warnings.join('\n'),
+                            : _visibleCompileWarnings(
+                                mode: mode,
+                                warnings: compileResult.warnings,
+                              ),
                       );
                   return;
                 }
@@ -185,7 +513,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       .read(sqlRuntimeProvider.notifier)
                       .setMessage(
                         catalog.text('runtime.executedWithWarnings', {
-                          'warnings': compileResult.warnings.join('\n'),
+                          'warnings': _visibleCompileWarnings(
+                            mode: mode,
+                            warnings: compileResult.warnings,
+                          ),
                         }),
                       );
                 }
@@ -249,11 +580,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       focusNode: _workspaceFocus,
                       transform: _transform,
                       paletteWidth: 72.0 + _paletteWidth,
+                      diagnostics: nodeDiagnostics,
                     ),
                   ),
                   _SqlRuntimePane(
                     sql: sql,
                     runtime: runtime,
+                    mode: mode,
                     localeCode: locale.languageCode,
                     catalog: catalog,
                   ),
@@ -1819,12 +2152,6 @@ class _PaletteState extends State<_Palette> {
         native(BlockType.sqlGroupBy),
         native(BlockType.sqlHaving),
         native(BlockType.sqlOrderBy),
-        native(BlockType.sqlInnerJoin),
-        native(BlockType.sqlLeftJoin),
-        native(BlockType.sqlRightJoin),
-        native(BlockType.sqlFullJoin),
-        native(BlockType.sqlCrossJoin),
-        native(BlockType.sqlNaturalJoin),
         native(BlockType.sqlSubqueryIn),
         native(BlockType.sqlSubqueryAny),
         native(BlockType.sqlSubqueryAll),
@@ -2411,11 +2738,13 @@ class _WorkspaceCanvas extends ConsumerWidget {
     required this.focusNode,
     required this.transform,
     required this.paletteWidth,
+    required this.diagnostics,
   });
 
   final FocusNode focusNode;
   final TransformationController transform;
   final double paletteWidth;
+  final Map<String, _SimpleNodeDiagnostic> diagnostics;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2482,17 +2811,22 @@ class _WorkspaceCanvas extends ConsumerWidget {
                         Positioned(
                           left: block.position.dx,
                           top: block.position.dy,
-                          child: _NodeView(
-                            node: block,
-                            highlighted:
-                                workspace.highlightTargetId == block.id,
-                            innerHighlighted:
-                                workspace.highlightTargetId == block.id &&
-                                (workspace.highlightZone == SnapZone.innerTop ||
-                                    workspace.highlightZone ==
-                                        SnapZone.innerBottom),
-                            selected: workspace.selectedBlockIds.contains(
-                              block.id,
+                          child: RepaintBoundary(
+                            child: _NodeView(
+                              node: block,
+                              diagnostic: diagnostics[block.id],
+                              highlighted:
+                                  workspace.highlightTargetId == block.id,
+                              rejected: workspace.rejectedTargetId == block.id,
+                              innerHighlighted:
+                                  workspace.highlightTargetId == block.id &&
+                                  (workspace.highlightZone ==
+                                          SnapZone.innerTop ||
+                                      workspace.highlightZone ==
+                                          SnapZone.innerBottom),
+                              selected: workspace.selectedBlockIds.contains(
+                                block.id,
+                              ),
                             ),
                           ),
                         ),
@@ -2825,13 +3159,17 @@ class _PointerWorkspaceLayerState
 class _NodeView extends ConsumerWidget {
   const _NodeView({
     required this.node,
+    required this.diagnostic,
     required this.highlighted,
+    required this.rejected,
     required this.innerHighlighted,
     required this.selected,
   });
 
   final BlockNode node;
+  final _SimpleNodeDiagnostic? diagnostic;
   final bool highlighted;
+  final bool rejected;
   final bool innerHighlighted;
   final bool selected;
 
@@ -2852,10 +3190,11 @@ class _NodeView extends ConsumerWidget {
         ? _colorForNodeType(node.type)
         : Color(pluginBlock.colorValue);
 
-    final height = engine.blockHeight(node);
     final pluginShape = pluginBlock?.shape.name;
     final visualKind = blockVisualKind(node, pluginShape: pluginShape);
     final template = _templateForNode(node, mode, localeCode, pluginBlock);
+    final effectiveDiagnostic =
+        diagnostic ?? (rejected ? _dragRejectedDiagnostic(mode) : null);
     final measuredWidth =
         _computeBlockWidth(
           node: node,
@@ -2872,9 +3211,8 @@ class _NodeView extends ConsumerWidget {
         (visualKind == BlockVisualKind.trigger ? 34 : 0);
     final blockWidth = measuredWidth.clamp(
       WorkspaceController.blockWidth,
-      900.0,
+      1100.0,
     );
-    engine.setRenderWidth(node, blockWidth);
     final contentLeft = switch (visualKind) {
       BlockVisualKind.trigger => 49.0,
       BlockVisualKind.join => 26.0,
@@ -2883,7 +3221,7 @@ class _NodeView extends ConsumerWidget {
       BlockVisualKind.pluginContainer => 28.0,
       _ => 14.0,
     };
-    final slotRects = _computeInlineSlots(
+    final inlineLayout = _computeInlineLayout(
       node: node,
       template: template,
       values: node.inputs,
@@ -2896,6 +3234,7 @@ class _NodeView extends ConsumerWidget {
         fontWeight: FontWeight.w700,
       ),
     );
+    final usesInlineOverlay = inlineLayout.slots.isNotEmpty;
     final maskedLabel = _labelMaskWithSlotSpacing(
       node: node,
       template: template,
@@ -2908,13 +3247,21 @@ class _NodeView extends ConsumerWidget {
         fontWeight: FontWeight.w700,
       ),
     );
+    final computedHeight = _heightForNodeContent(
+      baseHeight: engine.blockHeight(node),
+      template: template,
+      slotRects: inlineLayout.slots,
+      textRuns: inlineLayout.textRuns,
+      isJoin: visualKind == BlockVisualKind.join,
+    );
+    engine.setRenderMetrics(node, width: blockWidth, height: computedHeight);
 
     final blockContent = Stack(
       clipBehavior: Clip.none,
       children: [
         SizedBox(
           width: blockWidth,
-          height: height,
+          height: computedHeight,
           child: Stack(
             children: [
               GestureDetector(
@@ -2923,15 +3270,36 @@ class _NodeView extends ConsumerWidget {
                   node: node,
                   color: color,
                   width: blockWidth,
-                  height: height,
-                  label: maskedLabel,
+                  height: computedHeight,
+                  label: usesInlineOverlay ? '' : maskedLabel,
                   pluginShape: pluginShape,
                   isHighlighted: highlighted,
+                  isErrorHighlighted: effectiveDiagnostic != null,
                   isSelected: selected,
                   showInnerHighlight: innerHighlighted,
+                  showLabel: !usesInlineOverlay,
                 ),
               ),
-              ...slotRects.map((slot) {
+              if (usesInlineOverlay)
+                ...inlineLayout.textRuns.map(
+                  (run) => Positioned(
+                    left: contentLeft + run.offset.dx,
+                    top: 9 + run.offset.dy,
+                    child: Text(
+                      run.text,
+                      maxLines: 1,
+                      overflow: TextOverflow.visible,
+                      softWrap: false,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+                ),
+              ...inlineLayout.slots.map((slot) {
                 final acceptsReporter = slotAcceptsReporter(
                   slot.rawKey,
                   slot.inputKey,
@@ -3069,7 +3437,21 @@ class _NodeView extends ConsumerWidget {
             ],
           ),
         ),
+        if (effectiveDiagnostic != null)
+          Positioned(
+            left: blockWidth + 10,
+            top: 4,
+            width: 280,
+            child: _NodeDiagnosticBadge(diagnostic: effectiveDiagnostic),
+          ),
       ],
+    );
+
+    final animatedBlockContent = AnimatedScale(
+      scale: highlighted || rejected || selected ? 1.012 : 1,
+      duration: const Duration(milliseconds: 90),
+      curve: Curves.easeOutCubic,
+      child: blockContent,
     );
 
     if (node.type == BlockType.sqlHaving) {
@@ -3090,12 +3472,12 @@ class _NodeView extends ConsumerWidget {
         builder: (context, candidates, _) => AnimatedScale(
           scale: candidates.isEmpty ? 1 : 1.02,
           duration: const Duration(milliseconds: 100),
-          child: blockContent,
+          child: animatedBlockContent,
         ),
       );
     }
 
-    return blockContent;
+    return animatedBlockContent;
   }
 
   String _templateForNode(
@@ -3426,7 +3808,7 @@ class _NodeView extends ConsumerWidget {
     return buffer.toString();
   }
 
-  List<_InlineSlotRect> _computeInlineSlots({
+  _InlineNodeLayout _computeInlineLayout({
     required BlockNode node,
     required String template,
     required Map<String, dynamic> values,
@@ -3436,20 +3818,31 @@ class _NodeView extends ConsumerWidget {
     required TextStyle style,
   }) {
     final pattern = RegExp(r'(\[[^\]]+\]|\{[^}]+\})');
+    final textRuns = <_InlineTextRun>[];
     final slots = <_InlineSlotRect>[];
     var x = 0.0;
     var y = 0.0;
     var cursor = 0;
 
+    void appendText(String text) {
+      if (text.isEmpty) return;
+      final lines = text.split('\n');
+      for (var index = 0; index < lines.length; index += 1) {
+        final line = lines[index];
+        if (line.isNotEmpty) {
+          textRuns.add(_InlineTextRun(text: line, offset: Offset(x, y)));
+          x += _measureText(line, style);
+        }
+        if (index < lines.length - 1) {
+          y += _inlineLineHeight;
+          x = 0;
+        }
+      }
+    }
+
     for (final m in pattern.allMatches(template)) {
       final before = template.substring(cursor, m.start);
-      final lines = before.split('\n');
-      if (lines.length > 1) {
-        y += (lines.length - 1) * 28;
-        x = _measureText(lines.last, style);
-      } else {
-        x += _measureText(before, style);
-      }
+      appendText(before);
 
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
@@ -3485,7 +3878,8 @@ class _NodeView extends ConsumerWidget {
       x += _reservedInlineSlotWidth(slotWidth, inputKey);
       cursor = m.end;
     }
-    return slots;
+    appendText(template.substring(cursor));
+    return _InlineNodeLayout(textRuns: textRuns, slots: slots);
   }
 
   double _computeBlockWidth({
@@ -3549,10 +3943,33 @@ class _NodeView extends ConsumerWidget {
     return maxLineWidth + (template.contains('\n') ? 52 : 28);
   }
 
+  double _heightForNodeContent({
+    required double baseHeight,
+    required String template,
+    required List<_InlineSlotRect> slotRects,
+    required List<_InlineTextRun> textRuns,
+    required bool isJoin,
+  }) {
+    final lineCount = template.split('\n').length;
+    final labelHeight = 18.0 + (lineCount * (isJoin ? 24.0 : 21.0));
+    final slotBottom = slotRects.fold<double>(
+      0,
+      (maxBottom, slot) => math.max(maxBottom, 9 + slot.rect.bottom + 12),
+    );
+    final textBottom = textRuns.fold<double>(
+      0,
+      (maxBottom, run) => math.max(maxBottom, 9 + run.offset.dy + 20),
+    );
+    return math.max(
+      baseHeight,
+      math.max(labelHeight, math.max(slotBottom, textBottom)),
+    );
+  }
+
   double _slotWidthForDisplay(String display, TextStyle style) {
     return (_measureText(display, style.copyWith(fontSize: 12)) + 14).clamp(
-      40.0,
-      280.0,
+      54.0,
+      340.0,
     );
   }
 
@@ -3566,7 +3983,7 @@ class _NodeView extends ConsumerWidget {
   }) {
     if (reporter == null) return _slotWidthForDisplay(display, style);
     final label = _reporterLabelForSlot(reporter, localeCode, mode, inputKey);
-    return (_measureText(label, style) + 32).clamp(72.0, 260.0);
+    return (_measureText(label, style) + 36).clamp(82.0, 340.0);
   }
 
   double _reservedInlineSlotWidth(double slotWidth, String inputKey) {
@@ -3577,8 +3994,9 @@ class _NodeView extends ConsumerWidget {
       'where_column' ||
       'left_column' ||
       'right_column' ||
-      'condition_column' => 8.0,
-      _ => 4.0,
+      'condition_column' => 14.0,
+      'aggregate' || 'operator' => 10.0,
+      _ => 8.0,
     };
     return slotWidth + _slotGap() + safetyGap;
   }
@@ -3686,7 +4104,7 @@ class _NodeView extends ConsumerWidget {
     }
   }
 
-  double _slotGap() => 10.0;
+  double _slotGap() => 14.0;
 
   double _slotLeadingGap(String precedingText, String inputKey) {
     if (inputKey == 'table' && precedingText.trim().isNotEmpty) {
@@ -3788,6 +4206,12 @@ class _NodeView extends ConsumerWidget {
         options: options,
         anchorGlobal: anchorGlobal,
         localeCode: localeCode,
+        header: _inlineOptionHeader(
+          mappedKey: mappedKey,
+          node: node,
+          engine: engine,
+          localeCode: localeCode,
+        ),
       );
       if (picked != null) {
         if (mappedKey == 'columns') {
@@ -3942,7 +4366,7 @@ class _NodeView extends ConsumerWidget {
         mappedKey == 'left_column' ||
         mappedKey == 'right_column' ||
         mappedKey == 'condition_column') {
-      final cols = _availableColumns(node, runtime, engine);
+      final cols = _availableColumnsForKey(node, mappedKey, runtime, engine);
       if (mappedKey == 'columns') {
         final currentRaw = '${node.inputs['columns'] ?? '*'}';
         final selected = _selectedColumns(currentRaw);
@@ -4000,6 +4424,28 @@ class _NodeView extends ConsumerWidget {
     return const <String>[];
   }
 
+  String? _inlineOptionHeader({
+    required String mappedKey,
+    required BlockNode node,
+    required WorkspaceController engine,
+    required String localeCode,
+  }) {
+    final de = _normalizedLocaleCode(localeCode) == 'de';
+    if (mappedKey == 'left_column') {
+      final table = engine.contextTableBeforeNode(node.id);
+      return de
+          ? 'Spalte aus Tabelle 1: ${table ?? 'bisherige Tabelle'}'
+          : 'Column from table 1: ${table ?? 'previous table'}';
+    }
+    if (mappedKey == 'right_column') {
+      final table = '${node.inputs['table'] ?? ''}'.trim();
+      return de
+          ? 'Spalte aus Tabelle 2: ${table.isEmpty ? 'Join-Tabelle' : table}'
+          : 'Column from table 2: ${table.isEmpty ? 'join table' : table}';
+    }
+    return null;
+  }
+
   List<String> _availableColumns(
     BlockNode node,
     SqlRuntimeState runtime,
@@ -4014,6 +4460,65 @@ class _NodeView extends ConsumerWidget {
               .toSet()
               .toList(growable: false)
         : schema.first.columns;
+  }
+
+  List<String> _availableColumnsForKey(
+    BlockNode node,
+    String mappedKey,
+    SqlRuntimeState runtime,
+    WorkspaceController engine,
+  ) {
+    if (mappedKey == 'left_column') {
+      final table = engine.contextTableBeforeNode(node.id);
+      return _qualifiedColumnsForTable(runtime, table);
+    }
+    if (mappedKey == 'right_column') {
+      final table = '${node.inputs['table'] ?? ''}'.trim();
+      return _qualifiedColumnsForTable(runtime, table);
+    }
+    return _availableColumns(node, runtime, engine);
+  }
+
+  List<String> _qualifiedColumnsForTable(
+    SqlRuntimeState runtime,
+    String? tableInput,
+  ) {
+    final table = tableInput?.trim() ?? '';
+    if (table.isEmpty || table == 'table_name') {
+      return runtime.schemas
+          .expand(
+            (schema) =>
+                schema.columns.map((column) => '${schema.name}.$column'),
+          )
+          .toSet()
+          .toList(growable: false);
+    }
+    final schemaName = _schemaNameFromTableInput(table);
+    final qualifier = _columnQualifierFromTableInput(table);
+    final schema = runtime.schemas.where((s) => s.name == schemaName);
+    if (schema.isEmpty) {
+      return runtime.schemas
+          .expand((s) => s.columns.map((column) => '${s.name}.$column'))
+          .toSet()
+          .toList(growable: false);
+    }
+    return schema.first.columns
+        .map((column) => '$qualifier.$column')
+        .toList(growable: false);
+  }
+
+  String _schemaNameFromTableInput(String tableInput) {
+    final parts = tableInput.trim().split(RegExp(r'\s+'));
+    return parts.isEmpty ? tableInput.trim() : parts.first;
+  }
+
+  String _columnQualifierFromTableInput(String tableInput) {
+    final parts = tableInput.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[parts.length - 2].toLowerCase() == 'as') {
+      return parts.last;
+    }
+    if (parts.length >= 2) return parts.last;
+    return _schemaNameFromTableInput(tableInput);
   }
 
   Future<String?> _pickColumnsDialog({
@@ -4100,6 +4605,7 @@ class _NodeView extends ConsumerWidget {
     required List<String> options,
     required Offset anchorGlobal,
     required String localeCode,
+    String? header,
   }) async {
     final catalog = translationCatalogOf(context);
     final completer = Completer<String?>();
@@ -4113,6 +4619,7 @@ class _NodeView extends ConsumerWidget {
     }
 
     final maxHeight = MediaQuery.of(context).size.height * 0.4;
+    final overlayWidth = options.any(_isJoinOption) ? 340.0 : 240.0;
     final overlay = Overlay.of(context, rootOverlay: true);
     final overlayBox = overlay.context.findRenderObject() as RenderBox;
     final anchor = overlayBox.globalToLocal(anchorGlobal);
@@ -4128,13 +4635,17 @@ class _NodeView extends ConsumerWidget {
             ),
           ),
           Positioned(
-            left: _clampOverlayLeft(context, anchor.dx - 110, 220),
+            left: _clampOverlayLeft(
+              context,
+              anchor.dx - overlayWidth / 2,
+              overlayWidth,
+            ),
             top: _clampOverlayTop(context, anchor.dy + 8, maxHeight),
             child: Material(
               color: Colors.transparent,
               child: Container(
                 key: const ValueKey('inline-option-overlay'),
-                width: 220,
+                width: overlayWidth,
                 constraints: BoxConstraints(maxHeight: maxHeight),
                 decoration: BoxDecoration(
                   color: workbenchColors.panelElevated,
@@ -4145,62 +4656,132 @@ class _NodeView extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(
-                      child: options.isEmpty
-                          ? Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  catalog.text('editor.noSchemaOptions'),
-                                  style: TextStyle(
-                                    color: workbenchColors.muted,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (header != null)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: workbenchColors.panel,
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: workbenchColors.border,
                                   ),
                                 ),
                               ),
-                            )
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: options.length,
-                              itemBuilder: (_, i) => InkWell(
-                                onTap: () => close(options[i]),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        // Column name (or any non‑remove option)
-                                        Expanded(
-                                          child: Text(
-                                            _localizedOptionLabel(
-                                              options[i],
-                                              localeCode,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(color: foreground),
-                                          ),
-                                        ),
-                                        // If this is a removal entry, show a small remove‑icon.
-                                        if (options[i].startsWith(
-                                          '__REMOVE__:',
-                                        ))
-                                          const Icon(
-                                            Icons.remove_circle,
-                                            size: 16,
-                                            color: Colors.redAccent,
-                                          ),
-                                      ],
-                                    ),
-                                  ),
+                              child: Text(
+                                header,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: workbenchColors.muted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),
+                          Flexible(
+                            child: options.isEmpty
+                                ? Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        catalog.text('editor.noSchemaOptions'),
+                                        style: TextStyle(
+                                          color: workbenchColors.muted,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    shrinkWrap: true,
+                                    itemCount: options.length,
+                                    itemBuilder: (_, i) => InkWell(
+                                      onTap: () => close(options[i]),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              // Column name (or any non‑remove option)
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      _localizedOptionLabel(
+                                                        options[i],
+                                                        localeCode,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: foreground,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    if (_localizedOptionSubtitle(
+                                                          options[i],
+                                                          localeCode,
+                                                        )
+                                                        case final subtitle?)
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets.only(
+                                                              top: 2,
+                                                            ),
+                                                        child: Text(
+                                                          subtitle,
+                                                          maxLines: 2,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            color:
+                                                                workbenchColors
+                                                                    .muted,
+                                                            fontSize: 12,
+                                                            height: 1.15,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                              // If this is a removal entry, show a small remove‑icon.
+                                              if (options[i].startsWith(
+                                                '__REMOVE__:',
+                                              ))
+                                                const Icon(
+                                                  Icons.remove_circle,
+                                                  size: 16,
+                                                  color: Colors.redAccent,
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                     Divider(height: 1, color: workbenchColors.border),
                     Padding(
@@ -4273,8 +4854,26 @@ class _NodeView extends ConsumerWidget {
       'NATURAL',
       'SELF',
     };
-    if (joins.contains(value)) return _localizedJoinLabel(value, localeCode);
+    if (joins.contains(value)) return _localizedJoinTitle(value, localeCode);
     return value;
+  }
+
+  bool _isJoinOption(String value) {
+    const joins = <String>{
+      'INNER',
+      'LEFT',
+      'RIGHT',
+      'FULL',
+      'CROSS',
+      'NATURAL',
+      'SELF',
+    };
+    return joins.contains(value);
+  }
+
+  String? _localizedOptionSubtitle(String value, String localeCode) {
+    if (!_isJoinOption(value)) return null;
+    return _localizedJoinSubtitle(value, localeCode);
   }
 
   String _localizedOrderLabel(String value, String localeCode) {
@@ -4331,57 +4930,71 @@ class _NodeView extends ConsumerWidget {
     }
   }
 
-  String _localizedJoinLabel(String value, String localeCode) {
+  String _localizedJoinTitle(String value, String localeCode) {
+    return switch (value) {
+      'INNER' => 'Inner Join',
+      'LEFT' => 'Left Join',
+      'RIGHT' => 'Right Join',
+      'FULL' => 'Full Join',
+      'CROSS' => 'Cross Join',
+      'NATURAL' => 'Natural Join',
+      'SELF' => 'Self Join',
+      _ => value,
+    };
+  }
+
+  String _localizedJoinSubtitle(String value, String localeCode) {
     final code = _normalizedLocaleCode(localeCode);
     switch (value) {
       case 'INNER':
         return switch (code) {
-          'de' => 'Inner Join (nur Treffer in beiden Tabellen)',
+          'de' => 'Nur Zeilen, die in beiden Tabellen passen.',
           'es' => 'Inner Join (coincidencias en ambas tablas)',
           'fr' => 'Inner Join (lignes présentes dans les deux tables)',
-          _ => 'Inner Join (rows in both tables)',
+          _ => 'Only rows that match in both tables.',
         };
       case 'LEFT':
         return switch (code) {
-          'de' => 'Left Join (alle Zeilen links + Treffer rechts)',
+          'de' => 'Alle bisherigen Zeilen bleiben, passende neue kommen dazu.',
           'es' => 'Left Join (todas filas izquierdas + coincidencias)',
           'fr' => 'Left Join (toutes lignes gauche + correspondances)',
-          _ => 'Left Join (all left rows + matches)',
+          _ => 'Keep all previous rows and add matching new rows.',
         };
       case 'RIGHT':
         return switch (code) {
-          'de' => 'Right Join (alle Zeilen rechts + Treffer links)',
+          'de' => 'Alle Zeilen der neuen Tabelle bleiben erhalten.',
           'es' => 'Right Join (todas filas derechas + coincidencias)',
           'fr' => 'Right Join (toutes lignes droite + correspondances)',
-          _ => 'Right Join (all right rows + matches)',
+          _ => 'Keep all rows from the new table.',
         };
       case 'FULL':
         return switch (code) {
-          'de' => 'Full Join (alle Zeilen aus beiden Tabellen)',
+          'de' => 'Alle Zeilen aus beiden Tabellen bleiben erhalten.',
           'es' => 'Full Join (todas las filas de ambas tablas)',
           'fr' => 'Full Join (toutes les lignes des deux tables)',
-          _ => 'Full Join (all rows from both tables)',
+          _ => 'Keep all rows from both tables.',
         };
       case 'CROSS':
         return switch (code) {
-          'de' => 'Cross Join (jede Zeile mit jeder kombinieren)',
+          'de' =>
+            'Kombiniert jede Zeile mit jeder Zeile. Sehr viele Ergebnisse möglich.',
           'es' => 'Cross Join (combina cada fila con todas)',
           'fr' => 'Cross Join (chaque ligne combinée avec toutes)',
-          _ => 'Cross Join (combine every row with every row)',
+          _ => 'Combine every row with every row. Can create many results.',
         };
       case 'NATURAL':
         return switch (code) {
-          'de' => 'Natural Join (automatisch über gleiche Spaltennamen)',
+          'de' => 'Verbindet automatisch über gleich benannte Spalten.',
           'es' => 'Natural Join (automático por columnas iguales)',
           'fr' => 'Natural Join (automatique par colonnes identiques)',
-          _ => 'Natural Join (auto-join by same column names)',
+          _ => 'Automatically joins columns with the same names.',
         };
       case 'SELF':
         return switch (code) {
-          'de' => 'Self Join (Tabelle mit sich selbst verbinden)',
+          'de' => 'Vergleicht eine Tabelle mit sich selbst.',
           'es' => 'Self Join (unir tabla consigo misma)',
           'fr' => 'Self Join (joindre la table à elle-même)',
-          _ => 'Self Join (join a table to itself)',
+          _ => 'Compare a table with itself.',
         };
       default:
         return value;
@@ -4549,6 +5162,20 @@ class _InlineSlotRect {
   final Rect rect;
 }
 
+class _InlineTextRun {
+  const _InlineTextRun({required this.text, required this.offset});
+
+  final String text;
+  final Offset offset;
+}
+
+class _InlineNodeLayout {
+  const _InlineNodeLayout({required this.textRuns, required this.slots});
+
+  final List<_InlineTextRun> textRuns;
+  final List<_InlineSlotRect> slots;
+}
+
 class _ColumnReporterEditResult {
   const _ColumnReporterEditResult({this.value, this.removeReporter = false});
 
@@ -4556,16 +5183,70 @@ class _ColumnReporterEditResult {
   final bool removeReporter;
 }
 
+class _NodeDiagnosticBadge extends StatelessWidget {
+  const _NodeDiagnosticBadge({required this.diagnostic});
+
+  final _SimpleNodeDiagnostic diagnostic;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '${diagnostic.title}\n${diagnostic.message}',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF991B1B).withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: const Color(0xFFFCA5A5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.24),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Colors.white,
+              size: 15,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                diagnostic.message,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SqlRuntimePane extends StatefulWidget {
   const _SqlRuntimePane({
     required this.sql,
     required this.runtime,
+    required this.mode,
     required this.localeCode,
     required this.catalog,
   });
 
   final String sql;
   final SqlRuntimeState runtime;
+  final SqlAbstractionMode mode;
   final String localeCode;
   final TranslationCatalog catalog;
 
@@ -4708,6 +5389,12 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     if (widget.runtime.lastRows.isEmpty) {
+      final message = widget.runtime.lastMessage == null
+          ? widget.catalog.text('runtime.noResults')
+          : _friendlyVisibleRuntimeMessage(
+              mode: widget.mode,
+              message: widget.runtime.lastMessage!,
+            );
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
@@ -4716,11 +5403,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: workbenchColors.border),
         ),
-        child: Text(
-          widget.runtime.lastMessage ??
-              widget.catalog.text('runtime.noResults'),
-          style: TextStyle(color: colorScheme.onSurface),
-        ),
+        child: Text(message, style: TextStyle(color: colorScheme.onSurface)),
       );
     }
     return ScrollConfiguration(
