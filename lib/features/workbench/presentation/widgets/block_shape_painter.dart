@@ -59,37 +59,40 @@ class BlockShape extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.only(
               left: isTrigger ? 16 : (isJoin ? 26 : (isPlugin ? 28 : 14)),
-              top: isTrigger ? 12 : (isJoin ? 9 : 10),
+              top: isJoin ? 9 : 0,
               right: 12,
             ),
-            child: SizedBox(
-              width:
-                  width -
-                  (isTrigger ? 28 : (isJoin ? 38 : (isPlugin ? 42 : 26))),
-              child: !showLabel
-                  ? const SizedBox.shrink()
-                  : isTrigger
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            shape: BoxShape.circle,
+            child: Align(
+              alignment: isJoin ? Alignment.topLeft : Alignment.centerLeft,
+              child: SizedBox(
+                width:
+                    width -
+                    (isTrigger ? 28 : (isJoin ? 38 : (isPlugin ? 42 : 26))),
+                child: !showLabel
+                    ? const SizedBox.shrink()
+                    : isTrigger
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.play_arrow_rounded,
-                            size: 18,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 9),
-                        Expanded(child: _BlockLabel(label: label)),
-                      ],
-                    )
-                  : _BlockLabel(label: label, isJoin: isJoin),
+                          const SizedBox(width: 9),
+                          Expanded(child: _BlockLabel(label: label)),
+                        ],
+                      )
+                    : _BlockLabel(label: label, isJoin: isJoin),
+              ),
             ),
           ),
         ),
@@ -143,43 +146,6 @@ class _ScratchBlockPainter extends CustomPainter {
     canvas.drawShadow(path, Colors.black.withValues(alpha: 0.28), 8, false);
     canvas.drawPath(path, Paint()..color = color);
     _paintBlockBoundary(canvas, path);
-
-    if (kind == BlockVisualKind.join) {
-      final separatorPaint = Paint()
-        ..color = Colors.white.withValues(alpha: 0.58)
-        ..strokeWidth = 2;
-      canvas.drawLine(
-        const Offset(20, 9),
-        Offset(20, size.height - 9),
-        separatorPaint,
-      );
-      canvas.drawCircle(
-        const Offset(20, 9),
-        2.4,
-        Paint()..color = Colors.white.withValues(alpha: 0.72),
-      );
-      canvas.drawCircle(
-        Offset(20, size.height - 9),
-        2.4,
-        Paint()..color = Colors.white.withValues(alpha: 0.72),
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(8, 8, 8, size.height - 16),
-          const Radius.circular(4),
-        ),
-        Paint()..color = Colors.white.withValues(alpha: 0.24),
-      );
-      if (joinUsesCondition(node)) {
-        canvas.drawLine(
-          Offset(22, size.height / 2),
-          Offset(size.width - 10, size.height / 2),
-          Paint()
-            ..color = Colors.white.withValues(alpha: 0.18)
-            ..strokeWidth = 1,
-        );
-      }
-    }
 
     if (kind == BlockVisualKind.setOperator) {
       canvas.drawLine(

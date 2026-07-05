@@ -632,6 +632,11 @@ class _StepRail extends StatelessWidget {
           final active = index == currentStep;
           final complete = index < currentStep || solvedSteps.contains(index);
           final unlocked = index <= furthestStep;
+          final avatarColor = Color.alphaBlend(
+            colorScheme.primary.withValues(alpha: 0.26),
+            colorScheme.surface,
+          );
+          final avatarForeground = colorScheme.onSurface;
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: ListTile(
@@ -642,23 +647,13 @@ class _StepRail extends StatelessWidget {
               ),
               leading: CircleAvatar(
                 radius: 15,
-                backgroundColor: active
-                    ? colorScheme.primary
-                    : workbenchColors.border,
+                backgroundColor: avatarColor,
                 child: complete
-                    ? Icon(
-                        Icons.check,
-                        size: 17,
-                        color: active
-                            ? colorScheme.onPrimary
-                            : colorScheme.onSurface,
-                      )
+                    ? Icon(Icons.check, size: 17, color: avatarForeground)
                     : Text(
                         '${index + 1}',
                         style: TextStyle(
-                          color: active
-                              ? colorScheme.onPrimary
-                              : colorScheme.onSurface,
+                          color: avatarForeground,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
@@ -671,7 +666,11 @@ class _StepRail extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  color: unlocked ? null : workbenchColors.muted,
+                  color: !unlocked
+                      ? workbenchColors.muted
+                      : active
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurface,
                 ),
               ),
               enabled: unlocked,

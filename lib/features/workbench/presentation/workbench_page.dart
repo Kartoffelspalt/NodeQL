@@ -35,6 +35,8 @@ import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
 const double _inlineLineHeight = 28;
+const double _joinFirstLineOffset = 4;
+const double _joinSecondLineOffset = 18;
 
 class _SimpleNodeDiagnostic {
   const _SimpleNodeDiagnostic({required this.title, required this.message});
@@ -2894,6 +2896,38 @@ Future<void> _handleDeleteWithRootConfirmation(
   }
 }
 
+double _lineOffsetForNode(BlockVisualKind visualKind, double lineTop) {
+  if (visualKind != BlockVisualKind.join) return 0;
+  return lineTop >= _inlineLineHeight
+      ? _joinSecondLineOffset
+      : _joinFirstLineOffset;
+}
+
+double _inlineCenterOffsetForNode({
+  required BlockVisualKind visualKind,
+  required double height,
+  required _InlineNodeLayout layout,
+}) {
+  if (visualKind == BlockVisualKind.join) return 0;
+  if (layout.textRuns.isEmpty && layout.slots.isEmpty) return 0;
+
+  var minTop = double.infinity;
+  var maxBottom = 0.0;
+  for (final run in layout.textRuns) {
+    minTop = math.min(minTop, run.offset.dy);
+    maxBottom = math.max(maxBottom, run.offset.dy + 20);
+  }
+  for (final slot in layout.slots) {
+    minTop = math.min(minTop, slot.rect.top);
+    maxBottom = math.max(maxBottom, slot.rect.bottom);
+  }
+  if (!minTop.isFinite) return 0;
+
+  final contentHeight = maxBottom - minTop;
+  final centeredTop = (height - contentHeight) / 2;
+  return centeredTop - 9 - minTop;
+}
+
 class _PointerWorkspaceLayer extends ConsumerStatefulWidget {
   const _PointerWorkspaceLayer({
     required this.workspace,
@@ -3254,6 +3288,11 @@ class _NodeView extends ConsumerWidget {
       textRuns: inlineLayout.textRuns,
       isJoin: visualKind == BlockVisualKind.join,
     );
+    final inlineCenterOffset = _inlineCenterOffsetForNode(
+      visualKind: visualKind,
+      height: computedHeight,
+      layout: inlineLayout,
+    );
     engine.setRenderMetrics(node, width: blockWidth, height: computedHeight);
 
     final blockContent = Stack(
@@ -3284,7 +3323,11 @@ class _NodeView extends ConsumerWidget {
                 ...inlineLayout.textRuns.map(
                   (run) => Positioned(
                     left: contentLeft + run.offset.dx,
-                    top: 9 + run.offset.dy,
+                    top:
+                        9 +
+                        inlineCenterOffset +
+                        run.offset.dy +
+                        _lineOffsetForNode(visualKind, run.offset.dy),
                     child: Text(
                       run.text,
                       maxLines: 1,
@@ -3306,7 +3349,11 @@ class _NodeView extends ConsumerWidget {
                 );
                 return Positioned(
                   left: contentLeft + slot.rect.left,
-                  top: 9 + slot.rect.top,
+                  top:
+                      9 +
+                      inlineCenterOffset +
+                      slot.rect.top +
+                      _lineOffsetForNode(visualKind, slot.rect.top),
                   child: DragTarget<_PaletteDragData>(
                     onWillAcceptWithDetails: (details) =>
                         acceptsReporter &&
@@ -3954,11 +4001,28 @@ class _NodeView extends ConsumerWidget {
     final labelHeight = 18.0 + (lineCount * (isJoin ? 24.0 : 21.0));
     final slotBottom = slotRects.fold<double>(
       0,
-      (maxBottom, slot) => math.max(maxBottom, 9 + slot.rect.bottom + 12),
+      (maxBottom, slot) => math.max(
+        maxBottom,
+        9 +
+            slot.rect.bottom +
+            12 +
+            (isJoin && slot.rect.top >= _inlineLineHeight
+                ? _joinSecondLineOffset
+                : 0),
+      ),
     );
+
     final textBottom = textRuns.fold<double>(
       0,
-      (maxBottom, run) => math.max(maxBottom, 9 + run.offset.dy + 20),
+      (maxBottom, run) => math.max(
+        maxBottom,
+        9 +
+            run.offset.dy +
+            20 +
+            (isJoin && run.offset.dy >= _inlineLineHeight
+                ? _joinSecondLineOffset
+                : 0),
+      ),
     );
     return math.max(
       baseHeight,
