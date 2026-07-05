@@ -4065,6 +4065,20 @@ class _NodeView extends ConsumerWidget {
     return slotWidth + _slotGap() + safetyGap;
   }
 
+  double _reservedInlineSlotWidth(double slotWidth, String inputKey) {
+    final safetyGap = switch (inputKey) {
+      'columns' ||
+      'column' ||
+      'column_name' ||
+      'where_column' ||
+      'left_column' ||
+      'right_column' ||
+      'condition_column' => 8.0,
+      _ => 4.0,
+    };
+    return slotWidth + _slotGap() + safetyGap;
+  }
+
   double _measureText(String text, TextStyle style) {
     if (text.isEmpty) return 0;
     final painter = TextPainter(
