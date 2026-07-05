@@ -12,8 +12,10 @@ class BlockShape extends StatelessWidget {
     required this.label,
     this.pluginShape,
     this.isHighlighted = false,
+    this.isErrorHighlighted = false,
     this.isSelected = false,
     this.showInnerHighlight = false,
+    this.showLabel = true,
   });
 
   final BlockNode node;
@@ -23,8 +25,10 @@ class BlockShape extends StatelessWidget {
   final String label;
   final String? pluginShape;
   final bool isHighlighted;
+  final bool isErrorHighlighted;
   final bool isSelected;
   final bool showInnerHighlight;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +47,7 @@ class BlockShape extends StatelessWidget {
         color: color,
         node: node,
         isHighlighted: isHighlighted,
+        isErrorHighlighted: isErrorHighlighted,
         isSelected: isSelected,
         showInnerHighlight: showInnerHighlight,
         pluginShape: pluginShape,
@@ -54,35 +59,40 @@ class BlockShape extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.only(
               left: isTrigger ? 16 : (isJoin ? 26 : (isPlugin ? 28 : 14)),
-              top: isTrigger ? 12 : (isJoin ? 9 : 10),
+              top: isJoin ? 9 : 0,
               right: 12,
             ),
-            child: SizedBox(
-              width:
-                  width -
-                  (isTrigger ? 28 : (isJoin ? 38 : (isPlugin ? 42 : 26))),
-              child: isTrigger
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            shape: BoxShape.circle,
+            child: Align(
+              alignment: isJoin ? Alignment.topLeft : Alignment.centerLeft,
+              child: SizedBox(
+                width:
+                    width -
+                    (isTrigger ? 28 : (isJoin ? 38 : (isPlugin ? 42 : 26))),
+                child: !showLabel
+                    ? const SizedBox.shrink()
+                    : isTrigger
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.play_arrow_rounded,
-                            size: 18,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 9),
-                        Expanded(child: _BlockLabel(label: label)),
-                      ],
-                    )
-                  : _BlockLabel(label: label, isJoin: isJoin),
+                          const SizedBox(width: 9),
+                          Expanded(child: _BlockLabel(label: label)),
+                        ],
+                      )
+                    : _BlockLabel(label: label, isJoin: isJoin),
+              ),
             ),
           ),
         ),
@@ -96,6 +106,7 @@ class _ScratchBlockPainter extends CustomPainter {
     required this.color,
     required this.node,
     required this.isHighlighted,
+    required this.isErrorHighlighted,
     required this.isSelected,
     required this.showInnerHighlight,
     required this.pluginShape,
@@ -104,6 +115,7 @@ class _ScratchBlockPainter extends CustomPainter {
   final Color color;
   final BlockNode node;
   final bool isHighlighted;
+  final bool isErrorHighlighted;
   final bool isSelected;
   final bool showInnerHighlight;
   final String? pluginShape;
@@ -133,43 +145,7 @@ class _ScratchBlockPainter extends CustomPainter {
 
     canvas.drawShadow(path, Colors.black.withValues(alpha: 0.28), 8, false);
     canvas.drawPath(path, Paint()..color = color);
-
-    if (kind == BlockVisualKind.join) {
-      final separatorPaint = Paint()
-        ..color = Colors.white.withValues(alpha: 0.58)
-        ..strokeWidth = 2;
-      canvas.drawLine(
-        const Offset(20, 9),
-        Offset(20, size.height - 9),
-        separatorPaint,
-      );
-      canvas.drawCircle(
-        const Offset(20, 9),
-        2.4,
-        Paint()..color = Colors.white.withValues(alpha: 0.72),
-      );
-      canvas.drawCircle(
-        Offset(20, size.height - 9),
-        2.4,
-        Paint()..color = Colors.white.withValues(alpha: 0.72),
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(8, 8, 8, size.height - 16),
-          const Radius.circular(4),
-        ),
-        Paint()..color = Colors.white.withValues(alpha: 0.24),
-      );
-      if (joinUsesCondition(node)) {
-        canvas.drawLine(
-          Offset(22, size.height / 2),
-          Offset(size.width - 10, size.height / 2),
-          Paint()
-            ..color = Colors.white.withValues(alpha: 0.18)
-            ..strokeWidth = 1,
-        );
-      }
-    }
+    _paintBlockBoundary(canvas, path);
 
     if (kind == BlockVisualKind.setOperator) {
       canvas.drawLine(
@@ -202,17 +178,40 @@ class _ScratchBlockPainter extends CustomPainter {
       );
     }
 
-    if (isHighlighted || isSelected) {
+    if (isHighlighted || isSelected || isErrorHighlighted) {
       canvas.drawPath(
         path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..color = isSelected
+          ..strokeWidth = isErrorHighlighted ? 4 : 3
+          ..color = isErrorHighlighted
+              ? const Color(0xFFF87171)
+              : isSelected
               ? const Color(0xFFFFF176)
               : Colors.white.withValues(alpha: 0.65),
       );
     }
+  }
+
+  void _paintBlockBoundary(Canvas canvas, Path path) {
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.black.withValues(alpha: 0.32),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.white.withValues(alpha: 0.34),
+    );
   }
 
   Path _buildSimplePath(Size size) {
@@ -444,6 +443,7 @@ class _ScratchBlockPainter extends CustomPainter {
   bool shouldRepaint(covariant _ScratchBlockPainter oldDelegate) {
     return oldDelegate.color != color ||
         oldDelegate.isHighlighted != isHighlighted ||
+        oldDelegate.isErrorHighlighted != isErrorHighlighted ||
         oldDelegate.isSelected != isSelected ||
         oldDelegate.showInnerHighlight != showInnerHighlight ||
         oldDelegate.pluginShape != pluginShape ||
@@ -459,16 +459,17 @@ class _BlockLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final usesMultipleLines = label.contains('\n');
     return Text(
       label,
-      maxLines: isJoin ? 2 : 1,
+      maxLines: usesMultipleLines ? 3 : (isJoin ? 2 : 1),
       overflow: TextOverflow.ellipsis,
       softWrap: false,
       style: const TextStyle(
         color: Colors.white,
         fontSize: 15,
         fontWeight: FontWeight.w700,
-      ).copyWith(height: isJoin ? 1.85 : 1),
+      ).copyWith(height: usesMultipleLines || isJoin ? 1.65 : 1),
     );
   }
 }

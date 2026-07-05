@@ -106,7 +106,7 @@ double baseHeightForBlock(BlockNode node) {
   return switch (blockVisualKind(node)) {
     BlockVisualKind.trigger => 50,
     BlockVisualKind.statement => 56,
-    BlockVisualKind.join => joinUsesCondition(node) ? 76 : 56,
+    BlockVisualKind.join => joinUsesCondition(node) ? 86 : 66,
     BlockVisualKind.setOperator => 54,
     BlockVisualKind.expression => 44,
     BlockVisualKind.terminal => 48,

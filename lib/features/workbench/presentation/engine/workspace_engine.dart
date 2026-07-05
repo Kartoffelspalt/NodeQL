@@ -19,6 +19,8 @@ class WorkspaceState {
     this.selectedBlockIds = const <String>{},
     this.highlightTargetId,
     this.highlightZone,
+    this.rejectedTargetId,
+    this.rejectedZone,
     this.lastPointerGlobal,
     this.revision = 0,
   });
@@ -31,6 +33,8 @@ class WorkspaceState {
   final Set<String> selectedBlockIds;
   final String? highlightTargetId;
   final SnapZone? highlightZone;
+  final String? rejectedTargetId;
+  final SnapZone? rejectedZone;
   final Offset? lastPointerGlobal;
   final int revision;
 
@@ -43,10 +47,13 @@ class WorkspaceState {
     Set<String>? selectedBlockIds,
     String? highlightTargetId,
     SnapZone? highlightZone,
+    String? rejectedTargetId,
+    SnapZone? rejectedZone,
     Offset? lastPointerGlobal,
     bool clearDrag = false,
     bool clearSelected = false,
     bool clearHighlight = false,
+    bool clearRejected = false,
     bool clearPointer = false,
     int? revision,
   }) {
@@ -67,6 +74,10 @@ class WorkspaceState {
       highlightZone: clearHighlight
           ? null
           : (highlightZone ?? this.highlightZone),
+      rejectedTargetId: clearRejected
+          ? null
+          : (rejectedTargetId ?? this.rejectedTargetId),
+      rejectedZone: clearRejected ? null : (rejectedZone ?? this.rejectedZone),
       lastPointerGlobal: clearPointer
           ? null
           : (lastPointerGlobal ?? this.lastPointerGlobal),
@@ -353,6 +364,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       draggingId: hit?.id,
       selectedBlockId: hit?.id,
       clearHighlight: true,
+      clearRejected: true,
       revision: state.revision + 1,
     );
   }
@@ -368,9 +380,16 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _layoutNodeSubTree(dragged);
 
     final snap = _findBestSnap(dragged, excludedIds: _subTreeIds(dragged));
+    final rejected = snap == null
+        ? _findBestRejectedSnap(dragged, excludedIds: _subTreeIds(dragged))
+        : null;
     state = state.copyWith(
       highlightTargetId: snap?.target.id,
       highlightZone: snap?.zone,
+      clearHighlight: snap == null,
+      rejectedTargetId: rejected?.target.id,
+      rejectedZone: rejected?.zone,
+      clearRejected: rejected == null,
     );
   }
 
@@ -380,6 +399,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       state = state.copyWith(
         clearDrag: true,
         clearHighlight: true,
+        clearRejected: true,
         clearPointer: true,
       );
       return;
@@ -406,6 +426,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       clearDrag: true,
       clearHighlight: true,
+      clearRejected: true,
       clearPointer: true,
       revision: state.revision + 1,
     );
@@ -529,6 +550,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     return null;
   }
 
+  String? contextTableBeforeNode(String nodeId) {
+    for (final root in state.roots) {
+      final table = _contextTableBeforeInChain(root, nodeId, null);
+      if (table != null) return table;
+    }
+    return null;
+  }
+
   List<BlockNode> allBlocks() =>
       state.roots.expand((root) => _walk(root)).toList(growable: false);
 
@@ -537,23 +566,45 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       final innerHeight = max(cInnerMin, _childrenChainHeight(node));
       return cUpperBar + innerHeight + cLowerBar;
     }
-    return baseHeightForBlock(node);
+    final raw = node.inputs['__height'];
+    final renderedHeight = raw is num ? raw.toDouble() : null;
+    return max(baseHeightForBlock(node), renderedHeight ?? 0);
   }
 
   double nodeWidth(BlockNode node) {
     final raw = node.inputs['__width'];
     final ownWidth = raw is num
-        ? raw.toDouble().clamp(blockWidth, 900).toDouble()
+        ? raw.toDouble().clamp(blockWidth, 1100).toDouble()
         : blockWidth;
     if (node is! ControlBlock) return ownWidth;
     return max(ownWidth, _maxChildWidth(node) + childIndent + 20);
   }
 
   void setRenderWidth(BlockNode node, double width) {
-    final clamped = width.clamp(blockWidth, 900).toDouble();
+    final clamped = width.clamp(blockWidth, 1100).toDouble();
     final old = (node.inputs['__width'] as num?)?.toDouble();
     if (old != null && (old - clamped).abs() < 0.5) return;
     node.inputs['__width'] = clamped;
+  }
+
+  void setRenderMetrics(
+    BlockNode node, {
+    required double width,
+    double? height,
+  }) {
+    final clampedWidth = width.clamp(blockWidth, 1100).toDouble();
+    final oldWidth = (node.inputs['__width'] as num?)?.toDouble();
+    if (oldWidth == null || (oldWidth - clampedWidth).abs() >= 0.5) {
+      node.inputs['__width'] = clampedWidth;
+    }
+    if (height == null || node is ControlBlock) return;
+    final clampedHeight = height
+        .clamp(baseHeightForBlock(node), 140)
+        .toDouble();
+    final oldHeight = (node.inputs['__height'] as num?)?.toDouble();
+    if (oldHeight == null || (oldHeight - clampedHeight).abs() >= 0.5) {
+      node.inputs['__height'] = clampedHeight;
+    }
   }
 
   bool get canUndo => _undoStack.isNotEmpty;
@@ -924,6 +975,32 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
     for (final slot in _buildSlotTargets(excludedIds: excludedIds)) {
       if (!_canSnap(dragged, slot.target, slot.zone)) continue;
+      final anchor = switch (slot.zone) {
+        SnapZone.bottomOuter => draggedBottom,
+        _ => draggedTop,
+      };
+      final inflated = slot.rect.inflate(snapDistance);
+      if (!inflated.contains(anchor)) continue;
+      final distance = (slot.anchor - anchor).distance;
+      if (distance < snapDistance &&
+          (best == null || distance < best.distance)) {
+        best = _SnapCandidate(slot.target, slot.zone, distance);
+      }
+    }
+
+    return best;
+  }
+
+  _SnapCandidate? _findBestRejectedSnap(
+    BlockNode dragged, {
+    required Set<String> excludedIds,
+  }) {
+    _SnapCandidate? best;
+    final draggedTop = _topNotchPoint(dragged);
+    final draggedBottom = _bottomTabPoint(dragged);
+
+    for (final slot in _buildSlotTargets(excludedIds: excludedIds)) {
+      if (_canSnap(dragged, slot.target, slot.zone)) continue;
       final anchor = switch (slot.zone) {
         SnapZone.bottomOuter => draggedBottom,
         _ => draggedTop,
@@ -1442,14 +1519,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           current.type == BlockType.sqlWhere ||
           current.type == BlockType.sqlOrderBy ||
           current.type == BlockType.sqlGroupBy ||
-          current.type == BlockType.sqlHaving ||
-          current.type == BlockType.sqlJoin ||
-          current.type == BlockType.sqlInnerJoin ||
-          current.type == BlockType.sqlLeftJoin ||
-          current.type == BlockType.sqlRightJoin ||
-          current.type == BlockType.sqlFullJoin ||
-          current.type == BlockType.sqlCrossJoin ||
-          current.type == BlockType.sqlNaturalJoin) {
+          current.type == BlockType.sqlHaving) {
         current.inputs['table'] = table;
       }
       if (current.type == BlockType.eventGreenFlag) break;
@@ -1480,6 +1550,32 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       }
       for (final child in cursor.children) {
         final childResult = _contextTableInChain(
+          child,
+          targetId,
+          activeTable,
+          seen,
+        );
+        if (childResult != null) return childResult;
+      }
+      cursor = cursor.next;
+    }
+    return null;
+  }
+
+  String? _contextTableBeforeInChain(
+    BlockNode current,
+    String targetId,
+    String? lastTable, [
+    Set<String>? visited,
+  ]) {
+    final seen = visited ?? <String>{};
+    String? activeTable = lastTable;
+    BlockNode? cursor = current;
+    while (cursor != null && seen.add(cursor.id)) {
+      if (cursor.id == targetId) return activeTable;
+      activeTable = _tableFromNode(cursor) ?? activeTable;
+      for (final child in cursor.children) {
+        final childResult = _contextTableBeforeInChain(
           child,
           targetId,
           activeTable,

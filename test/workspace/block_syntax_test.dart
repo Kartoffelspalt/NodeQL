@@ -126,7 +126,7 @@ void main() {
 
     expect(crossLabel, isNot(contains('ON')));
     expect(naturalLabel, isNot(contains('ON')));
-    expect(leftLabel, contains('ON [left_column] = [right_column]'));
+    expect(leftLabel, contains('ON [left_column] [operator] [right_column]'));
   });
 
   test('simple SELECT uses beginner-friendly all-columns wording', () {
@@ -177,6 +177,27 @@ void main() {
       expect(label, isNot(contains('column')));
       expect(label, isNot(contains('columns')));
     }
+  });
+
+  test('simple labels split complex beginner nodes into readable rows', () {
+    expect(
+      sqlLabelFor(
+        BlockType.sqlHaving,
+        SqlAbstractionMode.simple,
+        const <String, dynamic>{},
+        'de',
+      ),
+      contains('\n'),
+    );
+    expect(
+      sqlLabelFor(
+        BlockType.sqlUpdate,
+        SqlAbstractionMode.simple,
+        const <String, dynamic>{},
+        'de',
+      ),
+      contains('\n'),
+    );
   });
 
   test('gives the execute query trigger a dedicated start cap height', () {

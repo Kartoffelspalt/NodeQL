@@ -391,11 +391,56 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.step.6.answer.1': 'Die facettierte Wertform',
     'tutorial.step.6.answer.2': 'Der Startblock',
     'tutorial.step.6.answer.3': 'Die Ergebnistabelle',
-    'tutorial.step.7.nav': 'Bereit',
-    'tutorial.step.7.eyebrow': 'NÄCHSTER SCHRITT',
-    'tutorial.step.7.title': 'Starte klein und prüfe regelmäßig',
+    'tutorial.step.7.nav': 'Datenbank laden',
+    'tutorial.step.7.eyebrow': 'DATENQUELLE',
+    'tutorial.step.7.title': 'Eine Abfrage braucht eine SQLite-Datenbank',
     'tutorial.step.7.body':
-        'Beginne mit SELECT und FROM, verbinde eine Datenbank und erweitere die Abfrage Block für Block. Über das Schul-Symbol oder die Einstellungen kannst du dieses Tutorial jederzeit neu öffnen.',
+        'NodeQL arbeitet lokal mit SQLite-Dateien. Über DB laden wählst du eine .db-Datei aus. Danach kennt NodeQL Tabellen und Spalten und kann Dropdowns mit echten Namen anbieten.',
+    'tutorial.step.7.question': 'Warum lädst du zuerst eine .db-Datei?',
+    'tutorial.step.7.answer.1': 'Damit die App ihre Farbe ändert',
+    'tutorial.step.7.answer.2':
+        'Damit Tabellen und Spalten aus der Datenbank bekannt sind',
+    'tutorial.step.7.answer.3': 'Damit alle Blöcke gelöscht werden',
+    'tutorial.step.8.nav': 'Spalten wählen',
+    'tutorial.step.8.eyebrow': 'AUSGABE',
+    'tutorial.step.8.title': 'SELECT entscheidet, welche Spalten du siehst',
+    'tutorial.step.8.body':
+        'Im SELECT-Block wählst du eine oder mehrere Spalten. Alles bedeutet: Zeige jede Spalte der gewählten Tabelle. Für Lernzwecke ist Alles praktisch, später sind einzelne Spalten übersichtlicher.',
+    'tutorial.step.8.question': 'Welche Aufgabe hat SELECT?',
+    'tutorial.step.8.answer.1': 'Es bestimmt die sichtbaren Spalten',
+    'tutorial.step.8.answer.2': 'Es verbindet zwei Tabellen',
+    'tutorial.step.8.answer.3': 'Es speichert das Projekt',
+    'tutorial.step.9.nav': 'Filtern',
+    'tutorial.step.9.eyebrow': 'BEDINGUNGEN',
+    'tutorial.step.9.title': 'WHERE zeigt nur passende Zeilen',
+    'tutorial.step.9.body':
+        'Ein WHERE-Block besteht aus Spalte, Operator und Wert. Beispiel: film_id = 350. Die Datenbank prüft jede Zeile und lässt nur Zeilen übrig, bei denen die Bedingung stimmt.',
+    'tutorial.step.9.question':
+        'Welche drei Teile hat ein einfacher WHERE-Filter?',
+    'tutorial.step.9.answer.1': 'Farbe, Breite und Höhe',
+    'tutorial.step.9.answer.2': 'Dateiname, Ordner und Sprache',
+    'tutorial.step.9.answer.3': 'Spalte, Operator und Wert',
+    'tutorial.step.10.nav': 'SQL lesen',
+    'tutorial.step.10.eyebrow': 'ÜBERSETZUNG',
+    'tutorial.step.10.title': 'NodeQL erklärt jeden Block als SQL',
+    'tutorial.step.10.body':
+        'Rechts siehst du die SQL-Ausgabe. Lies sie wie einen Kontrollzettel: Stimmen Tabelle, Spalten und Filter? Wenn ja, kannst du SQL ausführen. Wenn nicht, änderst du die Blöcke.',
+    'tutorial.step.10.question':
+        'Warum lohnt sich der Blick auf die SQL-Ausgabe?',
+    'tutorial.step.10.answer.1': 'Sie ersetzt die Datenbankdatei',
+    'tutorial.step.10.answer.2':
+        'Du erkennst vor dem Ausführen, was die Blöcke bedeuten',
+    'tutorial.step.10.answer.3': 'Sie schaltet den Expertenmodus aus',
+    'tutorial.step.11.nav': 'Fehler verstehen',
+    'tutorial.step.11.eyebrow': 'FEHLERKULTUR',
+    'tutorial.step.11.title': 'Fehler sind Hinweise, keine Sackgasse',
+    'tutorial.step.11.body':
+        'Wenn ein SQL-Fehler erscheint, prüfe zuerst die letzte Änderung. Häufig fehlen Tabellen, Spaltennamen sind falsch oder ein Wert braucht Anführungszeichen. Ändere einen Block und teste erneut.',
+    'tutorial.step.12.nav': 'Weiterlernen',
+    'tutorial.step.12.eyebrow': 'NÄCHSTER SCHRITT',
+    'tutorial.step.12.title': 'Jetzt folgt das Node- und Syntax-Tutorial',
+    'tutorial.step.12.body':
+        'Du kennst nun Oberfläche, Datenbank, SELECT, FROM, WHERE und SQL-Ausgabe. Im nächsten Tutorial lernst du genauer, welche Node-Arten es gibt und wie Slots, Reporter, Joins, GROUP BY und HAVING funktionieren.',
     'tutorial.syntax.step.1.nav': 'Node-Typen',
     'tutorial.syntax.step.1.eyebrow': 'NODE-SYNTAX',
     'tutorial.syntax.step.1.title':
@@ -457,10 +502,62 @@ const builtInMessages = <String, Map<String, String>>{
         'An seiner Form und den deklarierten Eingaben',
     'tutorial.syntax.step.6.answer.2': 'An der Monitorgröße',
     'tutorial.syntax.step.6.answer.3': 'Am Dateinamen des Projekts',
-    'tutorial.syntax.step.7.nav': 'Bereit',
-    'tutorial.syntax.step.7.eyebrow': 'NÄCHSTER SCHRITT',
-    'tutorial.syntax.step.7.title': 'Nutze Nodes als lesbare SQL-Bausteine',
+    'tutorial.syntax.step.7.nav': 'SELECT & FROM',
+    'tutorial.syntax.step.7.eyebrow': 'GRUNDGERÜST',
+    'tutorial.syntax.step.7.title':
+        'SELECT und FROM bilden die kleinste Abfrage',
     'tutorial.syntax.step.7.body':
+        'SELECT beschreibt die Ausgabe, FROM beschreibt die Quelle. In NodeQL kannst du beides sichtbar als Blöcke lesen. Erst wenn beide Informationen stimmen, weiß die Datenbank, was sie anzeigen soll.',
+    'tutorial.syntax.step.7.question':
+        'Welche beiden Teile braucht eine einfache Tabellenabfrage meistens?',
+    'tutorial.syntax.step.7.answer.1': 'HAVING und Plugin',
+    'tutorial.syntax.step.7.answer.2': 'SELECT und FROM',
+    'tutorial.syntax.step.7.answer.3': 'Nur ORDER BY',
+    'tutorial.syntax.step.8.nav': 'WHERE',
+    'tutorial.syntax.step.8.eyebrow': 'ZEILENFILTER',
+    'tutorial.syntax.step.8.title': 'WHERE filtert Zeilen vor der Ausgabe',
+    'tutorial.syntax.step.8.body':
+        'WHERE arbeitet vor GROUP BY und vor der endgültigen Ausgabe. In NodeQL ist die Bedingung bewusst aufgeteilt: Spalte auswählen, Operator wählen, Wert eintragen. So sieht man sofort, was geprüft wird.',
+    'tutorial.syntax.step.8.question': 'Wann wirkt WHERE?',
+    'tutorial.syntax.step.8.answer.1':
+        'Erst nachdem die Ergebnisse angezeigt wurden',
+    'tutorial.syntax.step.8.answer.2': 'Nur beim Speichern eines Projekts',
+    'tutorial.syntax.step.8.answer.3':
+        'Beim Filtern einzelner Zeilen vor der Ausgabe',
+    'tutorial.syntax.step.9.nav': 'JOIN',
+    'tutorial.syntax.step.9.eyebrow': 'TABELLEN VERBINDEN',
+    'tutorial.syntax.step.9.title':
+        'JOIN verbindet Tabellen über passende Spalten',
+    'tutorial.syntax.step.9.body':
+        'Ein JOIN braucht eine zweite Tabelle und zwei Spalten, die zusammengehören. In NodeQL sieht man das als linke Spalte = rechte Spalte. So wird aus zwei Tabellen ein gemeinsamer Ergebnisraum.',
+    'tutorial.syntax.step.9.question': 'Was beschreibt die JOIN-Bedingung?',
+    'tutorial.syntax.step.9.answer.1': 'Welche zwei Spalten zusammenpassen',
+    'tutorial.syntax.step.9.answer.2': 'Welche Farbe ein Block hat',
+    'tutorial.syntax.step.9.answer.3': 'Wie groß das Fenster ist',
+    'tutorial.syntax.step.10.nav': 'GROUP BY & HAVING',
+    'tutorial.syntax.step.10.eyebrow': 'GRUPPEN',
+    'tutorial.syntax.step.10.title':
+        'GROUP BY bildet Gruppen, HAVING filtert Gruppen',
+    'tutorial.syntax.step.10.body':
+        'GROUP BY fasst Zeilen nach einer Spalte zusammen. COUNT, SUM, AVG, MIN und MAX berechnen Werte über diese Gruppen. HAVING prüft anschließend Bedingungen wie SUM(film_id) = 350.',
+    'tutorial.syntax.step.10.question': 'Was filtert HAVING?',
+    'tutorial.syntax.step.10.answer.1': 'Einzelne Zeilen vor der Gruppierung',
+    'tutorial.syntax.step.10.answer.2':
+        'Berechnete Gruppen nach der Aggregation',
+    'tutorial.syntax.step.10.answer.3': 'Die Liste der Projekte',
+    'tutorial.syntax.step.11.nav': 'ORDER BY',
+    'tutorial.syntax.step.11.eyebrow': 'SORTIERUNG',
+    'tutorial.syntax.step.11.title': 'ORDER BY sortiert das fertige Ergebnis',
+    'tutorial.syntax.step.11.body':
+        'ORDER BY ändert nicht, welche Zeilen vorhanden sind. Es ändert nur ihre Reihenfolge. Aufsteigend bedeutet klein nach groß oder A nach Z. Absteigend bedeutet umgekehrt.',
+    'tutorial.syntax.step.11.question': 'Was verändert ORDER BY?',
+    'tutorial.syntax.step.11.answer.1': 'Die Reihenfolge der Ergebniszeilen',
+    'tutorial.syntax.step.11.answer.2': 'Den Namen der Datenbankdatei',
+    'tutorial.syntax.step.11.answer.3': 'Die Anzahl der gespeicherten Projekte',
+    'tutorial.syntax.step.12.nav': 'Bereit',
+    'tutorial.syntax.step.12.eyebrow': 'NÄCHSTER SCHRITT',
+    'tutorial.syntax.step.12.title': 'Nutze Nodes als lesbare SQL-Bausteine',
+    'tutorial.syntax.step.12.body':
         'Wenn du einen Node hinzufügst, frage nach seiner Syntaxrolle: Starter, Anweisung, Slot-Wert, Reporter oder Container. Diese Gewohnheit macht NodeQL leichter lernbar und leichter debugbar.',
     'tutorial.intermediate.step.1.nav': 'Abfragekette',
     'tutorial.intermediate.step.1.eyebrow': 'STRUKTUR',
@@ -524,11 +621,43 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.intermediate.step.6.answer.1': 'Zwischen unabhängige Fenster',
     'tutorial.intermediate.step.6.answer.2': 'Auf die Titelleiste',
     'tutorial.intermediate.step.6.answer.3': 'In einen passenden Wert-Slot',
-    'tutorial.intermediate.step.7.nav': 'Nächster Bau',
-    'tutorial.intermediate.step.7.eyebrow': 'ÜBUNG',
-    'tutorial.intermediate.step.7.title':
-        'Baue einen Bericht in kleinen Prüfungen nach',
+    'tutorial.intermediate.step.7.nav': 'Fehler lesen',
+    'tutorial.intermediate.step.7.eyebrow': 'DEBUGGING',
+    'tutorial.intermediate.step.7.title': 'Nutze Fehlermeldungen als Wegweiser',
     'tutorial.intermediate.step.7.body':
+        'Wenn eine Abfrage fehlschlägt, vergleiche die Fehlermeldung mit der SQL-Ausgabe. Suche nach falsch geschriebenen Spalten, fehlenden Tabellen, ungültigen Join-Bedingungen oder Werten ohne passende Anführungszeichen.',
+    'tutorial.intermediate.step.7.question':
+        'Was prüfst du bei einer fehlerhaften Abfrage zuerst?',
+    'tutorial.intermediate.step.7.answer.1': 'Nur die Farbe des Blocks',
+    'tutorial.intermediate.step.7.answer.2': 'Fehlermeldung und erzeugtes SQL',
+    'tutorial.intermediate.step.7.answer.3': 'Die Größe der App',
+    'tutorial.intermediate.step.8.nav': 'HAVING sicher nutzen',
+    'tutorial.intermediate.step.8.eyebrow': 'GRUPPENFILTER',
+    'tutorial.intermediate.step.8.title':
+        'Prüfe Aggregat, Spalte, Operator und Wert getrennt',
+    'tutorial.intermediate.step.8.body':
+        'HAVING wird klarer, wenn du die Teile einzeln denkst: Welche Funktion? Welche Spalte? Welcher Vergleich? Welcher Grenzwert? Beispiel: SUM(film_id) = 350.',
+    'tutorial.intermediate.step.8.question':
+        'Welche Teile braucht ein übersichtlicher HAVING-Block?',
+    'tutorial.intermediate.step.8.answer.1': 'Nur einen Tabellennamen',
+    'tutorial.intermediate.step.8.answer.2': 'Nur eine Sortierung',
+    'tutorial.intermediate.step.8.answer.3':
+        'Aggregat, Spalte, Operator und Wert',
+    'tutorial.intermediate.step.9.nav': 'Erweiterungen prüfen',
+    'tutorial.intermediate.step.9.eyebrow': 'PLUGINS',
+    'tutorial.intermediate.step.9.title': 'Prüfe Plugin-Blöcke vor dem Einsatz',
+    'tutorial.intermediate.step.9.body':
+        'Bevor du Plugins in eine Abfrage einbaust, lies ihre Form, Eingaben und Beschreibung. Ein Wert-Plugin gehört in einen Slot, ein Anweisungs-Plugin in die Kette und ein Container-Plugin um andere Blöcke.',
+    'tutorial.intermediate.step.9.question':
+        'Was zeigt dir, wohin ein Plugin gehört?',
+    'tutorial.intermediate.step.9.answer.1': 'Form, Eingaben und Beschreibung',
+    'tutorial.intermediate.step.9.answer.2': 'Nur die Uhrzeit',
+    'tutorial.intermediate.step.9.answer.3': 'Nur die Dateigröße',
+    'tutorial.intermediate.step.10.nav': 'Nächster Bau',
+    'tutorial.intermediate.step.10.eyebrow': 'ÜBUNG',
+    'tutorial.intermediate.step.10.title':
+        'Baue einen Bericht in kleinen Prüfungen nach',
+    'tutorial.intermediate.step.10.body':
         'Wähle einen Bericht, den du verstehst, baue ihn als Blöcke nach und vergleiche nach jedem Teil die SQL-Ausgabe. So bleiben Fehler sichtbar, während die Abfrage wächst.',
     'tutorial.expert.step.1.nav': 'Architektur',
     'tutorial.expert.step.1.eyebrow': 'SYSTEMBLICK',
@@ -589,11 +718,45 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.expert.step.6.answer.1': 'Nur Symbolgrößen',
     'tutorial.expert.step.6.answer.2': 'Ungenutzte Tabellennamen',
     'tutorial.expert.step.6.answer.3': 'Schwellenwerte, Datumswerte und Filter',
-    'tutorial.expert.step.7.nav': 'Meisterschleife',
-    'tutorial.expert.step.7.eyebrow': 'NÄCHSTER SCHRITT',
-    'tutorial.expert.step.7.title':
-        'Vermittle den Ablauf, indem du Absicht sichtbar machst',
+    'tutorial.expert.step.7.nav': 'Review-Schleife',
+    'tutorial.expert.step.7.eyebrow': 'QUALITÄT',
+    'tutorial.expert.step.7.title': 'Prüfe Abfragen wie kleine Programme',
     'tutorial.expert.step.7.body':
+        'Komplexe Blockketten brauchen Reviews: Ist die Datenquelle korrekt? Sind Joins absichtlich gewählt? Werden Zeilen und Gruppen an der richtigen Stelle gefiltert? Ist das Ergebnis reproduzierbar?',
+    'tutorial.expert.step.7.question':
+        'Welche Frage gehört in ein Query-Review?',
+    'tutorial.expert.step.7.answer.1':
+        'Sind Quelle, Joins, Filter und Ergebnisabsicht klar?',
+    'tutorial.expert.step.7.answer.2': 'Ist die Fensterdekoration hell genug?',
+    'tutorial.expert.step.7.answer.3': 'Ist der Projektname besonders lang?',
+    'tutorial.expert.step.8.nav': 'Plugin-Sicherheit',
+    'tutorial.expert.step.8.eyebrow': 'GRENZEN',
+    'tutorial.expert.step.8.title':
+        'Trenne lokale SQL-Logik von Plugin-Verhalten',
+    'tutorial.expert.step.8.body':
+        'Plugins erweitern NodeQL, aber sie bleiben externe Verträge. Prüfe Host-Anforderungen, Datenzugriff und erwartete Eingaben, bevor du Plugin-Ergebnisse als Teil einer wichtigen Abfrage behandelst.',
+    'tutorial.expert.step.8.question':
+        'Warum müssen Plugin-Grenzen sichtbar bleiben?',
+    'tutorial.expert.step.8.answer.1': 'Damit Blöcke größer gezeichnet werden',
+    'tutorial.expert.step.8.answer.2':
+        'Damit Datenzugriff und Eingaben nachvollziehbar bleiben',
+    'tutorial.expert.step.8.answer.3':
+        'Damit ORDER BY automatisch verschwindet',
+    'tutorial.expert.step.9.nav': 'Wartbarkeit',
+    'tutorial.expert.step.9.eyebrow': 'LANGLEBIGKEIT',
+    'tutorial.expert.step.9.title': 'Halte Annahmen änderbar und sichtbar',
+    'tutorial.expert.step.9.body':
+        'Gute NodeQL-Projekte erklären sich selbst: feste Grenzwerte stehen in Wert-Slots, wichtige Filter sind benannt, und die SQL-Ausgabe bleibt lesbar genug, um sie mit anderen zu besprechen.',
+    'tutorial.expert.step.9.question': 'Was macht eine Abfrage wartbarer?',
+    'tutorial.expert.step.9.answer.1': 'Versteckte Werte in langen Texten',
+    'tutorial.expert.step.9.answer.2': 'Unbenannte Tabellen',
+    'tutorial.expert.step.9.answer.3':
+        'Sichtbare Werte, klare Filter und lesbares SQL',
+    'tutorial.expert.step.10.nav': 'Meisterschleife',
+    'tutorial.expert.step.10.eyebrow': 'NÄCHSTER SCHRITT',
+    'tutorial.expert.step.10.title':
+        'Vermittle den Ablauf, indem du Absicht sichtbar machst',
+    'tutorial.expert.step.10.body':
         'Halte bei fortgeschrittener Arbeit jede Blockkette erklärbar: Quelle, Beziehung, Filter, Gruppierung, Ausgabe und Erweiterungsgrenze. Diese Disziplin macht Projekte leichter lernbar.',
     'common.close': 'Schließen',
     'common.yes': 'Ja',
