@@ -35,7 +35,7 @@ import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
 const double _inlineLineHeight = 28;
-const double _joinFirstLineOffset = 4;
+const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
 
 class _SimpleNodeDiagnostic {
@@ -716,7 +716,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       value: autosaveEnabled,
                       onChanged: (v) => autosaveProject.value = v ?? true,
                     ),
-                    Expanded(child: Text(catalog.text('project.new.autosave'))),
+                    Expanded(
+                      child: Text(catalog.text('project.new.autosave')),
+                    ),
                   ],
                 ),
               ),
@@ -1450,7 +1452,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
 
     final settings = decoded['settings'] as Map<String, dynamic>? ?? {};
-    _autosaveEnabledForProject = settings['autosaveEnabled'] as bool? ?? true;
+    _autosaveEnabledForProject =
+        settings['autosaveEnabled'] as bool? ?? true;
 
     final workspace =
         (decoded['workspace'] as Map<String, dynamic>?) ?? <String, dynamic>{};
