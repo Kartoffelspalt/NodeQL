@@ -409,6 +409,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   String? _activeProjectPath;
   String _activeProjectId = 'default';
   String _activeProjectName = 'Untitled';
+  bool _autosaveEnabledForProject = true;
   List<Map<String, dynamic>> _recentProjects = <Map<String, dynamic>>[];
   int _lastAutosaveRevision = -1;
   Timer? _autosaveDebounce;
@@ -602,6 +603,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _maybeAutosave(int revision) async {
+    if (!_autosaveEnabledForProject) {
+      _autosaveDebounce?.cancel();
+      return;
+    }
     if (revision == _lastAutosaveRevision) return;
     _lastAutosaveRevision = revision;
     _autosaveDebounce?.cancel();
@@ -670,6 +675,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<void> _newProject(BuildContext context) async {
     final catalog = ref.read(translationControllerProvider).catalog;
     final createDb = ValueNotifier<bool>(true);
+    final autosaveProject = ValueNotifier<bool>(true);
     final projectName = TextEditingController(text: 'NodeQL Project');
     final dbName = TextEditingController(text: 'nodeql_project');
     final yes = await showDialog<bool>(
@@ -701,6 +707,18 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     child: Text(catalog.text('project.new.createDatabase')),
                   ),
                 ],
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: autosaveProject,
+                builder: (context, autosaveEnabled, _) => Row(
+                  children: [
+                    Checkbox(
+                      value: autosaveEnabled,
+                      onChanged: (v) => autosaveProject.value = v ?? true,
+                    ),
+                    Expanded(child: Text(catalog.text('project.new.autosave'))),
+                  ],
+                ),
               ),
               if (value)
                 TextField(
@@ -762,6 +780,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         _activeProjectPath = projectPath;
         _activeProjectId = 'project_${DateTime.now().millisecondsSinceEpoch}';
         _activeProjectName = rawProjectName;
+        _autosaveEnabledForProject = autosaveProject.value;
         _upsertRecentProject();
       });
       await File(
@@ -773,6 +792,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     dbName.dispose();
     projectName.dispose();
     createDb.dispose();
+    autosaveProject.dispose();
   }
 
   Future<void> _saveProjectAs(BuildContext context) async {
@@ -1403,6 +1423,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         'locale': locale.languageCode,
         'theme': theme.name,
       },
+      'settings': <String, dynamic>{
+        'autosaveEnabled': _autosaveEnabledForProject,
+      },
     };
   }
 
@@ -1421,9 +1444,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     } catch (_) {}
 
     if (decoded == null || !_isProjectEnvelopeFormat(decoded['format'])) {
+      _autosaveEnabledForProject = true;
       ref.read(workspaceProvider.notifier).loadFromJsonString(source);
       return;
     }
+
+    final settings = decoded['settings'] as Map<String, dynamic>? ?? {};
+    _autosaveEnabledForProject = settings['autosaveEnabled'] as bool? ?? true;
 
     final workspace =
         (decoded['workspace'] as Map<String, dynamic>?) ?? <String, dynamic>{};

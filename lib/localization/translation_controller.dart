@@ -298,6 +298,7 @@ const builtInMessages = <String, Map<String, String>>{
     'project.new.directoryDialog': 'Projektordner auswählen',
     'project.new.createDatabase': 'Leere SQLite-DB erstellen',
     'project.new.databaseName': 'Datenbankname',
+    'project.new.autosave': 'Autosave für dieses Projekt aktivieren',
     'project.createDatabaseFailed': 'DB konnte nicht erstellt werden: {error}',
     'project.saveDialog': 'NodeQL-Projekt speichern',
     'project.openDialog': 'NodeQL-Projekt öffnen',

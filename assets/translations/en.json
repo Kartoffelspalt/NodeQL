@@ -17,6 +17,7 @@
     "project.new.directoryDialog": "Choose project folder",
     "project.new.createDatabase": "Create empty SQLite DB",
     "project.new.databaseName": "Database name",
+    "project.new.autosave": "Enable autosave for this project",
     "project.createDatabaseFailed": "Failed to create DB: {error}",
     "project.saveDialog": "Save NodeQL project",
     "project.openDialog": "Open NodeQL project",
