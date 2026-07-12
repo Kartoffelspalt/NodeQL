@@ -1,56 +1,55 @@
 # NodeQL Wiki
 
-Dieses Wiki erklaert vor allem, wie NodeQL funktioniert: von der sichtbaren
-Arbeitsflaeche ueber die internen Blockdaten bis zur SQL-Ausfuehrung gegen eine
-lokale SQLite-Datenbank.
+This wiki explains how NodeQL works: from the visible workbench, through the
+internal block data model, to SQL execution against a local SQLite database.
 
-## Kurzfassung
+## Summary
 
-NodeQL ist eine local-first Desktop-Anwendung zum Lernen, Entwerfen und
-Ausfuehren von SQL mit visuellen Bloecken. Der Nutzer arbeitet nicht direkt in
-einem Texteditor, sondern setzt SQL-Bausteine grafisch zusammen. NodeQL
-uebersetzt diese Blockstruktur in SQL, zeigt die Abfrage an und fuehrt sie auf
-Wunsch gegen eine lokale SQLite-Datenbank aus.
+NodeQL is a local-first desktop application for learning, designing, and running
+SQL with visual blocks. Instead of writing SQL directly in a text editor, users
+assemble SQL building blocks visually. NodeQL translates that block structure
+into SQL, shows the generated query, and can execute it against a local SQLite
+database.
 
-Der wichtigste Ablauf ist:
+The main flow is:
 
 ```text
-Block-Palette -> Workspace -> Blockbaum -> SQL-Compiler -> SQL-Vorschau
-              -> SQLite-Runtime -> Ergebnis-Tabelle / Meldung
+Block palette -> Workspace -> Block tree -> SQL compiler -> SQL preview
+              -> SQLite runtime -> Result table / status message
 ```
 
-Projekte, Einstellungen, installierte Plugins und Datenbanken bleiben auf dem
-Geraet. NodeQL ist kein Cloud-Dienst und kein Machine-Learning-Projekt.
+Projects, settings, installed plugins, and databases stay on the user's device.
+NodeQL is not a cloud service and not a machine-learning project.
 
-## Was man in NodeQL sieht
+## What You See in NodeQL
 
-Die zentrale Oberflaeche ist die Workbench. Sie besteht aus mehreren Bereichen:
+The central interface is the workbench. It is made up of several areas:
 
-| Bereich | Funktion |
+| Area | Purpose |
 | --- | --- |
-| Block-Palette | Enthaltene SQL-, Kontroll-, Operator- und Plugin-Bloecke |
-| Workspace | Flaeche, auf der Bloecke platziert, verbunden und bearbeitet werden |
-| SQL-Vorschau | Zeigt die aus den Bloecken generierte SQL-Anweisung |
-| Datenbankbereich | Verbindet oder erstellt lokale SQLite-Datenbanken |
-| Ergebnisbereich | Zeigt Ausfuehrungsmeldungen und Tabellenzeilen |
-| Einstellungen | Sprache, Theme, Plugins, Repositories und weitere App-Optionen |
+| Block palette | Built-in SQL, control, operator, and plugin blocks |
+| Workspace | Canvas where blocks are placed, connected, and edited |
+| SQL preview | Shows the SQL statement generated from the blocks |
+| Database area | Connects or creates local SQLite databases |
+| Result area | Shows execution messages and result rows |
+| Settings | Language, theme, plugins, repositories, and other app options |
 
-Die Workbench ist bewusst wie ein visueller SQL-Baukasten aufgebaut. Ein Nutzer
-sieht also nicht nur das Endergebnis, sondern auch die Struktur der Abfrage.
+The workbench is designed as a visual SQL builder. Users do not only see the
+final query; they also see the structure that produced it.
 
-## Das Grundprinzip der Bloecke
+## The Block Model
 
-Jeder Block ist intern ein `BlockNode`. Ein Block speichert:
+Every block is stored internally as a `BlockNode`. A block stores:
 
-- eine eindeutige `id`
-- einen `type`, zum Beispiel `sqlSelect`, `sqlWhere` oder `sqlJoin`
-- eine `position` im Workspace
-- optionale Eingaben in `inputs`
-- einen naechsten Block in `next`
-- verschachtelte Kinder in `children`
+- a unique `id`
+- a `type`, such as `sqlSelect`, `sqlWhere`, or `sqlJoin`
+- a `position` in the workspace
+- optional values in `inputs`
+- the next block in `next`
+- nested child blocks in `children`
 
-Damit kann NodeQL sowohl einfache lineare Abfragen als auch verschachtelte
-Strukturen abbilden. Eine typische Kette sieht konzeptionell so aus:
+This allows NodeQL to represent both simple linear queries and nested
+structures. A typical chain conceptually looks like this:
 
 ```text
 EXECUTE QUERY
@@ -60,29 +59,29 @@ EXECUTE QUERY
   -> ORDER BY [column]
 ```
 
-Der Startblock `eventGreenFlag` ist der ausfuehrbare Einstiegspunkt. Bloecke,
-die frei im Workspace liegen und nicht unter einem solchen Startblock haengen,
-werden vom SQL-Compiler nicht als ausfuehrbare Abfrage behandelt.
+The `eventGreenFlag` start block is the executable entry point. Blocks that are
+floating in the workspace and are not attached below such a start block are not
+treated as executable queries by the SQL compiler.
 
-## Wie aus Bloecken SQL wird
+## How Blocks Become SQL
 
-Die SQL-Erzeugung passiert im `SqlCompiler`. Er bekommt die Root-Bloecke des
-Workspaces und laeuft die ausfuehrbaren Blockketten durch.
+SQL generation happens in the `SqlCompiler`. It receives the root blocks from
+the workspace and walks through the executable block chains.
 
-Der Compiler arbeitet vereinfacht in diesen Schritten:
+Simplified, the compiler works like this:
 
-1. Root-Bloecke suchen.
-2. Nur Ketten unter `EXECUTE QUERY` kompilieren.
-3. Jeden Blocktyp in ein SQL-Fragment uebersetzen.
-4. `next`-Bloecke anhaengen.
-5. `children` aus Container- oder Reporter-Bloecken einsetzen.
-6. Plugin-Bloecke ueber ihr SQL-Template rendern.
-7. Warnungen sammeln, wenn etwas nicht ausfuehrbar ist.
-8. Am Ende pro Abfrage ein Semikolon ergaenzen.
+1. Find root blocks.
+2. Compile only chains below `EXECUTE QUERY`.
+3. Translate each block type into an SQL fragment.
+4. Append `next` blocks.
+5. Insert `children` from container or reporter blocks.
+6. Render plugin blocks through their SQL templates.
+7. Collect warnings when something is not executable.
+8. Add a semicolon for each generated statement.
 
-Beispiele fuer eingebaute Blockuebersetzungen:
+Examples of built-in block translations:
 
-| Blocktyp | SQL-Fragment |
+| Block type | SQL fragment |
 | --- | --- |
 | `sqlSelect` | `SELECT ...` |
 | `sqlFrom` | `FROM table_name` |
@@ -95,28 +94,27 @@ Beispiele fuer eingebaute Blockuebersetzungen:
 | `sqlUpdate` | `UPDATE ... SET ...` |
 | `sqlDelete` | `DELETE FROM ...` |
 
-Das Ergebnis ist normale SQL-Syntax. NodeQL versteckt SQL also nicht, sondern
-macht sichtbar, wie die visuelle Struktur in echten SQL-Text uebersetzt wird.
+The output is normal SQL syntax. NodeQL does not hide SQL; it makes the
+translation from visual structure to real SQL text visible.
 
-## Warum es einen EXECUTE-QUERY-Startblock gibt
+## Why There Is an EXECUTE QUERY Start Block
 
-NodeQL unterscheidet zwischen Bloecken, die nur im Workspace liegen, und
-Bloecken, die wirklich ausgefuehrt werden sollen. Der Startblock markiert diese
-Grenze.
+NodeQL distinguishes between blocks that merely exist in the workspace and
+blocks that should actually be executed. The start block marks that boundary.
 
-Das hat drei Vorteile:
+This has three benefits:
 
-- Nutzer koennen Bloecke vorbereiten, ohne sie sofort auszufuehren.
-- Mehrere Abfrageketten koennen in einem Projekt existieren.
-- Der Compiler kann klar entscheiden, welche Kette SQL erzeugen soll.
+- Users can prepare blocks without executing them immediately.
+- Multiple query chains can exist in one project.
+- The compiler can clearly decide which chain should generate SQL.
 
-Liegt ein SQL-Block frei im Workspace, erzeugt NodeQL eine Warnung statt ihn
-stillschweigend auszufuehren.
+If an SQL block is floating freely in the workspace, NodeQL reports a warning
+instead of executing it silently.
 
-## Slots, Inputs und Reporter
+## Slots, Inputs, and Reporters
 
-Viele Bloecke haben editierbare Slots. Ein Slot ist ein sichtbares Eingabefeld,
-das intern in `inputs` gespeichert wird. Beispiele:
+Many blocks have editable slots. A slot is a visible input field that is stored
+internally in `inputs`. Examples:
 
 ```text
 SELECT [columns]
@@ -124,67 +122,67 @@ FROM [table]
 WHERE [left] [operator] [right]
 ```
 
-Reporter-Bloecke liefern Werte fuer andere Bloecke. Ein Aggregatblock wie
-`COUNT(column)` kann zum Beispiel in einen SELECT-Slot eingesetzt werden. Dadurch
-entsteht eine Struktur, die naeher an SQL-Ausdruecken liegt als reine Textfelder.
+Reporter blocks provide values for other blocks. For example, an aggregate block
+such as `COUNT(column)` can be inserted into a SELECT slot. This creates a
+structure that is closer to SQL expressions than plain text fields.
 
-## Workspace und Snapping
+## Workspace and Snapping
 
-Der Workspace verwaltet, wo Bloecke liegen und wie sie verbunden sind. Beim
-Ziehen eines Blocks prueft NodeQL passende Andockpunkte. Wenn ein Block nahe
-genug an einer erlaubten Stelle liegt, wird er angedockt.
+The workspace manages where blocks are placed and how they are connected. When a
+block is dragged, NodeQL checks compatible docking points. If a block is close
+enough to an allowed position, it snaps into place.
 
-Dabei entstehen zwei wichtige Beziehungen:
+Two important relationships are created:
 
-- `next`: Der Block kommt nach einem anderen Block in derselben Kette.
-- `children`: Der Block liegt innerhalb eines Container-Blocks oder wird als
-  eingebetteter Ausdruck verwendet.
+- `next`: The block comes after another block in the same chain.
+- `children`: The block sits inside a container block or is used as an embedded
+  expression.
 
-Das Snapping ist nicht nur optisch. Es bestimmt die echte Datenstruktur, die
-spaeter vom Compiler gelesen wird.
+Snapping is not only visual. It defines the actual data structure that the
+compiler reads later.
 
-## SQL-Vorschau
+## SQL Preview
 
-Die SQL-Vorschau ist ein Kernbestandteil von NodeQL. Sie zeigt direkt, welche
-SQL-Anweisung aus der aktuellen Blockstruktur entsteht.
+The SQL preview is a core part of NodeQL. It directly shows which SQL statement
+is produced by the current block structure.
 
-Damit erfuellt sie drei Aufgaben:
+It serves three purposes:
 
-- Lernhilfe: Nutzer sehen, welche SQL-Syntax zu welchem Block gehoert.
-- Kontrolle: Fehler in Reihenfolge, Spaltennamen oder Bedingungen werden
-  schneller sichtbar.
-- Transparenz: Vor dem Ausfuehren ist klar, welche Abfrage an SQLite geht.
+- Learning: users see which SQL syntax belongs to which block.
+- Checking: mistakes in order, column names, or predicates become visible
+  faster.
+- Transparency: before execution, users can see exactly which query will be sent
+  to SQLite.
 
-NodeQL ist dadurch kein Ersatz fuer SQL-Verstaendnis, sondern eine Oberflaeche,
-die SQL-Struktur sichtbar und bearbeitbar macht.
+NodeQL is therefore not a replacement for understanding SQL. It is an interface
+that makes SQL structure visible and editable.
 
-## Lokale SQLite-Runtime
+## Local SQLite Runtime
 
-Die Ausfuehrung passiert in der `SqlRuntime`. Sie verwendet das Dart-Paket
-`sqlite3` und ist deshalb nicht auf `/usr/bin/sqlite3` oder eine externe
-System-CLI angewiesen.
+Execution happens in the `SqlRuntime`. It uses the Dart `sqlite3` package, so it
+does not depend on `/usr/bin/sqlite3` or an external system SQLite CLI.
 
-Der Runtime-Ablauf:
+The runtime flow is:
 
-1. Nutzer waehlt eine `.db`, `.sqlite` oder `.sqlite3` Datei aus.
-2. NodeQL kopiert oder oeffnet die Datei in einem kontrollierten lokalen Pfad.
-3. Die Runtime liest das Schema aus `sqlite_schema`.
-4. Fuer jede Tabelle werden Spalten per `PRAGMA table_info(...)` ermittelt.
-5. Beim Ausfuehren wird die aktuelle SQL-Anweisung an SQLite uebergeben.
-6. Ergebniszeilen werden fuer die Vorschau begrenzt.
-7. Statusmeldungen und Zeilen erscheinen im Ergebnisbereich.
+1. The user selects a `.db`, `.sqlite`, or `.sqlite3` file.
+2. NodeQL copies or opens the file through a controlled local path.
+3. The runtime reads the schema from `sqlite_schema`.
+4. For each table, columns are read with `PRAGMA table_info(...)`.
+5. On execution, the current SQL statement is sent to SQLite.
+6. Result rows are capped for preview display.
+7. Status messages and rows are shown in the result area.
 
-Schreibende SQL-Anweisungen werden besonders behandelt. Vor potenziell
-veraendernden Statements erstellt NodeQL einen Snapshot. Wenn die Ausfuehrung
-fehlschlaegt, wird die Datenbank aus diesem Snapshot wiederhergestellt.
+Write statements receive additional protection. Before potentially mutating SQL
+statements, NodeQL creates a snapshot. If execution fails, the database is
+restored from that snapshot.
 
-## Datenbank-Schema im UI
+## Database Schema in the UI
 
-Nachdem eine Datenbank verbunden wurde, kennt NodeQL ihre Tabellen und Spalten.
-Dieses Schema kann in der Oberflaeche verwendet werden, damit Nutzer passende
-Tabellen- und Spaltennamen schneller finden.
+After a database is connected, NodeQL knows its tables and columns. That schema
+can be used in the interface so users can find valid table and column names more
+quickly.
 
-NodeQL liest nur Nutzer-Tabellen:
+NodeQL reads only user tables:
 
 ```sql
 SELECT name
@@ -193,193 +191,187 @@ WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
 ORDER BY name
 ```
 
-Interne SQLite-Tabellen werden dadurch ausgeblendet.
+Internal SQLite tables are hidden.
 
-## Projektdateien
+## Project Files
 
-Ein NodeQL-Projekt speichert die visuelle Arbeitsflaeche als JSON. Wichtig ist:
-Nicht nur der erzeugte SQL-Text wird gespeichert, sondern die Blockstruktur.
+A NodeQL project stores the visual workspace as JSON. The important part is that
+NodeQL does not only save the generated SQL text; it saves the block structure.
 
-Gespeichert werden unter anderem:
+Stored data includes:
 
-- Blocktypen
-- Positionen
-- Eingabewerte
-- Verkettungen ueber `next`
-- verschachtelte Bloecke ueber `children`
-- Plugin-Referenzen
+- block types
+- positions
+- input values
+- chains through `next`
+- nested blocks through `children`
+- plugin references
 
-Dadurch kann ein Projekt spaeter wieder als visuelle Arbeitsflaeche geladen und
-weiterbearbeitet werden.
+This allows a project to be loaded later as a visual workspace and edited again.
 
-## Plugin-System
+## Plugin System
 
-Plugins erweitern NodeQL um neue Bloecke, ohne dass sie in die Flutter-App
-kompiliert werden muessen. Ein Plugin ist ein deklaratives `plugin.json`
-Manifest.
+Plugins extend NodeQL with new blocks without being compiled into the Flutter
+application. A plugin is a declarative `plugin.json` manifest.
 
-Ein Plugin-Block definiert unter anderem:
+A plugin block defines, among other things:
 
-- eine stabile Plugin-ID
-- Block-IDs
-- Labels und Beschreibungen
-- Form und Farbe
-- Eingaben
-- SQL-Templates
-- optionale Mindestversion von NodeQL
+- a stable plugin ID
+- block IDs
+- labels and descriptions
+- shape and color
+- inputs
+- SQL templates
+- optional minimum NodeQL version
 
-Beim Kompilieren erkennt NodeQL, ob ein Block aus einem Plugin stammt. Dann wird
-nicht ein fest eingebauter Dart-Case verwendet, sondern das SQL-Template des
-Plugins gerendert.
+During compilation, NodeQL detects whether a block comes from a plugin. If it
+does, the block is not handled by a fixed Dart switch case. Instead, the
+plugin's SQL template is rendered.
 
-Das ist der zentrale Unterschied:
+The central distinction is:
 
 ```text
-Built-in Block -> Dart switch/case im SqlCompiler
-Plugin Block   -> Manifest + SQL-Template
+Built-in block -> Dart switch/case in SqlCompiler
+Plugin block   -> Manifest + SQL template
 ```
 
-## Plugin-Repositories
+## Plugin Repositories
 
-NodeQL kann Community-Plugin-Kataloge von statischen HTTPS-URLs installieren.
-Das oeffentliche Beispiel-Repository ist:
+NodeQL can install community plugin catalogs from static HTTPS URLs. The public
+example repository is:
 
 ```text
 https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json
 ```
 
-Der Katalog verweist auf einzelne `plugin.json`-Manifeste. NodeQL prueft:
+The catalog points to individual `plugin.json` manifests. NodeQL checks:
 
-- ob der Katalog gueltig ist
-- ob die Manifest-URL erreichbar ist
-- ob der SHA-256-Hash zur Manifestdatei passt
-- ob das Manifest dem Schema entspricht
-- ob Plugin-ID und Version konsistent sind
-- ob die NodeQL-Version kompatibel ist
+- whether the catalog is valid
+- whether the manifest URL is reachable
+- whether the SHA-256 hash matches the manifest file
+- whether the manifest matches the schema
+- whether plugin ID and version are consistent
+- whether the NodeQL version is compatible
 
-Der SHA-256-Hash wird ueber die konkrete `plugin.json` berechnet, nicht ueber
-den Plugin-Ordner.
+The SHA-256 hash is calculated over the concrete `plugin.json`, not over the
+plugin folder.
 
-## Data-Source-Plugins in SDK v2
+## Data Source Plugins in SDK v2
 
-SDK v2 erlaubt deklarative externe Datenquellen ueber feste JSON-over-HTTP
-Adapter. Das bedeutet: NodeQL laedt weiterhin keinen fremden Code, kann aber
-ueber klar definierte HTTP-Endpunkte mit Bridges sprechen.
+SDK v2 allows declarative external data sources through fixed JSON-over-HTTP
+adapters. This means NodeQL still does not load third-party code, but it can
+communicate with bridges through clearly defined HTTP endpoints.
 
-Ein Data-Source-Plugin deklariert:
+A data source plugin declares:
 
-- erlaubte Netzwerkhosts
-- benoetigte Secrets
-- Schema-Endpunkt
-- Query-Endpunkt
-- feste Request- und Response-Struktur
+- allowed network hosts
+- required secrets
+- schema endpoint
+- query endpoint
+- fixed request and response structure
 
-So koennen zum Beispiel MongoDB-, Supabase-, REST- oder GraphQL-Bridges extern
-gepflegt werden, waehrend NodeQL selbst nur den sicheren, festen Vertrag
-ausfuehrt.
+This allows MongoDB, Supabase, REST, or GraphQL bridges to be maintained
+externally while NodeQL itself only executes the constrained, explicit contract.
 
-## Lokalisierung
+## Localization
 
-Die sichtbaren Texte kommen aus ARB-Dateien unter `lib/l10n/` und werden nach
-`lib/localization/generated/` generiert.
+Visible text comes from ARB files under `lib/l10n/` and is generated into
+`lib/localization/generated/`.
 
-Unterstuetzte Sprachen:
+Supported languages:
 
-- Deutsch
-- Englisch
-- Franzoesisch
-- Spanisch
-- Italienisch
-- Portugiesisch
-- Tuerkisch
-- Arabisch mit RTL
-- Japanisch
-- Koreanisch
-- Chinesisch
+- German
+- English
+- French
+- Spanish
+- Italian
+- Portuguese
+- Turkish
+- Arabic with RTL
+- Japanese
+- Korean
+- Chinese
 
-Nach Textaenderungen gilt:
+After text changes, run:
 
 ```bash
 flutter gen-l10n
 ```
 
-Zur Laufzeit kann NodeQL ausserdem validierte Community-Sprachpakete verwenden.
-Diese Pakete werden nach Schema, Groesse, Metadaten, Platzhaltern und Hashes
-geprueft.
+At runtime, NodeQL can also use validated community language packages. These
+packages are checked for schema, size, metadata, placeholders, and hashes.
 
-## Architektur im Code
+## Code Architecture
 
-Die wichtigsten Bereiche:
+The most important areas are:
 
-| Pfad | Aufgabe |
+| Path | Purpose |
 | --- | --- |
-| `lib/core` | App-Bootstrap, Theme, Update-Pruefung |
-| `lib/localization` | Sprache, Kataloge, Runtime-Uebersetzungen |
-| `lib/domain` | Projekt- und Blockmodelle |
-| `lib/data` | JSON-Persistenz und Standardprojekt |
-| `lib/engine/block` | Blocktypen, Blockknoten, Syntax und Reporter |
-| `lib/engine/plugins` | Plugin-Manifeste, Loader, Repository-Logik |
-| `lib/engine/runtime` | Allgemeine Runtime-Modelle und Scheduler |
-| `lib/engine/workspace` | Workspace-Modelle und Docking-Service |
-| `lib/features/workbench` | Sichtbare Workbench, SQL-Modus, Compiler, Runtime |
-| `lib/ui` | Shell und App-Einstieg |
-| `test` | Unit-, Widget-, Runtime-, Plugin- und Workspace-Tests |
+| `lib/core` | App bootstrap, theme, update checks |
+| `lib/localization` | Language, catalogs, runtime translations |
+| `lib/domain` | Project and block models |
+| `lib/data` | JSON persistence and default project |
+| `lib/engine/block` | Block types, block nodes, syntax, and reporters |
+| `lib/engine/plugins` | Plugin manifests, loader, repository logic |
+| `lib/engine/runtime` | General runtime models and scheduler |
+| `lib/engine/workspace` | Workspace models and docking service |
+| `lib/features/workbench` | Visible workbench, SQL mode, compiler, runtime |
+| `lib/ui` | Shell and app entry |
+| `test` | Unit, widget, runtime, plugin, and workspace tests |
 
-State Management basiert auf Riverpod. Routing erfolgt ueber `go_router`. Die
-relevante Logik fuer Blockstruktur, SQL-Kompilierung, Plugin-Manifeste und
-SQLite-Ausfuehrung ist testbar vom UI getrennt.
+State management is based on Riverpod. Routing uses `go_router`. The relevant
+logic for block structure, SQL compilation, plugin manifests, and SQLite
+execution is testable separately from the UI.
 
-## Sicherheit und Datenschutz
+## Security and Privacy
 
-NodeQL ist local-first. Das Design vermeidet unnoetige Netzwerkabhaengigkeiten.
+NodeQL is local-first. Its design avoids unnecessary network dependencies.
 
-Wichtige Sicherheitsgrenzen:
+Important security boundaries:
 
-- Keine Analytics.
-- Kein Account-Tracking.
-- Kein automatisches Crash-Reporting.
-- Lokale SQLite-Dateien bleiben lokal.
-- Plugins fuehren keinen fremden Dart-, Native- oder Script-Code aus.
-- Remote-Plugin-Repositories brauchen HTTPS.
-- Manifeste werden mit SHA-256 und JSON-Schema validiert.
-- Data-Source-Plugins muessen Hosts und Secrets deklarieren.
+- No analytics.
+- No account tracking.
+- No automatic crash reporting.
+- Local SQLite files stay local.
+- Plugins do not execute third-party Dart, native, or script code.
+- Remote plugin repositories require HTTPS.
+- Manifests are validated with SHA-256 and JSON Schema.
+- Data source plugins must declare hosts and secrets.
 
-Optionales Netzwerkverhalten, zum Beispiel Update-Pruefungen, Plugin-Kataloge
-oder Community-Uebersetzungen, ist gesondert dokumentiert.
+Optional network behavior, such as update checks, plugin catalogs, or community
+translations, is documented separately.
 
-## Typische Fehlerbilder
+## Common Failure Cases
 
-### Ein Block erzeugt kein SQL
+### A Block Does Not Generate SQL
 
-Meist haengt er nicht unter einem `EXECUTE QUERY` Startblock oder er ist ein
-Reporter, der nur als Eingabe fuer einen anderen Block gedacht ist.
+Usually it is not attached below an `EXECUTE QUERY` start block, or it is a
+reporter that is only intended to provide input to another block.
 
-### SQL sieht unvollstaendig aus
+### The SQL Looks Incomplete
 
-Pruefen, ob `SELECT`, `FROM`, `WHERE`, `JOIN` und weitere Klauseln in einer
-sinnvollen Kette verbunden sind. Die visuelle Reihenfolge entspricht der
-Kompilier-Reihenfolge.
+Check whether `SELECT`, `FROM`, `WHERE`, `JOIN`, and other clauses are connected
+in a meaningful chain. The visual order is the compilation order.
 
-### Datenbank ist verbunden, aber es erscheinen keine Tabellen
+### A Database Is Connected, but No Tables Appear
 
-Die Runtime blendet interne SQLite-Tabellen aus. Wenn keine Nutzer-Tabellen
-existieren, meldet NodeQL, dass die DB geladen wurde, aber keine User-Tabellen
-gefunden wurden.
+The runtime hides internal SQLite tables. If no user tables exist, NodeQL reports
+that the database was loaded but no user tables were found.
 
-### Plugin-Installation schlaegt mit 404 fehl
+### Plugin Installation Fails With 404
 
-Der Repository-Katalog ist oft erreichbar, aber `manifestUrl` zeigt auf eine
-nicht existierende Datei. Pfad und Gross-/Kleinschreibung muessen exakt zur
-GitHub-Pages-Struktur passen.
+The repository catalog is often reachable, but `manifestUrl` points to a file
+that does not exist. The path and casing must exactly match the GitHub Pages
+layout.
 
-### SHA-256 stimmt nicht
+### SHA-256 Does Not Match
 
-Der Hash muss nach jeder Manifest-Aenderung neu ueber die referenzierte
-`plugin.json` berechnet werden.
+After every manifest change, the hash must be recalculated over the referenced
+`plugin.json`.
 
-## Entwicklung und Tests
+## Development and Tests
 
-Wichtige Befehle:
+Important commands:
 
 ```bash
 flutter pub get
@@ -391,7 +383,7 @@ dart run tool/validate_translations.dart
 flutter run -d macos
 ```
 
-Gezielte Tests:
+Targeted tests:
 
 ```bash
 flutter test test/plugins/plugin_manifest_test.dart
@@ -400,16 +392,16 @@ flutter test test/workspace/workspace_engine_test.dart
 flutter test test/workspace/block_syntax_test.dart
 ```
 
-Nach Aenderungen an Blocktypen, Compiler, Runtime oder Plugins sollten passende
-Tests in den entsprechenden Subsystemen ergaenzt werden.
+After changes to block types, the compiler, the runtime, or plugins, add or
+update tests in the corresponding subsystem.
 
-## Weiterfuehrende Dokumente
+## Further Documentation
 
-- `README.md` fuer die kurze Projektuebersicht.
-- `docs/plugins/README.md` fuer Plugin SDK v1 und v2.
-- `docs/localization/README.md` fuer Community-Uebersetzungen.
-- `docs/RELEASING.md` fuer Release-Prozess und Signierung.
-- `docs/node-ui-and-logic.md` fuer Hinweise zu Node-Aussehen und Logik.
-- `CHANGELOG.md` fuer Aenderungshistorie.
-- `PRIVACY.md` fuer Datenschutz.
-- `SECURITY.md` fuer Sicherheitsmeldungen.
+- `README.md` for the short project overview.
+- `docs/plugins/README.md` for Plugin SDK v1 and v2.
+- `docs/localization/README.md` for community translations.
+- `docs/RELEASING.md` for the release process and signing.
+- `docs/node-ui-and-logic.md` for notes about node appearance and logic.
+- `CHANGELOG.md` for the change history.
+- `PRIVACY.md` for privacy details.
+- `SECURITY.md` for security reporting.
