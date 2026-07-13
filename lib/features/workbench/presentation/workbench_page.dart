@@ -55,6 +55,10 @@ class _SimpleNodeDiagnostic {
   final String message;
 }
 
+class _SaveProjectIntent extends Intent {
+  const _SaveProjectIntent();
+}
+
 Map<String, _SimpleNodeDiagnostic> _simpleNodeDiagnostics({
   required SqlAbstractionMode mode,
   required List<BlockNode> roots,
@@ -485,128 +489,152 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     );
     _maybeAutosave(workspaceRevision);
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(
-              catalog: catalog,
-              languageChoices: <SupportedLanguage>[
-                ...supportedLanguages,
-                for (final package in translationState.installed.values)
-                  if (!supportedLanguages.any(
-                    (language) => language.code == package.locale,
-                  ))
-                    SupportedLanguage(package.locale, package.locale),
-              ],
-              localeCode: locale.languageCode,
-              onLocale: (code) => ref
-                  .read(translationControllerProvider.notifier)
-                  .setLocaleTag(code),
-              onPickDb: () =>
-                  ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
-              onExecuteGuarded: () {
-                if (compileResult.sql.trim().isEmpty) {
-                  ref
-                      .read(sqlRuntimeProvider.notifier)
-                      .setMessage(
-                        compileResult.warnings.isEmpty
-                            ? catalog.text('runtime.noExecutable')
-                            : _visibleCompileWarnings(
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.keyS, meta: true):
+            _SaveProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyS, control: true):
+            _SaveProjectIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _SaveProjectIntent: CallbackAction<_SaveProjectIntent>(
+            onInvoke: (_) {
+              unawaited(_saveProject(context));
+              return null;
+            },
+          ),
+        },
+        child: Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          body: SafeArea(
+            child: Column(
+              children: [
+                _TopBar(
+                  catalog: catalog,
+                  languageChoices: <SupportedLanguage>[
+                    ...supportedLanguages,
+                    for (final package in translationState.installed.values)
+                      if (!supportedLanguages.any(
+                        (language) => language.code == package.locale,
+                      ))
+                        SupportedLanguage(package.locale, package.locale),
+                  ],
+                  localeCode: locale.languageCode,
+                  onLocale: (code) => ref
+                      .read(translationControllerProvider.notifier)
+                      .setLocaleTag(code),
+                  onPickDb: () =>
+                      ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
+                  onExecuteGuarded: () {
+                    if (compileResult.sql.trim().isEmpty) {
+                      ref
+                          .read(sqlRuntimeProvider.notifier)
+                          .setMessage(
+                            compileResult.warnings.isEmpty
+                                ? catalog.text('runtime.noExecutable')
+                                : _visibleCompileWarnings(
+                                    mode: mode,
+                                    warnings: compileResult.warnings,
+                                  ),
+                          );
+                      return;
+                    }
+                    ref
+                        .read(sqlRuntimeProvider.notifier)
+                        .executeWithSnapshot(sql);
+                    if (compileResult.warnings.isNotEmpty) {
+                      ref
+                          .read(sqlRuntimeProvider.notifier)
+                          .setMessage(
+                            catalog.text('runtime.executedWithWarnings', {
+                              'warnings': _visibleCompileWarnings(
                                 mode: mode,
                                 warnings: compileResult.warnings,
                               ),
-                      );
-                  return;
-                }
-                ref.read(sqlRuntimeProvider.notifier).executeWithSnapshot(sql);
-                if (compileResult.warnings.isNotEmpty) {
-                  ref
-                      .read(sqlRuntimeProvider.notifier)
-                      .setMessage(
-                        catalog.text('runtime.executedWithWarnings', {
-                          'warnings': _visibleCompileWarnings(
-                            mode: mode,
-                            warnings: compileResult.warnings,
+                            }),
+                          );
+                    }
+                  },
+                  mode: mode,
+                  onModeChanged: (next) =>
+                      ref.read(sqlModeProvider.notifier).setMode(next),
+                  onSettings: () => _openSettings(context),
+                  onTutorial: () => _openTutorial(context),
+                  onDiagnostics: () => _openBlockDiagnostics(context),
+                ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      _CategoryRail(
+                        active: _activeCategory,
+                        hasPlugins: pluginState.entries.isNotEmpty,
+                        onSelect: (next) =>
+                            setState(() => _activeCategory = next),
+                      ),
+                      _Palette(
+                        category: _activeCategory,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: locale.languageCode,
+                        catalog: catalog,
+                        width: _paletteWidth,
+                        pluginEntries: pluginState.entries,
+                        onAdd: (type, defaults) {
+                          final controller = ref.read(
+                            workspaceProvider.notifier,
+                          );
+                          controller.addTemplate(
+                            type,
+                            controller.suggestedTemplatePosition(type),
+                            defaults: defaults,
+                          );
+                        },
+                      ),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (details) {
+                            setState(() {
+                              _paletteWidth = (_paletteWidth + details.delta.dx)
+                                  .clamp(200.0, 520.0);
+                            });
+                          },
+                          child: Container(
+                            width: 10,
+                            color: Colors.transparent,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 2,
+                              height: double.infinity,
+                              color: NodeQlWorkbenchColors.of(context).border,
+                            ),
                           ),
-                        }),
-                      );
-                }
-              },
-              mode: mode,
-              onModeChanged: (next) =>
-                  ref.read(sqlModeProvider.notifier).setMode(next),
-              onSettings: () => _openSettings(context),
-              onTutorial: () => _openTutorial(context),
-              onDiagnostics: () => _openBlockDiagnostics(context),
-            ),
-            Expanded(
-              child: Row(
-                children: [
-                  _CategoryRail(
-                    active: _activeCategory,
-                    hasPlugins: pluginState.entries.isNotEmpty,
-                    onSelect: (next) => setState(() => _activeCategory = next),
-                  ),
-                  _Palette(
-                    category: _activeCategory,
-                    runtime: runtime,
-                    mode: mode,
-                    localeCode: locale.languageCode,
-                    catalog: catalog,
-                    width: _paletteWidth,
-                    pluginEntries: pluginState.entries,
-                    onAdd: (type, defaults) {
-                      final controller = ref.read(workspaceProvider.notifier);
-                      controller.addTemplate(
-                        type,
-                        controller.suggestedTemplatePosition(type),
-                        defaults: defaults,
-                      );
-                    },
-                  ),
-                  MouseRegion(
-                    cursor: SystemMouseCursors.resizeLeftRight,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onHorizontalDragUpdate: (details) {
-                        setState(() {
-                          _paletteWidth = (_paletteWidth + details.delta.dx)
-                              .clamp(200.0, 520.0);
-                        });
-                      },
-                      child: Container(
-                        width: 10,
-                        color: Colors.transparent,
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 2,
-                          height: double.infinity,
-                          color: NodeQlWorkbenchColors.of(context).border,
                         ),
                       ),
-                    ),
+                      Expanded(
+                        child: _WorkspaceCanvas(
+                          focusNode: _workspaceFocus,
+                          transform: _transform,
+                          paletteWidth: 72.0 + _paletteWidth,
+                          diagnostics: nodeDiagnostics,
+                          onSaveProject: () => _saveProject(context),
+                        ),
+                      ),
+                      _SqlRuntimePane(
+                        sql: sql,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: locale.languageCode,
+                        catalog: catalog,
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: _WorkspaceCanvas(
-                      focusNode: _workspaceFocus,
-                      transform: _transform,
-                      paletteWidth: 72.0 + _paletteWidth,
-                      diagnostics: nodeDiagnostics,
-                    ),
-                  ),
-                  _SqlRuntimePane(
-                    sql: sql,
-                    runtime: runtime,
-                    mode: mode,
-                    localeCode: locale.languageCode,
-                    catalog: catalog,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -765,10 +793,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       }
       final projectDirectory = Directory(selectedDirectory);
       await projectDirectory.create(recursive: true);
-      final projectPath = p.join(projectDirectory.path, 'project.nodeql');
       final rawProjectName = projectName.text.trim().isEmpty
           ? catalog.text('project.untitled')
           : projectName.text.trim();
+      final projectPath = await _availableProjectPath(
+        projectDirectory,
+        rawProjectName,
+      );
       ref.read(workspaceProvider.notifier).resetWithRoot();
       if (createDb.value) {
         try {
@@ -1514,6 +1545,29 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<File> _registryFile() async {
     final support = await getApplicationSupportDirectory();
     return File('${support.path}/nodeql_projects.json');
+  }
+
+  Future<String> _availableProjectPath(Directory directory, String name) async {
+    final baseName = _projectFileStem(name);
+    var candidate = p.join(directory.path, '$baseName.nodeql');
+    var suffix = 2;
+    while (await File(candidate).exists()) {
+      candidate = p.join(directory.path, '$baseName-$suffix.nodeql');
+      suffix += 1;
+    }
+    return candidate;
+  }
+
+  String _projectFileStem(String name) {
+    final sanitized = name
+        .trim()
+        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '-')
+        .replaceAll(RegExp(r'\s+'), ' ');
+    final withoutExtension = sanitized.toLowerCase().endsWith('.nodeql')
+        ? sanitized.substring(0, sanitized.length - '.nodeql'.length)
+        : sanitized;
+    final cleaned = withoutExtension.trim();
+    return cleaned.isEmpty ? 'project' : cleaned;
   }
 
   Future<void> _loadProjectRegistry() async {
@@ -2796,7 +2850,7 @@ class _PaletteCard extends StatelessWidget {
         : 58.0;
     return math
         .max(cardWidth, maxLineWidth + contentPadding)
-        .clamp(cardWidth, 760.0);
+        .clamp(cardWidth, cardWidth * 1.35);
   }
 }
 
@@ -2806,12 +2860,14 @@ class _WorkspaceCanvas extends ConsumerWidget {
     required this.transform,
     required this.paletteWidth,
     required this.diagnostics,
+    required this.onSaveProject,
   });
 
   final FocusNode focusNode;
   final TransformationController transform;
   final double paletteWidth;
   final Map<String, _SimpleNodeDiagnostic> diagnostics;
+  final Future<void> Function() onSaveProject;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2839,6 +2895,10 @@ class _WorkspaceCanvas extends ConsumerWidget {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           final keyboard = HardwareKeyboard.instance;
           final cmdOrCtrl = keyboard.isMetaPressed || keyboard.isControlPressed;
+          if (cmdOrCtrl && event.logicalKey == LogicalKeyboardKey.keyS) {
+            unawaited(onSaveProject());
+            return KeyEventResult.handled;
+          }
           if (cmdOrCtrl && event.logicalKey == LogicalKeyboardKey.keyZ) {
             final redo = keyboard.isShiftPressed;
             if (redo) {
