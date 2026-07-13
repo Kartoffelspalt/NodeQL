@@ -10,6 +10,7 @@ import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
+import 'package:nodeql/data/project/project_file_upgrade_service.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
@@ -35,14 +36,28 @@ import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
 const double _inlineLineHeight = 28;
-const double _joinFirstLineOffset = 4;
+const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
+
+double _measureSingleLineText(String text, TextStyle style) {
+  if (text.isEmpty) return 0;
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    maxLines: 1,
+    textDirection: TextDirection.ltr,
+  )..layout(minWidth: 0, maxWidth: 1600);
+  return painter.width;
+}
 
 class _SimpleNodeDiagnostic {
   const _SimpleNodeDiagnostic({required this.title, required this.message});
 
   final String title;
   final String message;
+}
+
+class _SaveProjectIntent extends Intent {
+  const _SaveProjectIntent();
 }
 
 Map<String, _SimpleNodeDiagnostic> _simpleNodeDiagnostics({
@@ -402,6 +417,7 @@ class WorkbenchPage extends ConsumerStatefulWidget {
 
 class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   static const _menuChannel = MethodChannel('nodeql/menu');
+  static const _projectUpgradeService = ProjectFileUpgradeService();
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlCompiler _compiler = const SqlCompiler();
@@ -409,6 +425,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   String? _activeProjectPath;
   String _activeProjectId = 'default';
   String _activeProjectName = 'Untitled';
+  bool _autosaveEnabledForProject = true;
   List<Map<String, dynamic>> _recentProjects = <Map<String, dynamic>>[];
   int _lastAutosaveRevision = -1;
   Timer? _autosaveDebounce;
@@ -417,6 +434,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   bool _blockDiagnosticsRunning = false;
   int _blockDiagnosticsRunToken = 0;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
+  bool _startupHintShown = false;
 
   @override
   void initState() {
@@ -426,6 +444,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       () => ref.read(pluginPaletteProvider.notifier).reload(),
     );
     _restoreAutosave();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showStartupHintOnce();
+    });
+
     _tutorialSubscription = ref.listenManual<TutorialState>(
       tutorialControllerProvider,
       (_, next) {
@@ -437,6 +459,27 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         }
       },
       fireImmediately: true,
+    );
+  }
+
+  Future<void> _showStartupHintOnce() async {
+    if (_startupHintShown) return;
+    _startupHintShown = true;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Alert'),
+        content: const Text(
+          'Since various changes in the underlying engine, some projects may not load correctly. If you encounter issues, please check your project files or restore from a backup.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -474,134 +517,162 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     );
     _maybeAutosave(workspaceRevision);
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(
-              catalog: catalog,
-              languageChoices: <SupportedLanguage>[
-                ...supportedLanguages,
-                for (final package in translationState.installed.values)
-                  if (!supportedLanguages.any(
-                    (language) => language.code == package.locale,
-                  ))
-                    SupportedLanguage(package.locale, package.locale),
-              ],
-              localeCode: locale.languageCode,
-              onLocale: (code) => ref
-                  .read(translationControllerProvider.notifier)
-                  .setLocaleTag(code),
-              onPickDb: () =>
-                  ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
-              onExecuteGuarded: () {
-                if (compileResult.sql.trim().isEmpty) {
-                  ref
-                      .read(sqlRuntimeProvider.notifier)
-                      .setMessage(
-                        compileResult.warnings.isEmpty
-                            ? catalog.text('runtime.noExecutable')
-                            : _visibleCompileWarnings(
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.keyS, meta: true):
+            _SaveProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyS, control: true):
+            _SaveProjectIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _SaveProjectIntent: CallbackAction<_SaveProjectIntent>(
+            onInvoke: (_) {
+              unawaited(_saveProject(context));
+              return null;
+            },
+          ),
+        },
+        child: Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          body: SafeArea(
+            child: Column(
+              children: [
+                _TopBar(
+                  catalog: catalog,
+                  languageChoices: <SupportedLanguage>[
+                    ...supportedLanguages,
+                    for (final package in translationState.installed.values)
+                      if (!supportedLanguages.any(
+                        (language) => language.code == package.locale,
+                      ))
+                        SupportedLanguage(package.locale, package.locale),
+                  ],
+                  localeCode: locale.languageCode,
+                  onLocale: (code) => ref
+                      .read(translationControllerProvider.notifier)
+                      .setLocaleTag(code),
+                  onPickDb: () =>
+                      ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
+                  onExecuteGuarded: () {
+                    if (compileResult.sql.trim().isEmpty) {
+                      ref
+                          .read(sqlRuntimeProvider.notifier)
+                          .setMessage(
+                            compileResult.warnings.isEmpty
+                                ? catalog.text('runtime.noExecutable')
+                                : _visibleCompileWarnings(
+                                    mode: mode,
+                                    warnings: compileResult.warnings,
+                                  ),
+                          );
+                      return;
+                    }
+                    ref
+                        .read(sqlRuntimeProvider.notifier)
+                        .executeWithSnapshot(sql);
+                    if (compileResult.warnings.isNotEmpty) {
+                      ref
+                          .read(sqlRuntimeProvider.notifier)
+                          .setMessage(
+                            catalog.text('runtime.executedWithWarnings', {
+                              'warnings': _visibleCompileWarnings(
                                 mode: mode,
                                 warnings: compileResult.warnings,
                               ),
-                      );
-                  return;
-                }
-                ref.read(sqlRuntimeProvider.notifier).executeWithSnapshot(sql);
-                if (compileResult.warnings.isNotEmpty) {
-                  ref
-                      .read(sqlRuntimeProvider.notifier)
-                      .setMessage(
-                        catalog.text('runtime.executedWithWarnings', {
-                          'warnings': _visibleCompileWarnings(
-                            mode: mode,
-                            warnings: compileResult.warnings,
+                            }),
+                          );
+                    }
+                  },
+                  mode: mode,
+                  onModeChanged: (next) =>
+                      ref.read(sqlModeProvider.notifier).setMode(next),
+                  onSettings: () => _openSettings(context),
+                  onTutorial: () => _openTutorial(context),
+                  onDiagnostics: () => _openBlockDiagnostics(context),
+                ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      _CategoryRail(
+                        active: _activeCategory,
+                        hasPlugins: pluginState.entries.isNotEmpty,
+                        onSelect: (next) =>
+                            setState(() => _activeCategory = next),
+                      ),
+                      _Palette(
+                        category: _activeCategory,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: locale.languageCode,
+                        catalog: catalog,
+                        width: _paletteWidth,
+                        pluginEntries: pluginState.entries,
+                        onAdd: (type, defaults) {
+                          final controller = ref.read(
+                            workspaceProvider.notifier,
+                          );
+                          controller.addTemplate(
+                            type,
+                            controller.suggestedTemplatePosition(type),
+                            defaults: defaults,
+                          );
+                        },
+                      ),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (details) {
+                            setState(() {
+                              _paletteWidth = (_paletteWidth + details.delta.dx)
+                                  .clamp(200.0, 520.0);
+                            });
+                          },
+                          child: Container(
+                            width: 10,
+                            color: Colors.transparent,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 2,
+                              height: double.infinity,
+                              color: NodeQlWorkbenchColors.of(context).border,
+                            ),
                           ),
-                        }),
-                      );
-                }
-              },
-              mode: mode,
-              onModeChanged: (next) =>
-                  ref.read(sqlModeProvider.notifier).setMode(next),
-              onSettings: () => _openSettings(context),
-              onTutorial: () => _openTutorial(context),
-              onDiagnostics: () => _openBlockDiagnostics(context),
-            ),
-            Expanded(
-              child: Row(
-                children: [
-                  _CategoryRail(
-                    active: _activeCategory,
-                    hasPlugins: pluginState.entries.isNotEmpty,
-                    onSelect: (next) => setState(() => _activeCategory = next),
-                  ),
-                  _Palette(
-                    category: _activeCategory,
-                    runtime: runtime,
-                    mode: mode,
-                    localeCode: locale.languageCode,
-                    catalog: catalog,
-                    width: _paletteWidth,
-                    pluginEntries: pluginState.entries,
-                    onAdd: (type, defaults) {
-                      final controller = ref.read(workspaceProvider.notifier);
-                      controller.addTemplate(
-                        type,
-                        controller.suggestedTemplatePosition(type),
-                        defaults: defaults,
-                      );
-                    },
-                  ),
-                  MouseRegion(
-                    cursor: SystemMouseCursors.resizeLeftRight,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onHorizontalDragUpdate: (details) {
-                        setState(() {
-                          _paletteWidth = (_paletteWidth + details.delta.dx)
-                              .clamp(200.0, 520.0);
-                        });
-                      },
-                      child: Container(
-                        width: 10,
-                        color: Colors.transparent,
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 2,
-                          height: double.infinity,
-                          color: NodeQlWorkbenchColors.of(context).border,
                         ),
                       ),
-                    ),
+                      Expanded(
+                        child: _WorkspaceCanvas(
+                          focusNode: _workspaceFocus,
+                          transform: _transform,
+                          paletteWidth: 72.0 + _paletteWidth,
+                          diagnostics: nodeDiagnostics,
+                          onSaveProject: () => _saveProject(context),
+                        ),
+                      ),
+                      _SqlRuntimePane(
+                        sql: sql,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: locale.languageCode,
+                        catalog: catalog,
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: _WorkspaceCanvas(
-                      focusNode: _workspaceFocus,
-                      transform: _transform,
-                      paletteWidth: 72.0 + _paletteWidth,
-                      diagnostics: nodeDiagnostics,
-                    ),
-                  ),
-                  _SqlRuntimePane(
-                    sql: sql,
-                    runtime: runtime,
-                    mode: mode,
-                    localeCode: locale.languageCode,
-                    catalog: catalog,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Future<void> _maybeAutosave(int revision) async {
+    if (!_autosaveEnabledForProject) {
+      _autosaveDebounce?.cancel();
+      return;
+    }
     if (revision == _lastAutosaveRevision) return;
     _lastAutosaveRevision = revision;
     _autosaveDebounce?.cancel();
@@ -670,6 +741,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<void> _newProject(BuildContext context) async {
     final catalog = ref.read(translationControllerProvider).catalog;
     final createDb = ValueNotifier<bool>(true);
+    final autosaveProject = ValueNotifier<bool>(true);
     final projectName = TextEditingController(text: 'NodeQL Project');
     final dbName = TextEditingController(text: 'nodeql_project');
     final yes = await showDialog<bool>(
@@ -701,6 +773,18 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     child: Text(catalog.text('project.new.createDatabase')),
                   ),
                 ],
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: autosaveProject,
+                builder: (context, autosaveEnabled, _) => Row(
+                  children: [
+                    Checkbox(
+                      value: autosaveEnabled,
+                      onChanged: (v) => autosaveProject.value = v ?? true,
+                    ),
+                    Expanded(child: Text(catalog.text('project.new.autosave'))),
+                  ],
+                ),
               ),
               if (value)
                 TextField(
@@ -737,10 +821,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       }
       final projectDirectory = Directory(selectedDirectory);
       await projectDirectory.create(recursive: true);
-      final projectPath = p.join(projectDirectory.path, 'project.nodeql');
       final rawProjectName = projectName.text.trim().isEmpty
           ? catalog.text('project.untitled')
           : projectName.text.trim();
+      final projectPath = await _availableProjectPath(
+        projectDirectory,
+        rawProjectName,
+      );
       ref.read(workspaceProvider.notifier).resetWithRoot();
       if (createDb.value) {
         try {
@@ -762,6 +849,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         _activeProjectPath = projectPath;
         _activeProjectId = 'project_${DateTime.now().millisecondsSinceEpoch}';
         _activeProjectName = rawProjectName;
+        _autosaveEnabledForProject = autosaveProject.value;
         _upsertRecentProject();
       });
       await File(
@@ -773,6 +861,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     dbName.dispose();
     projectName.dispose();
     createDb.dispose();
+    autosaveProject.dispose();
   }
 
   Future<void> _saveProjectAs(BuildContext context) async {
@@ -817,7 +906,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     );
     final path = result?.files.single.path;
     if (path == null) return;
-    final source = await File(path).readAsString();
+    if (!context.mounted) return;
+    final source = await _readProjectForOpening(context, path);
+    if (source == null) return;
     await _loadProjectPayload(source, projectPath: path);
     setState(() {
       _activeProjectPath = path;
@@ -830,6 +921,101 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     });
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
+  }
+
+  Future<String?> _readProjectForOpening(
+    BuildContext context,
+    String path,
+  ) async {
+    final source = await File(path).readAsString();
+    final inspection = _projectUpgradeService.inspect(source);
+    if (inspection.kind == ProjectFileUpgradeKind.current) return source;
+
+    final catalog = ref.read(translationControllerProvider).catalog;
+    if (!inspection.canUpgrade) {
+      if (!context.mounted) return null;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(catalog.text('project.upgrade.unsupportedTitle')),
+          content: Text(
+            catalog.text('project.upgrade.unsupportedMessage', {
+              'error': inspection.message ?? inspection.sourceFormat,
+            }),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(catalog.text('project.upgrade.close')),
+            ),
+          ],
+        ),
+      );
+      return null;
+    }
+
+    if (!context.mounted) return null;
+    final shouldUpgrade = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(catalog.text('project.upgrade.title')),
+        content: Text(
+          catalog.text('project.upgrade.message', {
+            'format': inspection.sourceFormat,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(catalog.text('project.upgrade.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(catalog.text('project.upgrade.confirm')),
+          ),
+        ],
+      ),
+    );
+    if (shouldUpgrade != true) return null;
+
+    final backupPath = _projectBackupPath(path);
+    try {
+      await File(path).copy(backupPath);
+      final upgraded = _projectUpgradeService.upgrade(source);
+      await File(path).writeAsString(upgraded, flush: true);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              catalog.text('project.upgrade.completed', {'path': backupPath}),
+            ),
+          ),
+        );
+      }
+      return upgraded;
+    } on Object catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              catalog.text('project.upgrade.failed', {'error': error}),
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  String _projectBackupPath(String projectPath) {
+    final timestamp = DateTime.now().toIso8601String().replaceAll(
+      RegExp(r'[:.]'),
+      '-',
+    );
+    final directory = p.dirname(projectPath);
+    final extension = p.extension(projectPath);
+    final name = p.basenameWithoutExtension(projectPath);
+    return p.join(directory, '$name.backup-$timestamp$extension');
   }
 
   Future<void> _openSettings(BuildContext context) async {
@@ -1403,6 +1589,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         'locale': locale.languageCode,
         'theme': theme.name,
       },
+      'settings': <String, dynamic>{
+        'autosaveEnabled': _autosaveEnabledForProject,
+      },
     };
   }
 
@@ -1421,9 +1610,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     } catch (_) {}
 
     if (decoded == null || !_isProjectEnvelopeFormat(decoded['format'])) {
+      _autosaveEnabledForProject = true;
       ref.read(workspaceProvider.notifier).loadFromJsonString(source);
       return;
     }
+
+    final settings = decoded['settings'] as Map<String, dynamic>? ?? {};
+    _autosaveEnabledForProject = settings['autosaveEnabled'] as bool? ?? true;
 
     final workspace =
         (decoded['workspace'] as Map<String, dynamic>?) ?? <String, dynamic>{};
@@ -1479,6 +1672,29 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     return File('${support.path}/nodeql_projects.json');
   }
 
+  Future<String> _availableProjectPath(Directory directory, String name) async {
+    final baseName = _projectFileStem(name);
+    var candidate = p.join(directory.path, '$baseName.nodeql');
+    var suffix = 2;
+    while (await File(candidate).exists()) {
+      candidate = p.join(directory.path, '$baseName-$suffix.nodeql');
+      suffix += 1;
+    }
+    return candidate;
+  }
+
+  String _projectFileStem(String name) {
+    final sanitized = name
+        .trim()
+        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '-')
+        .replaceAll(RegExp(r'\s+'), ' ');
+    final withoutExtension = sanitized.toLowerCase().endsWith('.nodeql')
+        ? sanitized.substring(0, sanitized.length - '.nodeql'.length)
+        : sanitized;
+    final cleaned = withoutExtension.trim();
+    return cleaned.isEmpty ? 'project' : cleaned;
+  }
+
   Future<void> _loadProjectRegistry() async {
     final file = await _registryFile();
     if (!await file.exists()) return;
@@ -1508,7 +1724,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (target.isEmpty) return;
     final path = target.first['path'] as String?;
     if (path == null || !await File(path).exists()) return;
-    final source = await File(path).readAsString();
+    if (!mounted) return;
+    final source = await _readProjectForOpening(context, path);
+    if (source == null) return;
     await _loadProjectPayload(source, projectPath: path);
     setState(() {
       _activeProjectId = projectId;
@@ -2655,11 +2873,13 @@ class _PaletteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final blockHeight = baseHeightForBlock(node);
+    final previewWidth = _palettePreviewWidth(label, width);
     final block = BlockShape(
       node: node,
       color: color,
-      width: width,
-      height: baseHeightForBlock(node),
+      width: previewWidth,
+      height: blockHeight,
       label: label,
     );
 
@@ -2681,7 +2901,15 @@ class _PaletteCard extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  block,
+                  SizedBox(
+                    width: width,
+                    height: blockHeight,
+                    child: FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: block,
+                    ),
+                  ),
                   Positioned(
                     right: 6,
                     top: 6,
@@ -2733,6 +2961,24 @@ class _PaletteCard extends StatelessWidget {
       ),
     );
   }
+
+  double _palettePreviewWidth(String label, double cardWidth) {
+    const style = TextStyle(
+      color: Colors.white,
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+    );
+    final maxLineWidth = label
+        .split('\n')
+        .map((line) => _measureSingleLineText(line, style))
+        .fold<double>(0, math.max);
+    final contentPadding = blockVisualKindForType(type) == BlockVisualKind.join
+        ? 72.0
+        : 58.0;
+    return math
+        .max(cardWidth, maxLineWidth + contentPadding)
+        .clamp(cardWidth, cardWidth * 1.35);
+  }
 }
 
 class _WorkspaceCanvas extends ConsumerWidget {
@@ -2741,12 +2987,14 @@ class _WorkspaceCanvas extends ConsumerWidget {
     required this.transform,
     required this.paletteWidth,
     required this.diagnostics,
+    required this.onSaveProject,
   });
 
   final FocusNode focusNode;
   final TransformationController transform;
   final double paletteWidth;
   final Map<String, _SimpleNodeDiagnostic> diagnostics;
+  final Future<void> Function() onSaveProject;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2774,6 +3022,10 @@ class _WorkspaceCanvas extends ConsumerWidget {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           final keyboard = HardwareKeyboard.instance;
           final cmdOrCtrl = keyboard.isMetaPressed || keyboard.isControlPressed;
+          if (cmdOrCtrl && event.logicalKey == LogicalKeyboardKey.keyS) {
+            unawaited(onSaveProject());
+            return KeyEventResult.handled;
+          }
           if (cmdOrCtrl && event.logicalKey == LogicalKeyboardKey.keyZ) {
             final redo = keyboard.isShiftPressed;
             if (redo) {
@@ -4031,9 +4283,9 @@ class _NodeView extends ConsumerWidget {
   }
 
   double _slotWidthForDisplay(String display, TextStyle style) {
-    return (_measureText(display, style.copyWith(fontSize: 12)) + 14).clamp(
+    return (_measureText(display, style.copyWith(fontSize: 12)) + 18).clamp(
       54.0,
-      340.0,
+      520.0,
     );
   }
 
@@ -4047,7 +4299,7 @@ class _NodeView extends ConsumerWidget {
   }) {
     if (reporter == null) return _slotWidthForDisplay(display, style);
     final label = _reporterLabelForSlot(reporter, localeCode, mode, inputKey);
-    return (_measureText(label, style) + 36).clamp(82.0, 340.0);
+    return (_measureText(label, style) + 40).clamp(82.0, 520.0);
   }
 
   double _reservedInlineSlotWidth(double slotWidth, String inputKey) {
@@ -4066,13 +4318,7 @@ class _NodeView extends ConsumerWidget {
   }
 
   double _measureText(String text, TextStyle style) {
-    if (text.isEmpty) return 0;
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      maxLines: 1,
-      textDirection: TextDirection.ltr,
-    )..layout(minWidth: 0, maxWidth: 1000);
-    return painter.width;
+    return _measureSingleLineText(text, style);
   }
 
   String _slotDisplay(

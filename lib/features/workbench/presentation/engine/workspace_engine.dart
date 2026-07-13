@@ -152,7 +152,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _relayoutAll();
   }
 
-  static const double blockWidth = 180;
+  static const double blockWidth = 260;
   static const double blockBaseHeight = 50;
   static const double snapDistance = 25;
 

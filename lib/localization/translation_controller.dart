@@ -298,9 +298,22 @@ const builtInMessages = <String, Map<String, String>>{
     'project.new.directoryDialog': 'Projektordner auswählen',
     'project.new.createDatabase': 'Leere SQLite-DB erstellen',
     'project.new.databaseName': 'Datenbankname',
+    'project.new.autosave': 'Autosave für dieses Projekt aktivieren',
     'project.createDatabaseFailed': 'DB konnte nicht erstellt werden: {error}',
     'project.saveDialog': 'NodeQL-Projekt speichern',
     'project.openDialog': 'NodeQL-Projekt öffnen',
+    'project.upgrade.title': 'Projekt-Upgrade verfügbar',
+    'project.upgrade.message':
+        'Dieses Projekt verwendet das alte Format "{format}". NodeQL erstellt zuerst eine Sicherung und aktualisiert dann die Datei auf das aktuelle Format.',
+    'project.upgrade.cancel': 'Abbrechen',
+    'project.upgrade.confirm': 'Projekt aktualisieren',
+    'project.upgrade.completed': 'Projekt aktualisiert. Sicherung: {path}',
+    'project.upgrade.failed':
+        'Projekt konnte nicht aktualisiert werden: {error}',
+    'project.upgrade.unsupportedTitle': 'Projekt kann nicht geöffnet werden',
+    'project.upgrade.unsupportedMessage':
+        'Diese Projektdatei wird von dieser NodeQL-Version nicht unterstützt: {error}',
+    'project.upgrade.close': 'Schließen',
     'tutorial.title': 'NodeQL lernen',
     'tutorial.progress': 'Schritt {current} von {total}',
     'tutorial.skip': 'Einführung überspringen',
