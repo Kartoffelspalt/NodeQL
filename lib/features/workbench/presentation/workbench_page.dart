@@ -38,6 +38,16 @@ const double _inlineLineHeight = 28;
 const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
 
+double _measureSingleLineText(String text, TextStyle style) {
+  if (text.isEmpty) return 0;
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    maxLines: 1,
+    textDirection: TextDirection.ltr,
+  )..layout(minWidth: 0, maxWidth: 1600);
+  return painter.width;
+}
+
 class _SimpleNodeDiagnostic {
   const _SimpleNodeDiagnostic({required this.title, required this.message});
 
@@ -716,9 +726,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       value: autosaveEnabled,
                       onChanged: (v) => autosaveProject.value = v ?? true,
                     ),
-                    Expanded(
-                      child: Text(catalog.text('project.new.autosave')),
-                    ),
+                    Expanded(child: Text(catalog.text('project.new.autosave'))),
                   ],
                 ),
               ),
@@ -1452,8 +1460,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
 
     final settings = decoded['settings'] as Map<String, dynamic>? ?? {};
-    _autosaveEnabledForProject =
-        settings['autosaveEnabled'] as bool? ?? true;
+    _autosaveEnabledForProject = settings['autosaveEnabled'] as bool? ?? true;
 
     final workspace =
         (decoded['workspace'] as Map<String, dynamic>?) ?? <String, dynamic>{};
@@ -2685,11 +2692,13 @@ class _PaletteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final blockHeight = baseHeightForBlock(node);
+    final previewWidth = _palettePreviewWidth(label, width);
     final block = BlockShape(
       node: node,
       color: color,
-      width: width,
-      height: baseHeightForBlock(node),
+      width: previewWidth,
+      height: blockHeight,
       label: label,
     );
 
@@ -2711,7 +2720,15 @@ class _PaletteCard extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  block,
+                  SizedBox(
+                    width: width,
+                    height: blockHeight,
+                    child: FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: block,
+                    ),
+                  ),
                   Positioned(
                     right: 6,
                     top: 6,
@@ -2762,6 +2779,24 @@ class _PaletteCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  double _palettePreviewWidth(String label, double cardWidth) {
+    const style = TextStyle(
+      color: Colors.white,
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+    );
+    final maxLineWidth = label
+        .split('\n')
+        .map((line) => _measureSingleLineText(line, style))
+        .fold<double>(0, math.max);
+    final contentPadding = blockVisualKindForType(type) == BlockVisualKind.join
+        ? 72.0
+        : 58.0;
+    return math
+        .max(cardWidth, maxLineWidth + contentPadding)
+        .clamp(cardWidth, 760.0);
   }
 }
 
@@ -4061,9 +4096,9 @@ class _NodeView extends ConsumerWidget {
   }
 
   double _slotWidthForDisplay(String display, TextStyle style) {
-    return (_measureText(display, style.copyWith(fontSize: 12)) + 14).clamp(
+    return (_measureText(display, style.copyWith(fontSize: 12)) + 18).clamp(
       54.0,
-      340.0,
+      520.0,
     );
   }
 
@@ -4077,7 +4112,7 @@ class _NodeView extends ConsumerWidget {
   }) {
     if (reporter == null) return _slotWidthForDisplay(display, style);
     final label = _reporterLabelForSlot(reporter, localeCode, mode, inputKey);
-    return (_measureText(label, style) + 36).clamp(82.0, 340.0);
+    return (_measureText(label, style) + 40).clamp(82.0, 520.0);
   }
 
   double _reservedInlineSlotWidth(double slotWidth, String inputKey) {
@@ -4096,13 +4131,7 @@ class _NodeView extends ConsumerWidget {
   }
 
   double _measureText(String text, TextStyle style) {
-    if (text.isEmpty) return 0;
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      maxLines: 1,
-      textDirection: TextDirection.ltr,
-    )..layout(minWidth: 0, maxWidth: 1000);
-    return painter.width;
+    return _measureSingleLineText(text, style);
   }
 
   String _slotDisplay(
