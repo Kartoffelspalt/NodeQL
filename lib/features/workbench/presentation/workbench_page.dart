@@ -10,6 +10,7 @@ import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
+import 'package:nodeql/data/project/project_file_upgrade_service.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
@@ -416,6 +417,7 @@ class WorkbenchPage extends ConsumerStatefulWidget {
 
 class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   static const _menuChannel = MethodChannel('nodeql/menu');
+  static const _projectUpgradeService = ProjectFileUpgradeService();
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlCompiler _compiler = const SqlCompiler();
@@ -432,6 +434,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   bool _blockDiagnosticsRunning = false;
   int _blockDiagnosticsRunToken = 0;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
+  bool _startupHintShown = false;
 
   @override
   void initState() {
@@ -441,6 +444,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       () => ref.read(pluginPaletteProvider.notifier).reload(),
     );
     _restoreAutosave();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showStartupHintOnce();
+    });
+
     _tutorialSubscription = ref.listenManual<TutorialState>(
       tutorialControllerProvider,
       (_, next) {
@@ -452,6 +459,27 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         }
       },
       fireImmediately: true,
+    );
+  }
+
+  Future<void> _showStartupHintOnce() async {
+    if (_startupHintShown) return;
+    _startupHintShown = true;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Alert'),
+        content: const Text(
+          'Since various changes in the underlying engine, some projects may not load correctly. If you encounter issues, please check your project files or restore from a backup.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -878,7 +906,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     );
     final path = result?.files.single.path;
     if (path == null) return;
-    final source = await File(path).readAsString();
+    if (!context.mounted) return;
+    final source = await _readProjectForOpening(context, path);
+    if (source == null) return;
     await _loadProjectPayload(source, projectPath: path);
     setState(() {
       _activeProjectPath = path;
@@ -891,6 +921,101 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     });
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
+  }
+
+  Future<String?> _readProjectForOpening(
+    BuildContext context,
+    String path,
+  ) async {
+    final source = await File(path).readAsString();
+    final inspection = _projectUpgradeService.inspect(source);
+    if (inspection.kind == ProjectFileUpgradeKind.current) return source;
+
+    final catalog = ref.read(translationControllerProvider).catalog;
+    if (!inspection.canUpgrade) {
+      if (!context.mounted) return null;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(catalog.text('project.upgrade.unsupportedTitle')),
+          content: Text(
+            catalog.text('project.upgrade.unsupportedMessage', {
+              'error': inspection.message ?? inspection.sourceFormat,
+            }),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(catalog.text('project.upgrade.close')),
+            ),
+          ],
+        ),
+      );
+      return null;
+    }
+
+    if (!context.mounted) return null;
+    final shouldUpgrade = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(catalog.text('project.upgrade.title')),
+        content: Text(
+          catalog.text('project.upgrade.message', {
+            'format': inspection.sourceFormat,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(catalog.text('project.upgrade.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(catalog.text('project.upgrade.confirm')),
+          ),
+        ],
+      ),
+    );
+    if (shouldUpgrade != true) return null;
+
+    final backupPath = _projectBackupPath(path);
+    try {
+      await File(path).copy(backupPath);
+      final upgraded = _projectUpgradeService.upgrade(source);
+      await File(path).writeAsString(upgraded, flush: true);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              catalog.text('project.upgrade.completed', {'path': backupPath}),
+            ),
+          ),
+        );
+      }
+      return upgraded;
+    } on Object catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              catalog.text('project.upgrade.failed', {'error': error}),
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  String _projectBackupPath(String projectPath) {
+    final timestamp = DateTime.now().toIso8601String().replaceAll(
+      RegExp(r'[:.]'),
+      '-',
+    );
+    final directory = p.dirname(projectPath);
+    final extension = p.extension(projectPath);
+    final name = p.basenameWithoutExtension(projectPath);
+    return p.join(directory, '$name.backup-$timestamp$extension');
   }
 
   Future<void> _openSettings(BuildContext context) async {
@@ -1599,7 +1724,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (target.isEmpty) return;
     final path = target.first['path'] as String?;
     if (path == null || !await File(path).exists()) return;
-    final source = await File(path).readAsString();
+    if (!mounted) return;
+    final source = await _readProjectForOpening(context, path);
+    if (source == null) return;
     await _loadProjectPayload(source, projectPath: path);
     setState(() {
       _activeProjectId = projectId;
