@@ -49,7 +49,8 @@ Additional screenshots and contribution guidance are available in
 
 - Visual SQL blocks with snapping, editing, compilation, and execution.
 - Local SQLite database access without a separate system CLI.
-- JSON project files, autosave, recent projects, and legacy project import.
+- Versioned JSON project files, recent projects, per-project autosave, and
+  guided upgrades of supported legacy project files with automatic backups.
 - Declarative Plugin SDK v2 with visual blocks, external data-source adapters,
   SHA-256-verified community repositories, validation, and compatibility checks.
 - English fallback with installable, validated community language packages.
@@ -118,6 +119,7 @@ Use `windows` or `linux` instead of `macos` on the corresponding platform.
 - [Plugin SDK](docs/plugins/README.md)
 - [Translation guide](docs/localization/README.md)
 - [Release process](docs/RELEASING.md)
+- [0.3.3 release notes](docs/releases/v0.3.3.md)
 - [Changelog](CHANGELOG.md)
 - [Trademark policy](TRADEMARKS.md)
 

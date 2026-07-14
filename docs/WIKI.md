@@ -209,6 +209,16 @@ Stored data includes:
 
 This allows a project to be loaded later as a visual workspace and edited again.
 
+NodeQL saves current project files with a format identifier and version number.
+When a supported older workspace, NodeQL, or ScratchQL project is opened,
+NodeQL offers an upgrade. Confirming the upgrade first creates a timestamped
+backup beside the original file and then writes the project in the current
+format. Files created by a newer NodeQL version are not overwritten.
+
+Autosave is configured per project during project creation. When enabled, it
+stores workspace changes locally after a short delay; normal project saves are
+also available through `Cmd+S` on macOS or `Ctrl+S` on Windows and Linux.
+
 ## Plugin System
 
 Plugins extend NodeQL with new blocks without being compiled into the Flutter
