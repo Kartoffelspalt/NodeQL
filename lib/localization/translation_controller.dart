@@ -291,6 +291,12 @@ const builtInMessages = <String, Map<String, String>>{
     'plugins.repository.remove': 'Repository entfernen',
     'plugins.repository.failed':
         'Repository konnte nicht hinzugefügt werden: {error}',
+    'palette.rail.dql': 'Abfragen',
+    'palette.rail.dml': 'Änderungen',
+    'palette.rail.ddl': 'Struktur',
+    'palette.rail.dcl': 'Berechtigungen',
+    'palette.rail.txn': 'Transaktionen',
+    'palette.rail.plugins': 'Erweiterungen',
     'project.untitled': 'Unbenannt',
     'project.new.title': 'Neues Projekt',
     'project.new.reset': 'Aktuelle Arbeitsfläche zurücksetzen?',

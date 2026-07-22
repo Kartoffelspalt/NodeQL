@@ -2,7 +2,7 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
-  private var scopedUrl: URL?
+  private var scopedUrls: [URL] = []
   private var menuChannel: FlutterMethodChannel?
   private var recentProjects: [(id: String, name: String)] = []
   private var recentSubmenu: NSMenu?
@@ -30,11 +30,51 @@ class MainFlutterWindow: NSWindow {
         }
         let url = URL(fileURLWithPath: path)
         let ok = url.startAccessingSecurityScopedResource()
-        if ok { self.scopedUrl = url }
+        if ok { self.scopedUrls.append(url) }
         result(ok)
+      case "bookmark":
+        guard let args = call.arguments as? [String: Any],
+              let path = args["path"] as? String else {
+          result(FlutterError(code: "BAD_ARGS", message: "Missing path", details: nil))
+          return
+        }
+        do {
+          let bookmark = try URL(fileURLWithPath: path).bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+          )
+          result(bookmark.base64EncodedString())
+        } catch {
+          result(FlutterError(code: "BOOKMARK_FAILED", message: error.localizedDescription, details: nil))
+        }
+      case "startBookmark":
+        guard let args = call.arguments as? [String: Any],
+              let encodedBookmark = args["bookmark"] as? String,
+              let bookmark = Data(base64Encoded: encodedBookmark) else {
+          result(FlutterError(code: "BAD_ARGS", message: "Missing bookmark", details: nil))
+          return
+        }
+        do {
+          var isStale = false
+          let url = try URL(
+            resolvingBookmarkData: bookmark,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+          )
+          guard url.startAccessingSecurityScopedResource() else {
+            result(false)
+            return
+          }
+          self.scopedUrls.append(url)
+          result(url.path)
+        } catch {
+          result(FlutterError(code: "BOOKMARK_RESOLUTION_FAILED", message: error.localizedDescription, details: nil))
+        }
       case "stop":
-        self.scopedUrl?.stopAccessingSecurityScopedResource()
-        self.scopedUrl = nil
+        self.scopedUrls.forEach { $0.stopAccessingSecurityScopedResource() }
+        self.scopedUrls.removeAll()
         result(true)
       default:
         result(FlutterMethodNotImplemented)

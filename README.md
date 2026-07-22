@@ -118,6 +118,7 @@ Use `windows` or `linux` instead of `macos` on the corresponding platform.
 - [Contributing](CONTRIBUTING.md)
 - [Plugin SDK](docs/plugins/README.md)
 - [Translation guide](docs/localization/README.md)
+- [AI agent guide](docs/ai/README.md)
 - [Release process](docs/RELEASING.md)
 - [0.3.3 release notes](docs/releases/v0.3.3.md)
 - [Changelog](CHANGELOG.md)

@@ -423,6 +423,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   final SqlCompiler _compiler = const SqlCompiler();
   SqlPaletteCategory _activeCategory = SqlPaletteCategory.dql;
   String? _activeProjectPath;
+  String? _activeProjectBookmark;
   String _activeProjectId = 'default';
   String _activeProjectName = 'Untitled';
   bool _autosaveEnabledForProject = true;
@@ -435,6 +436,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   int _blockDiagnosticsRunToken = 0;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
   bool _startupHintShown = false;
+  bool _showStartupHint = false;
+
+  String _startupHintText =
+      'Since various changes in the underlying engine, some projects may not '
+      'load correctly. If you encounter issues, please check your project files '
+      'or restore from a backup.';
 
   @override
   void initState() {
@@ -463,6 +470,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _showStartupHintOnce() async {
+    if (!_showStartupHint) return;
     if (_startupHintShown) return;
     _startupHintShown = true;
 
@@ -470,9 +478,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Alert'),
-        content: const Text(
-          'Since various changes in the underlying engine, some projects may not load correctly. If you encounter issues, please check your project files or restore from a backup.',
-        ),
+        content: Text(_startupHintText),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -604,6 +610,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           _CategoryRail(
                             active: _activeCategory,
                             hasPlugins: pluginState.entries.isNotEmpty,
+                            catalog: catalog,
                             onSelect: (next) =>
                                 setState(() => _activeCategory = next),
                           ),
@@ -708,18 +715,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         .toList(growable: false);
     if (active.isNotEmpty) {
       _activeProjectName = '${active.first['name'] ?? 'Untitled'}';
-      _activeProjectPath = active.first['path'] as String?;
-      if (_activeProjectPath != null) {
+      _activeProjectBookmark = active.first['securityBookmark'] as String?;
+      _activeProjectPath = await _restoreProjectPath(active.first);
+      final activeProjectPath = _activeProjectPath;
+      if (activeProjectPath != null && await File(activeProjectPath).exists()) {
         try {
-          if (await File(_activeProjectPath!).exists()) {
-            final source = await File(_activeProjectPath!).readAsString();
-            if (source.trim().isNotEmpty) {
-              await _loadProjectPayload(
-                source,
-                projectPath: _activeProjectPath,
-              );
-              return;
-            }
+          final source = await File(activeProjectPath).readAsString();
+          if (source.trim().isNotEmpty) {
+            await _loadProjectPayload(source, projectPath: activeProjectPath);
+            return;
           }
         } catch (_) {}
       }
@@ -747,6 +751,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           ? legacyScratchQlSqpAutosave
                           : null)));
     if (sourceFile == null) return;
+
     final source = await sourceFile.readAsString();
     if (source.trim().isEmpty) return;
     await _loadProjectPayload(source);
@@ -870,6 +875,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       await File(
         projectPath,
       ).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+      await _rememberProjectBookmark(projectPath);
+      _upsertRecentProject();
       await _saveProjectRegistry();
       await _syncRecentProjectsToNativeMenu();
     }
@@ -895,6 +902,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       _upsertRecentProject();
     });
     await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+    await _rememberProjectBookmark(path);
+    _upsertRecentProject();
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
   }
@@ -925,8 +934,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final source = await _readProjectForOpening(context, path);
     if (source == null) return;
     await _loadProjectPayload(source, projectPath: path);
+    final bookmark = await _createProjectBookmark(path);
     setState(() {
       _activeProjectPath = path;
+      _activeProjectBookmark = bookmark;
       final existing = _recentProjects.where((p) => p['path'] == path).toList();
       _activeProjectId = existing.isEmpty
           ? 'project_${DateTime.now().millisecondsSinceEpoch}'
@@ -1741,6 +1752,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       'id': _activeProjectId,
       'name': _activeProjectName,
       'path': _activeProjectPath,
+      if (_activeProjectBookmark != null)
+        'securityBookmark': _activeProjectBookmark,
       'updatedAt': DateTime.now().toIso8601String(),
     };
     if (idx >= 0) {
@@ -1790,6 +1803,38 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _recentProjects = projects;
   }
 
+  Future<String?> _createProjectBookmark(String path) async {
+    if (!Platform.isMacOS) return null;
+    try {
+      return await const MethodChannel(
+        'nodeql/security_scope',
+      ).invokeMethod<String>('bookmark', <String, dynamic>{'path': path});
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _rememberProjectBookmark(String path) async {
+    _activeProjectBookmark = await _createProjectBookmark(path);
+  }
+
+  Future<String?> _restoreProjectPath(Map<String, dynamic> project) async {
+    final path = project['path'] as String?;
+    final bookmark = project['securityBookmark'] as String?;
+    if (!Platform.isMacOS || bookmark == null || bookmark.isEmpty) {
+      return path;
+    }
+    try {
+      final resolvedPath = await const MethodChannel('nodeql/security_scope')
+          .invokeMethod<String>('startBookmark', <String, dynamic>{
+            'bookmark': bookmark,
+          });
+      return resolvedPath ?? path;
+    } catch (_) {
+      return path;
+    }
+  }
+
   Future<void> _saveProjectRegistry() async {
     final file = await _registryFile();
     final payload = <String, dynamic>{
@@ -1805,7 +1850,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         .where((p) => p['id'] == projectId)
         .toList(growable: false);
     if (target.isEmpty) return;
-    final path = target.first['path'] as String?;
+    final path = await _restoreProjectPath(target.first);
     if (path == null || !await File(path).exists()) return;
     if (!mounted) return;
     final source = await _readProjectForOpening(context, path);
@@ -1815,6 +1860,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       _activeProjectId = projectId;
       _activeProjectName = '${target.first['name']}';
       _activeProjectPath = path;
+      _activeProjectBookmark = target.first['securityBookmark'] as String?;
     });
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
@@ -1950,10 +1996,22 @@ class _TopBar extends StatelessWidget {
                     label: Text(catalog.text('toolbar.mountDatabase')),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
-                  FilledButton.icon(
-                    onPressed: onExecuteGuarded,
-                    icon: const Icon(Icons.play_arrow_rounded, size: 19),
-                    label: Text(catalog.text('toolbar.runSql')),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      NodeQlDesign.radiusMedium,
+                    ),
+                    child: FilledButton.icon(
+                      onPressed: onExecuteGuarded,
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            NodeQlDesign.radiusMedium,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 19),
+                      label: Text(catalog.text('toolbar.runSql')),
+                    ),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
                   SegmentedButton<SqlAbstractionMode>(
@@ -2278,11 +2336,13 @@ class _CategoryRail extends StatelessWidget {
     required this.active,
     required this.onSelect,
     required this.hasPlugins,
+    required this.catalog,
   });
 
   final SqlPaletteCategory active;
   final ValueChanged<SqlPaletteCategory> onSelect;
   final bool hasPlugins;
+  final TranslationCatalog catalog;
 
   @override
   Widget build(BuildContext context) {
@@ -2310,7 +2370,7 @@ class _CategoryRail extends StatelessWidget {
               button: true,
               selected: selected,
               child: Tooltip(
-                message: e.$1.name.toUpperCase(),
+                message: catalog.text('palette.rail.${e.$1.name}'),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
