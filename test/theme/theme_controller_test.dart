@@ -37,4 +37,13 @@ void main() {
       );
     }
   });
+
+  test('a custom accent is propagated through the Material color scheme', () {
+    const accent = Color(0xFF7C3AED);
+    final theme = themeFor(NodeQlTheme.dark, accentColor: accent);
+
+    expect(theme.colorScheme.primary, isNot(const Color(0xFF3B82F6)));
+    expect(theme.colorScheme.primary, isNot(theme.colorScheme.secondary));
+    expect(theme.brightness, Brightness.dark);
+  });
 }

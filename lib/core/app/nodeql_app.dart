@@ -31,7 +31,7 @@ class NodeQlApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
       ],
-      theme: themeFor(theme),
+      theme: themeFor(theme.theme, accentColor: theme.accentColor),
       debugShowCheckedModeBanner: false,
       home: const WorkbenchShell(),
     );
