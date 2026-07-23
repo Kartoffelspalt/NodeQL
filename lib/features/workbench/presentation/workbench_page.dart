@@ -1686,6 +1686,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       'settings': <String, dynamic>{
         'autosaveEnabled': _autosaveEnabledForProject,
       },
+      'settings': <String, dynamic>{
+        'autosaveEnabled': _autosaveEnabledForProject,
+      },
     };
   }
 
