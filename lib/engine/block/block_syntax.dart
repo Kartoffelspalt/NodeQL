@@ -93,8 +93,7 @@ BlockVisualKind blockVisualKindForType(BlockType type) {
     BlockType.sqlIf ||
     BlockType.sqlCoalesce ||
     BlockType.sqlNullIf ||
-    BlockType.operatorAdd => 
-        BlockVisualKind.expression,
+    BlockType.operatorAdd => BlockVisualKind.expression,
     BlockType.sqlCommit || BlockType.sqlRollback => BlockVisualKind.terminal,
     BlockType.controlRepeat ||
     BlockType.controlForever ||
@@ -216,4 +215,3 @@ bool canFollowInSqlChain(BlockType previous, BlockType next) {
 
   return false;
 }
-
