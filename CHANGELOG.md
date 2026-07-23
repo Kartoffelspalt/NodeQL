@@ -6,6 +6,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- No unreleased changes yet.
+
+## [0.3.3] - 2026-07-13
+
+### Added
+
+- Added per-project autosave. It is selected when a project is created and
+  saves workspace changes after a short delay.
+- Added automatic creation of a `.nodeql` project file for new projects and
+  unique file names when the chosen name already exists.
+- Added `Cmd+S` and `Ctrl+S` project saving shortcuts.
+- Added a project-file upgrade flow for legacy workspace, NodeQL, and ScratchQL
+  project formats.
+- Added timestamped project backups before a legacy file is upgraded.
+- Added localized German and English project-upgrade and compatibility dialogs.
+- Added project upgrade service tests for current, legacy, incompatible, and
+  malformed project files.
+- Added the NodeQL architecture wiki in English.
+
+### Changed
+
+- Centered node labels vertically and refined inline text and input-slot
+  spacing, while preserving the specialized JOIN layout.
+- Increased the available width for nodes and palette previews so long labels
+  and values no longer clip.
+- Updated the macOS project configuration to remove obsolete CocoaPods
+  integration.
+- Updated `build_runner` to `2.15.1` and bumped NodeQL to `0.3.3+3`.
+
+### Fixed
+
+- Prevented project-file overwrite collisions during project creation.
+- Prevented loading or overwriting project files created by a newer,
+  incompatible NodeQL version.
+
+## [0.3.2] - 2026-07-05
+
 - Replaced the SQL wildcard `*` with localized, beginner-friendly wording such
   as "Alles" in Simple Mode while preserving the generated SQL.
 - Added an exclusive "Everything" option above the column list: selecting it

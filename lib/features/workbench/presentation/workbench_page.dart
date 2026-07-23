@@ -423,6 +423,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   final SqlCompiler _compiler = const SqlCompiler();
   SqlPaletteCategory _activeCategory = SqlPaletteCategory.dql;
   String? _activeProjectPath;
+  String? _activeProjectBookmark;
   String _activeProjectId = 'default';
   String _activeProjectName = 'Untitled';
   bool _autosaveEnabledForProject = true;
@@ -435,6 +436,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   int _blockDiagnosticsRunToken = 0;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
   bool _startupHintShown = false;
+  bool _showStartupHint = false;
+
+  String _startupHintText =
+      'Since various changes in the underlying engine, some projects may not '
+      'load correctly. If you encounter issues, please check your project files '
+      'or restore from a backup.';
 
   @override
   void initState() {
@@ -463,6 +470,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _showStartupHintOnce() async {
+    if (!_showStartupHint) return;
     if (_startupHintShown) return;
     _startupHintShown = true;
 
@@ -470,9 +478,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Alert'),
-        content: const Text(
-          'Since various changes in the underlying engine, some projects may not load correctly. If you encounter issues, please check your project files or restore from a backup.',
-        ),
+        content: Text(_startupHintText),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -592,72 +598,88 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   onDiagnostics: () => _openBlockDiagnostics(context),
                 ),
                 Expanded(
-                  child: Row(
-                    children: [
-                      _CategoryRail(
-                        active: _activeCategory,
-                        hasPlugins: pluginState.entries.isNotEmpty,
-                        onSelect: (next) =>
-                            setState(() => _activeCategory = next),
-                      ),
-                      _Palette(
-                        category: _activeCategory,
-                        runtime: runtime,
-                        mode: mode,
-                        localeCode: locale.languageCode,
-                        catalog: catalog,
-                        width: _paletteWidth,
-                        pluginEntries: pluginState.entries,
-                        onAdd: (type, defaults) {
-                          final controller = ref.read(
-                            workspaceProvider.notifier,
-                          );
-                          controller.addTemplate(
-                            type,
-                            controller.suggestedTemplatePosition(type),
-                            defaults: defaults,
-                          );
-                        },
-                      ),
-                      MouseRegion(
-                        cursor: SystemMouseCursors.resizeLeftRight,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onHorizontalDragUpdate: (details) {
-                            setState(() {
-                              _paletteWidth = (_paletteWidth + details.delta.dx)
-                                  .clamp(200.0, 520.0);
-                            });
-                          },
-                          child: Container(
-                            width: 10,
-                            color: Colors.transparent,
-                            alignment: Alignment.center,
-                            child: Container(
-                              width: 2,
-                              height: double.infinity,
-                              color: NodeQlWorkbenchColors.of(context).border,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = constraints.maxWidth < 1180;
+                      final paletteWidth = compact
+                          ? _paletteWidth.clamp(200.0, 280.0)
+                          : _paletteWidth;
+                      final outputWidth = compact ? 320.0 : 420.0;
+                      return Row(
+                        children: [
+                          _CategoryRail(
+                            active: _activeCategory,
+                            hasPlugins: pluginState.entries.isNotEmpty,
+                            catalog: catalog,
+                            onSelect: (next) =>
+                                setState(() => _activeCategory = next),
+                          ),
+                          _Palette(
+                            category: _activeCategory,
+                            runtime: runtime,
+                            mode: mode,
+                            localeCode: locale.languageCode,
+                            catalog: catalog,
+                            width: paletteWidth,
+                            pluginEntries: pluginState.entries,
+                            onAdd: (type, defaults) {
+                              final controller = ref.read(
+                                workspaceProvider.notifier,
+                              );
+                              controller.addTemplate(
+                                type,
+                                controller.suggestedTemplatePosition(type),
+                                defaults: defaults,
+                              );
+                            },
+                          ),
+                          MouseRegion(
+                            cursor: SystemMouseCursors.resizeLeftRight,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragUpdate: (details) {
+                                setState(() {
+                                  _paletteWidth =
+                                      (_paletteWidth + details.delta.dx).clamp(
+                                        200.0,
+                                        520.0,
+                                      );
+                                });
+                              },
+                              child: Container(
+                                width: 10,
+                                color: Colors.transparent,
+                                alignment: Alignment.center,
+                                child: Container(
+                                  width: 2,
+                                  height: double.infinity,
+                                  color: NodeQlWorkbenchColors.of(
+                                    context,
+                                  ).border,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      Expanded(
-                        child: _WorkspaceCanvas(
-                          focusNode: _workspaceFocus,
-                          transform: _transform,
-                          paletteWidth: 72.0 + _paletteWidth,
-                          diagnostics: nodeDiagnostics,
-                          onSaveProject: () => _saveProject(context),
-                        ),
-                      ),
-                      _SqlRuntimePane(
-                        sql: sql,
-                        runtime: runtime,
-                        mode: mode,
-                        localeCode: locale.languageCode,
-                        catalog: catalog,
-                      ),
-                    ],
+                          Expanded(
+                            child: _WorkspaceCanvas(
+                              focusNode: _workspaceFocus,
+                              transform: _transform,
+                              paletteWidth: 72.0 + paletteWidth,
+                              diagnostics: nodeDiagnostics,
+                              onSaveProject: () => _saveProject(context),
+                            ),
+                          ),
+                          _SqlRuntimePane(
+                            sql: sql,
+                            runtime: runtime,
+                            mode: mode,
+                            localeCode: locale.languageCode,
+                            catalog: catalog,
+                            width: outputWidth,
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],
@@ -693,18 +715,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         .toList(growable: false);
     if (active.isNotEmpty) {
       _activeProjectName = '${active.first['name'] ?? 'Untitled'}';
-      _activeProjectPath = active.first['path'] as String?;
-      if (_activeProjectPath != null) {
+      _activeProjectBookmark = active.first['securityBookmark'] as String?;
+      _activeProjectPath = await _restoreProjectPath(active.first);
+      final activeProjectPath = _activeProjectPath;
+      if (activeProjectPath != null && await File(activeProjectPath).exists()) {
         try {
-          if (await File(_activeProjectPath!).exists()) {
-            final source = await File(_activeProjectPath!).readAsString();
-            if (source.trim().isNotEmpty) {
-              await _loadProjectPayload(
-                source,
-                projectPath: _activeProjectPath,
-              );
-              return;
-            }
+          final source = await File(activeProjectPath).readAsString();
+          if (source.trim().isNotEmpty) {
+            await _loadProjectPayload(source, projectPath: activeProjectPath);
+            return;
           }
         } catch (_) {}
       }
@@ -732,6 +751,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           ? legacyScratchQlSqpAutosave
                           : null)));
     if (sourceFile == null) return;
+
     final source = await sourceFile.readAsString();
     if (source.trim().isEmpty) return;
     await _loadProjectPayload(source);
@@ -855,6 +875,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       await File(
         projectPath,
       ).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+      await _rememberProjectBookmark(projectPath);
+      _upsertRecentProject();
       await _saveProjectRegistry();
       await _syncRecentProjectsToNativeMenu();
     }
@@ -880,6 +902,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       _upsertRecentProject();
     });
     await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+    await _rememberProjectBookmark(path);
+    _upsertRecentProject();
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
   }
@@ -910,8 +934,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final source = await _readProjectForOpening(context, path);
     if (source == null) return;
     await _loadProjectPayload(source, projectPath: path);
+    final bookmark = await _createProjectBookmark(path);
     setState(() {
       _activeProjectPath = path;
+      _activeProjectBookmark = bookmark;
       final existing = _recentProjects.where((p) => p['path'] == path).toList();
       _activeProjectId = existing.isEmpty
           ? 'project_${DateTime.now().millisecondsSinceEpoch}'
@@ -1027,8 +1053,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         content: Consumer(
           builder: (context, ref, _) {
             final current = ref.watch(nodeQlThemeProvider);
+            const accentColors = <Color>[
+              Color(0xFF2563EB),
+              Color(0xFF7C3AED),
+              Color(0xFFDB2777),
+              Color(0xFFEA580C),
+              Color(0xFF16A34A),
+              Color(0xFF0891B2),
+            ];
             return RadioGroup<NodeQlTheme>(
-              groupValue: current,
+              groupValue: current.theme,
               onChanged: (value) {
                 if (value != null) {
                   ref.read(nodeQlThemeProvider.notifier).setTheme(value);
@@ -1052,6 +1086,66 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   RadioListTile<NodeQlTheme>(
                     value: NodeQlTheme.matrix,
                     title: Text(catalog.text('settings.theme.matrix')),
+                  ),
+                  const Divider(),
+                  Wrap(
+                    spacing: NodeQlDesign.space2,
+                    runSpacing: NodeQlDesign.space2,
+                    children: [
+                      for (final color in accentColors)
+                        Semantics(
+                          button: true,
+                          selected:
+                              current.accentColor?.toARGB32() ==
+                              color.toARGB32(),
+                          child: Tooltip(
+                            message:
+                                '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+                            child: InkWell(
+                              onTap: () => ref
+                                  .read(nodeQlThemeProvider.notifier)
+                                  .setAccentColor(color),
+                              borderRadius: BorderRadius.circular(999),
+                              child: AnimatedContainer(
+                                duration: NodeQlDesign.quick,
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color:
+                                        current.accentColor?.toARGB32() ==
+                                            color.toARGB32()
+                                        ? Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                ),
+                                child:
+                                    current.accentColor?.toARGB32() ==
+                                        color.toARGB32()
+                                    ? const Icon(
+                                        Icons.check_rounded,
+                                        color: Colors.white,
+                                        size: 18,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (current.accentColor != null)
+                        IconButton(
+                          tooltip: 'Akzentfarbe zurücksetzen',
+                          onPressed: () => ref
+                              .read(nodeQlThemeProvider.notifier)
+                              .clearAccentColor(),
+                          icon: const Icon(Icons.restart_alt_rounded),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   FilledButton.tonal(
@@ -1587,7 +1681,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       'ui': <String, dynamic>{
         'mode': mode.name,
         'locale': locale.languageCode,
-        'theme': theme.name,
+        'theme': theme.theme.name,
+      },
+      'settings': <String, dynamic>{
+        'autosaveEnabled': _autosaveEnabledForProject,
       },
       'settings': <String, dynamic>{
         'autosaveEnabled': _autosaveEnabledForProject,
@@ -1658,6 +1755,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       'id': _activeProjectId,
       'name': _activeProjectName,
       'path': _activeProjectPath,
+      if (_activeProjectBookmark != null)
+        'securityBookmark': _activeProjectBookmark,
       'updatedAt': DateTime.now().toIso8601String(),
     };
     if (idx >= 0) {
@@ -1707,6 +1806,38 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _recentProjects = projects;
   }
 
+  Future<String?> _createProjectBookmark(String path) async {
+    if (!Platform.isMacOS) return null;
+    try {
+      return await const MethodChannel(
+        'nodeql/security_scope',
+      ).invokeMethod<String>('bookmark', <String, dynamic>{'path': path});
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _rememberProjectBookmark(String path) async {
+    _activeProjectBookmark = await _createProjectBookmark(path);
+  }
+
+  Future<String?> _restoreProjectPath(Map<String, dynamic> project) async {
+    final path = project['path'] as String?;
+    final bookmark = project['securityBookmark'] as String?;
+    if (!Platform.isMacOS || bookmark == null || bookmark.isEmpty) {
+      return path;
+    }
+    try {
+      final resolvedPath = await const MethodChannel('nodeql/security_scope')
+          .invokeMethod<String>('startBookmark', <String, dynamic>{
+            'bookmark': bookmark,
+          });
+      return resolvedPath ?? path;
+    } catch (_) {
+      return path;
+    }
+  }
+
   Future<void> _saveProjectRegistry() async {
     final file = await _registryFile();
     final payload = <String, dynamic>{
@@ -1722,7 +1853,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         .where((p) => p['id'] == projectId)
         .toList(growable: false);
     if (target.isEmpty) return;
-    final path = target.first['path'] as String?;
+    final path = await _restoreProjectPath(target.first);
     if (path == null || !await File(path).exists()) return;
     if (!mounted) return;
     final source = await _readProjectForOpening(context, path);
@@ -1732,6 +1863,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       _activeProjectId = projectId;
       _activeProjectName = '${target.first['name']}';
       _activeProjectPath = path;
+      _activeProjectBookmark = target.first['securityBookmark'] as String?;
     });
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
@@ -1815,9 +1947,16 @@ class _TopBar extends StatelessWidget {
     final localeCode = Localizations.localeOf(context).languageCode;
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      color: workbenchColors.topBar,
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: NodeQlDesign.space4),
+      decoration: BoxDecoration(
+        color: workbenchColors.topBar,
+        border: Border(
+          bottom: BorderSide(
+            color: workbenchColors.border.withValues(alpha: .8),
+          ),
+        ),
+      ),
       child: Row(
         children: [
           Expanded(
@@ -1825,32 +1964,59 @@ class _TopBar extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(
+                        NodeQlDesign.radiusSmall,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.account_tree_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: NodeQlDesign.space2),
                   Text(
                     catalog.text('app.name'),
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: workbenchColors.topBarForeground,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  TextButton(
+                  const SizedBox(width: NodeQlDesign.space4),
+                  OutlinedButton.icon(
                     onPressed: onPickDb,
-                    style: TextButton.styleFrom(
+                    style: OutlinedButton.styleFrom(
                       foregroundColor: workbenchColors.topBarForeground,
+                      side: BorderSide(color: workbenchColors.border),
                     ),
-                    child: Text(catalog.text('toolbar.mountDatabase')),
+                    icon: const Icon(Icons.storage_outlined, size: 18),
+                    label: Text(catalog.text('toolbar.mountDatabase')),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: onExecuteGuarded,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF1D4ED8),
-                      foregroundColor: Colors.white,
+                  const SizedBox(width: NodeQlDesign.space2),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      NodeQlDesign.radiusMedium,
                     ),
-                    child: Text(catalog.text('toolbar.runSql')),
+                    child: FilledButton.icon(
+                      onPressed: onExecuteGuarded,
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            NodeQlDesign.radiusMedium,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 19),
+                      label: Text(catalog.text('toolbar.runSql')),
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: NodeQlDesign.space2),
                   SegmentedButton<SqlAbstractionMode>(
                     segments: [
                       ButtonSegment(
@@ -1866,10 +2032,13 @@ class _TopBar extends StatelessWidget {
                     onSelectionChanged: (selection) =>
                         onModeChanged(selection.first),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: NodeQlDesign.space2),
                   DropdownButton<String>(
                     value: localeCode,
                     dropdownColor: workbenchColors.panelElevated,
+                    iconEnabledColor: workbenchColors.topBarForeground,
+                    underline: const SizedBox.shrink(),
+                    style: TextStyle(color: workbenchColors.topBarForeground),
                     items: languageChoices
                         .map(
                           (l) => DropdownMenuItem(
@@ -1887,6 +2056,7 @@ class _TopBar extends StatelessWidget {
                       if (v != null) onLocale(v);
                     },
                   ),
+                  const SizedBox(width: NodeQlDesign.space1),
                   IconButton(
                     key: const ValueKey('open-tutorial'),
                     onPressed: onTutorial,
@@ -2169,11 +2339,13 @@ class _CategoryRail extends StatelessWidget {
     required this.active,
     required this.onSelect,
     required this.hasPlugins,
+    required this.catalog,
   });
 
   final SqlPaletteCategory active;
   final ValueChanged<SqlPaletteCategory> onSelect;
   final bool hasPlugins;
+  final TranslationCatalog catalog;
 
   @override
   Widget build(BuildContext context) {
@@ -2190,24 +2362,48 @@ class _CategoryRail extends StatelessWidget {
     return SizedBox(
       width: 72,
       child: ListView(
-        children: entries
-            .map(
-              (e) => Padding(
-                padding: const EdgeInsets.all(8),
-                child: InkWell(
-                  onTap: () => onSelect(e.$1),
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: e.$3.withValues(alpha: active == e.$1 ? 1 : 0.7),
-                      borderRadius: BorderRadius.circular(12),
+        children: entries.map((e) {
+          final selected = active == e.$1;
+          return Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: NodeQlDesign.space2,
+              vertical: NodeQlDesign.space1,
+            ),
+            child: Semantics(
+              button: true,
+              selected: selected,
+              child: Tooltip(
+                message: catalog.text('palette.rail.${e.$1.name}'),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onSelect(e.$1),
+                    borderRadius: BorderRadius.circular(
+                      NodeQlDesign.radiusMedium,
                     ),
-                    child: Icon(e.$2, color: Colors.white),
+                    child: AnimatedContainer(
+                      duration: NodeQlDesign.quick,
+                      curve: Curves.easeOutCubic,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: e.$3.withValues(alpha: selected ? 1 : .16),
+                        borderRadius: BorderRadius.circular(
+                          NodeQlDesign.radiusMedium,
+                        ),
+                        border: Border.all(
+                          color: selected
+                              ? e.$3.withValues(alpha: .8)
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Icon(e.$2, color: selected ? Colors.white : e.$3),
+                    ),
                   ),
                 ),
               ),
-            )
-            .toList(),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -2762,9 +2958,19 @@ class _PaletteState extends State<_Palette> {
         title: Text(label),
         content: Text(description),
         actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(widget.catalog.text('common.ok')),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    NodeQlDesign.radiusMedium,
+                  ),
+                ),
+              ),
+              child: Text(widget.catalog.text('common.ok')),
+            ),
           ),
         ],
       ),
@@ -2886,76 +3092,84 @@ class _PaletteCard extends StatelessWidget {
     return Draggable<_PaletteDragData>(
       data: _PaletteDragData(type, node.inputs),
       feedback: Material(color: Colors.transparent, child: block),
-      child: GestureDetector(
-        onTap: onAdd,
-        child: Container(
-          width: width,
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: workbenchColors.panel,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: workbenchColors.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
+      child: Semantics(
+        button: true,
+        label: '$label. $description',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onAdd,
+            borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
+            child: Container(
+              width: width,
+              padding: const EdgeInsets.all(NodeQlDesign.space2),
+              decoration: BoxDecoration(
+                color: workbenchColors.panel,
+                borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
+                border: Border.all(color: workbenchColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: width,
-                    height: blockHeight,
-                    child: FittedBox(
-                      alignment: Alignment.centerLeft,
-                      fit: BoxFit.scaleDown,
-                      child: block,
-                    ),
-                  ),
-                  Positioned(
-                    right: 6,
-                    top: 6,
-                    child: Tooltip(
-                      message: description,
-                      child: InkWell(
-                        onTap: onHelp,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.22),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.6),
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            '?',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              height: 1.0,
+                  Stack(
+                    children: [
+                      SizedBox(
+                        width: width,
+                        height: blockHeight,
+                        child: FittedBox(
+                          alignment: Alignment.centerLeft,
+                          fit: BoxFit.scaleDown,
+                          child: block,
+                        ),
+                      ),
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Tooltip(
+                          message: description,
+                          child: InkWell(
+                            onTap: onHelp,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.22),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                '?',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.0,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    description,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                      height: 1.25,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                description,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 11,
-                  height: 1.25,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -4408,6 +4622,7 @@ class _NodeView extends ConsumerWidget {
         return 'id INTEGER PRIMARY KEY';
       case 'ASC|DESC':
       case 'aufsteigend|absteigend':
+      case 'ascending|descending':
         return 'ASC';
       default:
         return '';
@@ -4593,6 +4808,7 @@ class _NodeView extends ConsumerWidget {
       'datatype',
       'ASC|DESC',
       'aufsteigend|absteigend',
+      'ascending|descending',
       'privilege',
     };
     final dropdownMapped = <String>{
@@ -4650,6 +4866,7 @@ class _NodeView extends ConsumerWidget {
         return 'join_type';
       case 'ASC|DESC':
       case 'aufsteigend|absteigend':
+      case 'ascending|descending':
         return 'order';
       default:
         return slotKey;
@@ -5552,6 +5769,7 @@ class _SqlRuntimePane extends StatefulWidget {
     required this.mode,
     required this.localeCode,
     required this.catalog,
+    required this.width,
   });
 
   final String sql;
@@ -5559,6 +5777,7 @@ class _SqlRuntimePane extends StatefulWidget {
   final SqlAbstractionMode mode;
   final String localeCode;
   final TranslationCatalog catalog;
+  final double width;
 
   @override
   State<_SqlRuntimePane> createState() => _SqlRuntimePaneState();
@@ -5592,9 +5811,9 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 420,
+      width: widget.width,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(NodeQlDesign.space3),
         child: _buildSplitOutput(),
       ),
     );
@@ -5619,7 +5838,9 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
               child: Container(
                 decoration: BoxDecoration(
                   color: workbenchColors.panel,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(
+                    NodeQlDesign.radiusMedium,
+                  ),
                   border: Border.all(color: workbenchColors.border),
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -5710,7 +5931,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: workbenchColors.panel,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
           border: Border.all(color: workbenchColors.border),
         ),
         child: Text(message, style: TextStyle(color: colorScheme.onSurface)),

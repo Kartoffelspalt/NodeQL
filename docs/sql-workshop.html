@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="NodeQL SQL Workshop: ein interaktives Tutorial zum Lernen von SQL mit visuellen NodeQL-Blöcken.">
+  <meta name="description" content="NodeQL SQL Workshop: an interactive tutorial for learning SQL with visual NodeQL blocks.">
   <title>NodeQL SQL Workshop</title>
   <style>
     :root {
@@ -955,19 +955,19 @@
 <body>
   <a class="skip-link" href="#workshop">Zum Workshop springen</a>
   <header class="site-header">
-    <nav class="nav" aria-label="Hauptnavigation">
-      <a class="brand" href="#top" aria-label="NodeQL SQL Workshop Start">
+    <nav class="nav" aria-label="Main navigation">
+      <a class="brand" href="#top" aria-label="NodeQL SQL Workshop home">
         <div>
           <img src="../assets/appicon/icon.png" width="32" height="32" alt="NodeQL Logo">
         </div>
         <span>NodeQL SQL Workshop</span>
       </a>
       <div class="nav-links">
-        <a href="#pfad">Lernpfad</a>
+        <a href="#pfad">Learning path</a>
         <a href="#workshop">Workshop</a>
-        <a href="#uebungen">Übungen</a>
+        <a href="#uebungen">Exercises</a>
         <a href="#quiz">Quiz</a>
-        <button type="button" id="resetProgress">Zurücksetzen</button>
+        <button type="button" id="resetProgress">Reset</button>
       </div>
     </nav>
   </header>
@@ -976,23 +976,23 @@
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-inner">
         <div>
-          <p class="eyebrow">SQL lernen mit echten NodeQL-Abläufen</p>
-          <h1 id="hero-title">Baue SQL visuell, verstehe jede Zeile.</h1>
-          <p class="lead">Ein kompletter Workshop für Einsteiger und Umsteiger: von Tabellen über SELECT, WHERE und JOIN bis zu Aggregationen, Fehlerdiagnose und lokalem SQLite-Arbeiten in NodeQL.</p>
+          <p class="eyebrow">Learn SQL with real NodeQL workflows</p>
+          <h1 id="hero-title">Build SQL visually, understand every line.</h1>
+          <p class="lead">A complete workshop for beginners and experienced learners: from tables through SELECT, WHERE, and JOIN to aggregations, debugging, and working with local SQLite databases in NodeQL.</p>
           <div class="hero-actions">
-            <a class="button" href="#workshop" aria-label="Workshop starten">▶ Workshop starten</a>
-            <a class="button secondary" href="#cheatsheet" aria-label="Cheat Sheet öffnen">▣ Cheat-Sheet</a>
+            <a class="button" href="#workshop" aria-label="Start workshop">▶ Start workshop</a>
+            <a class="button secondary" href="#cheatsheet" aria-label="Open cheat sheet">▣ Cheat sheet</a>
           </div>
         </div>
         <div class="hero-visual">
           <div class="screenshot-frame">
-            <img src="screenshots/darkmode-preview.png" alt="NodeQL Arbeitsfläche mit visuellen SQL-Blöcken im Dark Mode">
+            <img src="screenshots/darkmode-preview.png" alt="NodeQL workspace with visual SQL blocks in dark mode">
           </div>
-          <div class="hero-strip" aria-label="Workshop Kennzahlen">
+          <div class="hero-strip" aria-label="Workshop metrics">
             <div class="stat"><strong>8</strong><span>Module</span></div>
-            <div class="stat"><strong>14</strong><span>SQL-Muster</span></div>
+            <div class="stat"><strong>14</strong><span>SQL patterns</span></div>
             <div class="stat"><strong>6</strong><span>Checks</span></div>
-            <div class="stat"><strong>100%</strong><span>lokal übbar</span></div>
+            <div class="stat"><strong>100%</strong><span>practice locally</span></div>
           </div>
         </div>
       </div>
@@ -1002,13 +1002,13 @@
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Lernpfad</p>
-            <h2 id="path-title">Vom ersten Block zur belastbaren Abfrage.</h2>
+            <p class="eyebrow">Learning path</p>
+            <h2 id="path-title">From the first block to a reliable query.</h2>
           </div>
           <div class="progress-shell" aria-live="polite">
             <div class="progress-meta">
-              <span>Fortschritt</span>
-              <strong id="progressText">0 von 8</strong>
+              <span>Progress</span>
+              <strong id="progressText">0 of 8</strong>
             </div>
             <div class="progress-track" aria-hidden="true">
               <div class="progress-fill" id="progressFill"></div>
@@ -1024,9 +1024,9 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Workshop</p>
-            <h2 id="workshop-title">Acht Module, direkt an NodeQL gespiegelt.</h2>
+            <h2 id="workshop-title">Eight modules, directly reflected in NodeQL.</h2>
           </div>
-          <p>Jedes Modul verbindet eine SQL-Idee mit der Denkweise von NodeQL: Blöcke oben nach unten lesen, SQL-Vorschau prüfen, dann gegen eine lokale SQLite-Datenbank ausführen.</p>
+          <p>Each module connects an SQL concept with the NodeQL approach: read blocks from top to bottom, inspect the SQL preview, then run it against a local SQLite database.</p>
         </div>
 
         <div class="tabs">
@@ -1041,30 +1041,30 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Query-Lab</p>
-            <h2 id="builder-title">Setze Blöcke zusammen und lies das SQL.</h2>
+            <h2 id="builder-title">Assemble blocks and read the SQL.</h2>
           </div>
-          <p>Dieses Lab simuliert den Kern von NodeQL: Du wählst visuelle Bestandteile, die SQL-Vorschau entsteht sofort. Danach prüfst du, ob die Klauseln in einer sinnvollen Reihenfolge stehen.</p>
+          <p>This lab simulates the core of NodeQL: choose visual components and the SQL preview appears immediately. Then check whether the clauses are in a meaningful order.</p>
         </div>
 
         <div class="workshop-split">
           <div class="data-browser">
-            <h3>Beispieldatenbank: Lernshop</h3>
-            <p class="lead" style="font-size:1rem;margin-top:10px;">Drei Tabellen reichen für viele SQL-Grundlagen. In NodeQL würdest du dafür eine lokale SQLite-Datei verbinden.</p>
+            <h3>Example database: learning shop</h3>
+            <p class="lead" style="font-size:1rem;margin-top:10px;">Three tables are enough for many SQL fundamentals. In NodeQL, you would connect a local SQLite file for this.</p>
             <div class="schema-list">
               <div class="schema-item">
                 <span><strong>customers</strong><br><small>id, name, city</small></span>
-                <button class="link-button" type="button" data-table="customers">anzeigen</button>
+                <button class="link-button" type="button" data-table="customers">show</button>
               </div>
               <div class="schema-item">
                 <span><strong>orders</strong><br><small>id, customer_id, total, status</small></span>
-                <button class="link-button" type="button" data-table="orders">anzeigen</button>
+                <button class="link-button" type="button" data-table="orders">show</button>
               </div>
               <div class="schema-item">
                 <span><strong>products</strong><br><small>id, name, category, price</small></span>
-                <button class="link-button" type="button" data-table="products">anzeigen</button>
+                <button class="link-button" type="button" data-table="products">show</button>
               </div>
             </div>
-            <table class="mini-table" id="dataTable" aria-label="Tabellenvorschau"></table>
+            <table class="mini-table" id="dataTable" aria-label="Table preview"></table>
           </div>
 
           <div class="data-browser">
@@ -1072,7 +1072,7 @@
               <div class="field">
                 <label for="builderSelect">SELECT</label>
                 <select id="builderSelect">
-                  <option value="*">alle Spalten</option>
+                  <option value="*">all columns</option>
                   <option value="name, city">name, city</option>
                   <option value="city, COUNT(*) AS customer_count">city, COUNT(*) AS customer_count</option>
                   <option value="customers.name, orders.total">customers.name, orders.total</option>
@@ -1089,14 +1089,14 @@
               <div class="field">
                 <label for="builderJoin">JOIN</label>
                 <select id="builderJoin">
-                  <option value="">kein Join</option>
+                  <option value="">no join</option>
                   <option value="INNER JOIN orders ON customers.id = orders.customer_id">INNER JOIN orders ON customers.id = orders.customer_id</option>
                 </select>
               </div>
               <div class="field">
                 <label for="builderWhere">WHERE</label>
                 <select id="builderWhere">
-                  <option value="">kein Filter</option>
+                  <option value="">no filter</option>
                   <option value="city = 'Berlin'">city = 'Berlin'</option>
                   <option value="total >= 100">total >= 100</option>
                   <option value="status = 'paid'">status = 'paid'</option>
@@ -1105,7 +1105,7 @@
               <div class="field">
                 <label for="builderGroup">GROUP BY</label>
                 <select id="builderGroup">
-                  <option value="">keine Gruppierung</option>
+                  <option value="">no grouping</option>
                   <option value="city">city</option>
                   <option value="status">status</option>
                 </select>
@@ -1113,22 +1113,22 @@
               <div class="field">
                 <label for="builderOrder">ORDER BY</label>
                 <select id="builderOrder">
-                  <option value="">keine Sortierung</option>
+                  <option value="">no sorting</option>
                   <option value="name ASC">name ASC</option>
                   <option value="total DESC">total DESC</option>
                   <option value="customer_count DESC">customer_count DESC</option>
                 </select>
               </div>
             </div>
-            <div class="node-stack" aria-label="Visuelle NodeQL Blockfolge" id="builderNodes"></div>
+            <div class="node-stack" aria-label="Visual NodeQL block sequence" id="builderNodes"></div>
             <div class="sql-window" style="margin-top:16px;">
               <div class="sql-titlebar">
-                <span>SQL-Vorschau</span>
-                <button class="copy-sql" type="button" data-copy-target="builderSql">kopieren</button>
+                <span>SQL preview</span>
+                <button class="copy-sql" type="button" data-copy-target="builderSql">copy</button>
               </div>
               <pre><code id="builderSql"></code></pre>
             </div>
-            <div class="feedback" id="builderFeedback">Wähle Bestandteile aus, um die SQL-Struktur zu prüfen.</div>
+            <div class="feedback" id="builderFeedback">Choose components to inspect the SQL structure.</div>
           </div>
         </div>
       </div>
@@ -1138,10 +1138,10 @@
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Übungen</p>
-            <h2 id="exercise-title">Schreibe SQL, dann denke es als Blöcke.</h2>
+            <p class="eyebrow">Exercises</p>
+            <h2 id="exercise-title">Write SQL, then think of it as blocks.</h2>
           </div>
-          <p>Die Checks sind bewusst tolerant: Sie suchen nach den entscheidenden SQL-Bausteinen. In NodeQL würdest du dieselben Bausteine per Palette zusammensetzen.</p>
+          <p>The checks are intentionally tolerant: they look for the essential SQL building blocks. In NodeQL, you would assemble the same building blocks from the palette.</p>
         </div>
         <div class="exercise-grid" id="exerciseGrid"></div>
       </div>
@@ -1151,19 +1151,19 @@
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">NodeQL Orientierung</p>
-            <h2 id="visual-title">Die App bleibt der rote Faden.</h2>
+            <p class="eyebrow">NodeQL orientation</p>
+            <h2 id="visual-title">The app remains the common thread.</h2>
           </div>
-          <p>Der Workshop ist bewusst auf die reale App bezogen: Arbeitsbereich, SQL-Ausgabe, interaktives Tutorial und Plugin-Blöcke.</p>
+          <p>The workshop intentionally refers to the real app: workspace, SQL output, interactive tutorial, and plugin blocks.</p>
         </div>
         <div class="screenshot-grid">
           <figure class="figure">
-            <img src="screenshots/NodeQL-Einfuehrung.png" alt="NodeQL interaktives Einführungstutorial">
-            <figcaption>Das eingebaute Tutorial erklärt die Oberfläche. Dieser Workshop vertieft danach die SQL-Konzepte.</figcaption>
+            <img src="screenshots/NodeQL-Einfuehrung.png" alt="NodeQL interactive introduction tutorial">
+            <figcaption>The built-in tutorial explains the interface. This workshop then develops the SQL concepts further.</figcaption>
           </figure>
           <figure class="figure">
-            <img src="screenshots/Plugins.png" alt="NodeQL Plugin-Blöcke in der Arbeitsfläche">
-            <figcaption>Plugin-Blöcke können SQL erweitern. Die Grundregel bleibt gleich: Blockfolge prüfen, SQL-Vorschau lesen, lokal ausführen.</figcaption>
+            <img src="screenshots/Plugins.png" alt="NodeQL plugin blocks in the workspace">
+            <figcaption>Plugin blocks can extend SQL. The core rule remains the same: check block order, read the SQL preview, and run locally.</figcaption>
           </figure>
         </div>
       </div>
@@ -1173,35 +1173,35 @@
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Abschluss</p>
-            <h2 id="quiz-title">Teste, ob die Struktur sitzt.</h2>
+            <p class="eyebrow">Finish</p>
+            <h2 id="quiz-title">Test whether the structure is clear.</h2>
           </div>
-          <p>Ein kurzer Check für die wichtigsten Entscheidungen: Welche Klausel macht was, wann brauchst du JOIN, und warum ist die SQL-Vorschau so wertvoll?</p>
+          <p>A quick check of the key decisions: which clause does what, when do you need JOIN, and why is the SQL preview so valuable?</p>
         </div>
         <div class="quiz">
           <div class="quiz-panel">
-            <h3 id="quizQuestion">Frage wird geladen</h3>
+            <h3 id="quizQuestion">Question is loading</h3>
             <div class="quiz-options" id="quizOptions"></div>
-            <div class="feedback" id="quizFeedback">Wähle eine Antwort.</div>
+            <div class="feedback" id="quizFeedback">Choose an answer.</div>
             <div class="button-row">
-              <button class="button" type="button" id="nextQuestion">Nächste Frage</button>
-              <button class="button ghost" type="button" id="restartQuiz">Neu starten</button>
+              <button class="button" type="button" id="nextQuestion">Next question</button>
+              <button class="button ghost" type="button" id="restartQuiz">Restart</button>
             </div>
           </div>
           <div class="cheat-panel" id="cheatsheet">
             <h3>NodeQL SQL Cheat-Sheet</h3>
             <div class="cheat-list">
-              <div class="cheat-item"><strong>SELECT</strong><code>SELECT name, city</code> wählt die sichtbaren Spalten.</div>
-              <div class="cheat-item"><strong>FROM</strong><code>FROM customers</code> bestimmt die Tabelle.</div>
-              <div class="cheat-item"><strong>WHERE</strong><code>WHERE city = 'Berlin'</code> filtert einzelne Zeilen.</div>
-              <div class="cheat-item"><strong>JOIN</strong><code>INNER JOIN orders ON customers.id = orders.customer_id</code> verbindet Tabellen über Schlüssel.</div>
-              <div class="cheat-item"><strong>GROUP BY</strong><code>GROUP BY city</code> bildet Gruppen für <code>COUNT</code>, <code>SUM</code> oder <code>AVG</code>.</div>
-              <div class="cheat-item"><strong>ORDER BY</strong><code>ORDER BY total DESC</code> sortiert das Ergebnis.</div>
-              <div class="cheat-item"><strong>NodeQL-Regel</strong>Wenn die Blöcke logisch aussehen, lies trotzdem die SQL-Ausgabe vor dem Ausführen.</div>
+              <div class="cheat-item"><strong>SELECT</strong><code>SELECT name, city</code> chooses the visible columns.</div>
+              <div class="cheat-item"><strong>FROM</strong><code>FROM customers</code> identifies the table.</div>
+              <div class="cheat-item"><strong>WHERE</strong><code>WHERE city = 'Berlin'</code> filters individual rows.</div>
+              <div class="cheat-item"><strong>JOIN</strong><code>INNER JOIN orders ON customers.id = orders.customer_id</code> connects tables through keys.</div>
+              <div class="cheat-item"><strong>GROUP BY</strong><code>GROUP BY city</code> creates groups for <code>COUNT</code>, <code>SUM</code>, or <code>AVG</code>.</div>
+              <div class="cheat-item"><strong>ORDER BY</strong><code>ORDER BY total DESC</code> sorts the result.</div>
+              <div class="cheat-item"><strong>NodeQL rule</strong>When blocks look logical, still read the SQL output before running it.</div>
             </div>
             <div class="button-row">
-              <button class="button secondary" type="button" onclick="window.print()">Drucken</button>
-              <a class="button ghost" href="https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json">Plugin-Beispielrepo</a>
+              <button class="button secondary" type="button" onclick="window.print()">Print</button>
+              <a class="button ghost" href="https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json">Plugin example repository</a>
             </div>
           </div>
         </div>
@@ -1211,168 +1211,168 @@
 
   <footer class="footer">
     <div class="wrap">
-      <p><strong>NodeQL SQL Workshop</strong><br>Lokales Lernen mit visuellen Blöcken, SQLite und prüfbarer SQL-Ausgabe.</p>
-      <p><a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">README</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/plugins/README.md">Plugin SDK</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/RELEASING.md">Release-Hinweise</a></p>
+      <p><strong>NodeQL SQL Workshop</strong><br>Local learning with visual blocks, SQLite, and inspectable SQL output.</p>
+      <p><a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">README</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/plugins/README.md">Plugin SDK</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/RELEASING.md">Release notes</a></p>
     </div>
   </footer>
 
   <script>
     const modules = [
       {
-        title: "Orientierung",
-        tag: "Modul 1",
-        summary: "Verstehe Palette, Arbeitsbereich und SQL-Ausgabe.",
+        title: "Orientation",
+        tag: "Module 1",
+        summary: "Understand the palette, workspace, and SQL output.",
         sql: "SELECT name, city\nFROM customers;",
         nodes: [
-          ["select", "SELECT name, city", "Welche Spalten sollen sichtbar sein?"],
-          ["from", "FROM customers", "Aus welcher Tabelle kommen die Daten?"]
+          ["select", "SELECT name, city", "Which columns should be visible?"],
+          ["from", "FROM customers", "Which table supplies the data?"]
         ],
         body: [
-          "NodeQL ist kein Ersatz für SQL-Verständnis, sondern eine Lernoberfläche: Du baust eine Abfrage mit Blöcken und siehst parallel die echte SQL-Anweisung.",
-          "Lies eine Abfrage in NodeQL von oben nach unten. Der Start löst die Ausführung aus, darunter folgen SQL-Klauseln in der Reihenfolge, die SQLite erwartet."
+          "NodeQL is not a replacement for understanding SQL; it is a learning interface: build a query with blocks while seeing the real SQL statement alongside it.",
+          "Read a query in NodeQL from top to bottom. The start block triggers execution, followed by SQL clauses in the order SQLite expects."
         ],
-        tips: ["Beginne jede Übung mit SELECT und FROM.", "Nutze die SQL-Vorschau als Kontrollblick, bevor du ausführst."]
+        tips: ["Start every exercise with SELECT and FROM.", "Use the SQL preview as a check before you run it."]
       },
       {
-        title: "Tabellen & Spalten",
-        tag: "Modul 2",
-        summary: "Wähle gezielt Daten statt immer alles abzufragen.",
+        title: "Tables & Columns",
+        tag: "Module 2",
+        summary: "Select data deliberately instead of always querying everything.",
         sql: "SELECT name, city\nFROM customers\nORDER BY name ASC;",
         nodes: [
-          ["select", "SELECT name, city", "Nur die Spalten wählen, die du brauchst."],
-          ["from", "FROM customers", "Eine klare Quelle."],
-          ["where", "ORDER BY name ASC", "Lesbare Sortierung."]
+          ["select", "SELECT name, city", "Choose only the columns you need."],
+          ["from", "FROM customers", "A clear source."],
+          ["where", "ORDER BY name ASC", "Readable sorting."]
         ],
         body: [
-          "SELECT * ist bequem, aber selten die beste Lerngewohnheit. Wenn du Spalten bewusst auswählst, verstehst du schneller, welche Daten dein Ergebnis wirklich trägt.",
-          "In NodeQL entspricht das einem SELECT-Block mit bearbeitbaren Spaltenwerten. Ändere eine Spalte und beobachte, wie sich die SQL-Vorschau verändert."
+          "SELECT * is convenient, but it is rarely the best learning habit. When you choose columns deliberately, you understand more quickly which data truly supports your result.",
+          "In NodeQL, this is a SELECT block with editable column values. Change a column and observe how the SQL preview changes."
         ],
-        tips: ["Nutze sprechende Spaltennamen.", "Sortiere frühe Beispiele, damit Ergebnisse leichter prüfbar sind."]
+        tips: ["Use descriptive column names.", "Sort early examples so results are easier to verify."]
       },
       {
-        title: "Filter mit WHERE",
-        tag: "Modul 3",
-        summary: "Reduziere Zeilen mit Bedingungen.",
+        title: "Filter with WHERE",
+        tag: "Module 3",
+        summary: "Reduce rows with conditions.",
         sql: "SELECT name, city\nFROM customers\nWHERE city = 'Berlin';",
         nodes: [
-          ["select", "SELECT name, city", "Ausgabe festlegen."],
-          ["from", "FROM customers", "Tabelle wählen."],
-          ["where", "WHERE city = 'Berlin'", "Nur passende Zeilen behalten."]
+          ["select", "SELECT name, city", "Set the output."],
+          ["from", "FROM customers", "Choose a table."],
+          ["where", "WHERE city = 'Berlin'", "Keep only matching rows."]
         ],
         body: [
-          "WHERE entscheidet, welche Zeilen in deinem Ergebnis bleiben. Textwerte stehen in einfachen Anführungszeichen, Zahlen meistens nicht.",
-          "In NodeQL hilft die Blockform dabei, Bedingung, Operator und Wert sauber zu trennen. Das reduziert typische Syntaxfehler."
+          "WHERE determines which rows remain in the result. Text values use single quotes; numbers usually do not.",
+          "In NodeQL, the block shape helps keep condition, operator, and value separate. That reduces common syntax errors."
         ],
-        tips: ["Text: 'Berlin'. Zahl: 100.", "Prüfe Operatoren wie =, >=, LIKE und IN bewusst."]
+        tips: ["Text: 'Berlin'. Number: 100.", "Check operators such as =, >=, LIKE, and IN deliberately."]
       },
       {
-        title: "Sortieren & Begrenzen",
-        tag: "Modul 4",
-        summary: "Mache Ergebnisse lesbar und kontrollierbar.",
+        title: "Sort & Limit",
+        tag: "Module 4",
+        summary: "Make results readable and inspectable.",
         sql: "SELECT id, total, status\nFROM orders\nWHERE status = 'paid'\nORDER BY total DESC\nLIMIT 5;",
         nodes: [
-          ["select", "SELECT id, total, status", "Die wichtigsten Werte anzeigen."],
-          ["from", "FROM orders", "Bestellungen als Quelle."],
-          ["where", "WHERE status = 'paid'", "Nur bezahlte Bestellungen."],
-          ["where", "ORDER BY total DESC", "Höchste Beträge zuerst."]
+          ["select", "SELECT id, total, status", "Show the most important values."],
+          ["from", "FROM orders", "Orders as the source."],
+          ["where", "WHERE status = 'paid'", "Only paid orders."],
+          ["where", "ORDER BY total DESC", "Highest amounts first."]
         ],
         body: [
-          "ORDER BY ändert nicht die Daten, sondern ihre Reihenfolge im Ergebnis. DESC bedeutet absteigend, ASC aufsteigend.",
-          "LIMIT ist ideal zum Lernen: Du bekommst eine kleine, prüfbare Ergebnismenge und kannst schneller erkennen, ob deine Logik stimmt."
+          "ORDER BY does not change the data, only its order in the result. DESC means descending and ASC means ascending.",
+          "LIMIT is ideal for learning: you get a small, inspectable result set and can see more quickly whether your logic is correct."
         ],
-        tips: ["Sortiere nach der Spalte, die deine Frage beantwortet.", "Nutze LIMIT beim Experimentieren mit großen Tabellen."]
+        tips: ["Sort by the column that answers your question.", "Use LIMIT while experimenting with large tables."]
       },
       {
-        title: "JOIN verstehen",
-        tag: "Modul 5",
-        summary: "Verbinde Tabellen über Schlüssel.",
+        title: "Understand JOIN",
+        tag: "Module 5",
+        summary: "Connect tables through keys.",
         sql: "SELECT customers.name, orders.total\nFROM customers\nINNER JOIN orders ON customers.id = orders.customer_id\nWHERE orders.total >= 100;",
         nodes: [
-          ["select", "SELECT customers.name, orders.total", "Spalten aus zwei Tabellen."],
-          ["from", "FROM customers", "Starttabelle."],
-          ["join", "INNER JOIN orders", "Bestellungen verbinden."],
-          ["where", "ON customers.id = orders.customer_id", "Schlüsselbeziehung."],
-          ["where", "WHERE orders.total >= 100", "Ergebnis filtern."]
+          ["select", "SELECT customers.name, orders.total", "Columns from two tables."],
+          ["from", "FROM customers", "Starting table."],
+          ["join", "INNER JOIN orders", "Connect orders."],
+          ["where", "ON customers.id = orders.customer_id", "Key relationship."],
+          ["where", "WHERE orders.total >= 100", "Filter the result."]
         ],
         body: [
-          "JOIN ist der Moment, in dem SQL besonders nützlich wird. Du verbindest Tabellen, die getrennt gespeichert sind, aber fachlich zusammengehören.",
-          "Die ON-Bedingung ist kein Zusatzdetail. Sie ist die Brücke zwischen Primärschlüssel und Fremdschlüssel. Ohne sie entstehen falsche Kombinationen."
+          "JOIN is where SQL becomes especially useful. You connect tables that are stored separately but belong together conceptually.",
+          "The ON condition is not an extra detail. It is the bridge between the primary key and foreign key. Without it, incorrect combinations result."
         ],
-        tips: ["Qualifiziere Spalten mit Tabellennamen, wenn Namen mehrfach vorkommen.", "INNER JOIN zeigt nur passende Paare."]
+        tips: ["Qualify columns with table names when names occur more than once.", "INNER JOIN shows only matching pairs."]
       },
       {
-        title: "Gruppieren",
-        tag: "Modul 6",
-        summary: "Zähle, summiere und verdichte Daten.",
+        title: "Group Data",
+        tag: "Module 6",
+        summary: "Count, sum, and aggregate data.",
         sql: "SELECT city, COUNT(*) AS customer_count\nFROM customers\nGROUP BY city\nORDER BY customer_count DESC;",
         nodes: [
-          ["select", "SELECT city, COUNT(*) AS customer_count", "Gruppenwert plus Kennzahl."],
-          ["from", "FROM customers", "Kundentabelle."],
-          ["group", "GROUP BY city", "Eine Gruppe pro Stadt."],
-          ["where", "ORDER BY customer_count DESC", "Größte Gruppen zuerst."]
+          ["select", "SELECT city, COUNT(*) AS customer_count", "Group value plus metric."],
+          ["from", "FROM customers", "Customer table."],
+          ["group", "GROUP BY city", "One group per city."],
+          ["where", "ORDER BY customer_count DESC", "Largest groups first."]
         ],
         body: [
-          "GROUP BY macht aus vielen Zeilen Gruppen. Aggregatfunktionen wie COUNT, SUM und AVG berechnen dann Werte pro Gruppe.",
-          "Die wichtigste Regel: Alles im SELECT ist entweder gruppiert oder aggregiert. Das hält Ergebnisse fachlich sauber."
+          "GROUP BY turns many rows into groups. Aggregate functions such as COUNT, SUM, and AVG then calculate values per group.",
+          "The most important rule: everything in SELECT is either grouped or aggregated. This keeps results semantically sound."
         ],
-        tips: ["COUNT(*) zählt Zeilen.", "SUM(total) addiert Beträge.", "AVG(price) berechnet Durchschnittswerte."]
+        tips: ["COUNT(*) counts rows.", "SUM(total) adds amounts.", "AVG(price) calculates averages."]
       },
       {
-        title: "Fehler lesen",
-        tag: "Modul 7",
-        summary: "Nutze Fehlermeldungen als Debug-Hilfe.",
+        title: "Read Errors",
+        tag: "Module 7",
+        summary: "Use error messages as debugging help.",
         sql: "SELECT name city\nFROM customers\nWHERE city = Berlin;",
         nodes: [
-          ["select", "SELECT name city", "Komma fehlt."],
-          ["from", "FROM customers", "Quelle stimmt."],
-          ["where", "WHERE city = Berlin", "Textwert braucht Anführungszeichen."]
+          ["select", "SELECT name city", "Comma is missing."],
+          ["from", "FROM customers", "Source is correct."],
+          ["where", "WHERE city = Berlin", "A text value needs quotation marks."],
         ],
         body: [
-          "Fehler sind beim SQL-Lernen normal. NodeQL hilft, weil du die Blockstruktur und die erzeugte SQL-Zeile nebeneinander prüfen kannst.",
-          "Suche zuerst nach einfachen Ursachen: fehlende Kommas, falsche Anführungszeichen, vertauschte Klauseln oder Spalten, die in der Tabelle nicht existieren."
+          "Errors are normal when learning SQL. NodeQL helps because you can inspect the block structure and generated SQL line side by side.",
+          "First look for simple causes: missing commas, incorrect quotation marks, swapped clauses, or columns that do not exist in the table."
         ],
-        tips: ["Vergleiche Block und SQL-Zeile.", "Reduziere die Abfrage, bis der kleinste Teil wieder funktioniert."]
+        tips: ["Compare the block and SQL line.", "Reduce the query until the smallest part works again."]
       },
       {
-        title: "Lokaler Workflow",
-        tag: "Modul 8",
-        summary: "Arbeite mit SQLite-Dateien nachvollziehbar.",
+        title: "Local Workflow",
+        tag: "Module 8",
+        summary: "Work with SQLite files in a traceable way.",
         sql: "SELECT products.category, AVG(products.price) AS avg_price\nFROM products\nGROUP BY products.category\nORDER BY avg_price DESC;",
         nodes: [
-          ["select", "SELECT category, AVG(price)", "Kategorie plus Durchschnitt."],
-          ["from", "FROM products", "Lokale Produkttabelle."],
-          ["group", "GROUP BY category", "Eine Gruppe pro Kategorie."],
-          ["where", "ORDER BY avg_price DESC", "Teuerste Kategorien zuerst."]
+          ["select", "SELECT category, AVG(price)", "Category plus average."],
+          ["from", "FROM products", "Local product table."],
+          ["group", "GROUP BY category", "One group per category."],
+          ["where", "ORDER BY avg_price DESC", "Most expensive categories first."]
         ],
         body: [
-          "NodeQL ist local-first: Projekte, Einstellungen, Plugins und Datenbanken bleiben auf dem Gerät. Das passt gut zum Lernen, weil du ohne Cloud-Abhängigkeit experimentierst.",
-          "Der professionelle Ablauf ist einfach: Frage formulieren, Blöcke bauen, SQL lesen, lokal ausführen, Ergebnis prüfen, dann schrittweise erweitern."
+          "NodeQL is local-first: projects, settings, plugins, and databases remain on the device. This suits learning because you can experiment without a cloud dependency.",
+          "The professional workflow is simple: formulate a question, build blocks, read the SQL, run it locally, inspect the result, then extend it step by step."
         ],
-        tips: ["Speichere Lernprojekte pro Thema.", "Dokumentiere gute Abfragen als Beispiele für spätere Projekte."]
+        tips: ["Save learning projects by topic.", "Document good queries as examples for later projects."]
       }
     ];
 
     const exercises = [
       {
-        title: "1. Kundinnen aus Berlin",
-        task: "Zeige name und city aus customers, aber nur für Berlin.",
+        title: "1. Customers from Berlin",
+        task: "Show name and city from customers, but only for Berlin.",
         starter: "SELECT \nFROM \nWHERE ;",
         checks: [/select\s+name\s*,\s*city/i, /from\s+customers/i, /where\s+city\s*=\s*'berlin'/i],
-        ok: "Passt. Du hast Spaltenwahl, Tabelle und Textfilter korrekt kombiniert."
+        ok: "Correct. You combined column selection, table, and text filter properly."
       },
       {
-        title: "2. Große Bestellungen",
-        task: "Zeige id und total aus orders für bezahlte Bestellungen ab 100, höchste zuerst.",
+        title: "2. Large orders",
+        task: "Show id and total from orders for paid orders of at least 100, highest first.",
         starter: "SELECT id, total\nFROM orders\nWHERE \nORDER BY ;",
         checks: [/select\s+id\s*,\s*total/i, /from\s+orders/i, /status\s*=\s*'paid'/i, /total\s*>=\s*100/i, /order\s+by\s+total\s+desc/i],
-        ok: "Gut. Genau so würdest du den WHERE-Block schrittweise ausbauen."
+        ok: "Good. This is exactly how you would extend the WHERE block step by step."
       },
       {
-        title: "3. Städte zählen",
-        task: "Zähle customers pro city und sortiere die größte Gruppe zuerst.",
+        title: "3. Count cities",
+        task: "Count customers per city and sort the largest group first.",
         starter: "SELECT city, COUNT(*) AS customer_count\nFROM customers\nGROUP BY \nORDER BY ;",
         checks: [/select\s+city\s*,\s*count\s*\(\s*\*\s*\)/i, /from\s+customers/i, /group\s+by\s+city/i, /order\s+by\s+customer_count\s+desc/i],
-        ok: "Richtig. SELECT enthält den Gruppenwert und die Aggregation."
+        ok: "Correct. SELECT contains the group value and the aggregation."
       }
     ];
 
@@ -1381,7 +1381,7 @@
         { id: 1, name: "Aylin", city: "Berlin" },
         { id: 2, name: "Milan", city: "Hamburg" },
         { id: 3, name: "Noah", city: "Berlin" },
-        { id: 4, name: "Sara", city: "Köln" }
+        { id: 4, name: "Sara", city: "Cologne" }
       ],
       orders: [
         { id: 11, customer_id: 1, total: 149, status: "paid" },
@@ -1399,26 +1399,26 @@
 
     const quiz = [
       {
-        question: "Welche Klausel legt fest, aus welcher Tabelle die Daten kommen?",
+        question: "Which clause determines which table the data comes from?",
         options: ["FROM", "WHERE", "ORDER BY"],
         answer: 0,
-        note: "FROM ist die Datenquelle. SELECT entscheidet danach, was sichtbar wird."
+        note: "FROM is the data source. SELECT then decides what becomes visible."
       },
       {
-        question: "Warum ist die SQL-Vorschau in NodeQL wichtig?",
-        options: ["Sie ersetzt jede Datenbank.", "Sie zeigt die echte Abfrage, bevor du sie ausführst.", "Sie löscht ungültige Zeilen automatisch."],
+        question: "Why is the SQL preview important in NodeQL?",
+        options: ["It replaces every database.", "It shows the real query before you run it.", "It deletes invalid rows automatically."],
         answer: 1,
-        note: "Die Vorschau macht aus visuellen Blöcken überprüfbares SQL."
+        note: "The preview turns visual blocks into inspectable SQL."
       },
       {
         question: "Wann brauchst du einen JOIN?",
-        options: ["Wenn du zwei fachlich verbundene Tabellen gemeinsam abfragen willst.", "Wenn du nur die ersten fünf Zeilen sehen willst.", "Wenn du eine Tabelle alphabetisch sortierst."],
+        options: ["When you want to query two conceptually related tables together.", "When you only want to see the first five rows.", "When you sort a table alphabetically."],
         answer: 0,
-        note: "JOIN verbindet Tabellen über passende Schlüssel."
+        note: "JOIN connects tables through matching keys."
       },
       {
-        question: "Was ist bei GROUP BY besonders wichtig?",
-        options: ["Jede SELECT-Spalte ist entweder gruppiert oder aggregiert.", "GROUP BY steht immer vor FROM.", "COUNT funktioniert nur mit Textspalten."],
+        question: "What is especially important with GROUP BY?",
+        options: ["Every SELECT column is either grouped or aggregated.", "GROUP BY always comes before FROM.", "COUNT only works with text columns."],
         answer: 0,
         note: "Diese Regel verhindert fachlich unklare Gruppenergebnisse."
       }
@@ -1437,7 +1437,7 @@
 
     function renderProgress() {
       const count = completed.size;
-      document.getElementById("progressText").textContent = `${count} von ${modules.length}`;
+      document.getElementById("progressText").textContent = `${count} of ${modules.length}`;
       document.getElementById("progressFill").style.width = `${(count / modules.length) * 100}%`;
       document.querySelectorAll("[data-module-card]").forEach((card) => {
         card.classList.toggle("done", completed.has(Number(card.dataset.moduleCard)));
@@ -1451,7 +1451,7 @@
           <small>${module.tag}</small>
           <h3>${module.title}</h3>
           <p>${module.summary}</p>
-          <button class="button secondary" type="button" data-open-module="${index}">öffnen</button>
+          <button class="button secondary" type="button" data-open-module="${index}">open</button>
         </article>
       `).join("");
 
@@ -1555,13 +1555,13 @@
       const feedback = document.getElementById("builderFeedback");
       if (selected.includes("COUNT") && !group) {
         feedback.className = "feedback warn";
-        feedback.textContent = "COUNT ohne GROUP BY kann sinnvoll sein, aber für eine Kennzahl pro Stadt brauchst du GROUP BY city.";
+        feedback.textContent = "COUNT without GROUP BY can be useful, but you need GROUP BY city for a metric per city.";
       } else if (join && from !== "customers") {
         feedback.className = "feedback warn";
-        feedback.textContent = "Der gewählte JOIN startet bei customers. Stelle FROM auf customers, damit die ON-Bedingung fachlich passt.";
+        feedback.textContent = "The selected JOIN starts at customers. Set FROM to customers so the ON condition is semantically correct.";
       } else {
         feedback.className = "feedback ok";
-        feedback.textContent = "Die Klauselreihenfolge ist sauber. Lies die SQL-Zeilen jetzt von oben nach unten.";
+        feedback.textContent = "The clause order is correct. Now read the SQL lines from top to bottom.";
       }
     }
 
@@ -1581,8 +1581,8 @@
           <h3>${exercise.title}</h3>
           <p>${exercise.task}</p>
           <textarea aria-label="${exercise.title} SQL Eingabe" spellcheck="false" id="exercise-${index}">${exercise.starter}</textarea>
-          <button class="button secondary" type="button" data-check-exercise="${index}">prüfen</button>
-          <div class="feedback" id="exercise-feedback-${index}">Noch nicht geprüft.</div>
+          <button class="button secondary" type="button" data-check-exercise="${index}">check</button>
+          <div class="feedback" id="exercise-feedback-${index}">Not checked yet.</div>
         </article>
       `).join("");
       grid.querySelectorAll("[data-check-exercise]").forEach((button) => {
@@ -1602,7 +1602,7 @@
         saveProgress();
       } else {
         feedback.className = "feedback warn";
-        feedback.textContent = `${missing} wichtiger Baustein fehlt noch. Prüfe SELECT, FROM, WHERE, GROUP BY oder ORDER BY.`;
+        feedback.textContent = `${missing} essential building block is still missing. Check SELECT, FROM, WHERE, GROUP BY, or ORDER BY.`;
       }
     }
 
@@ -1610,7 +1610,7 @@
       const current = quiz[quizIndex];
       document.getElementById("quizQuestion").textContent = current.question;
       document.getElementById("quizFeedback").className = "feedback";
-      document.getElementById("quizFeedback").textContent = `Frage ${quizIndex + 1} von ${quiz.length}. Punktestand: ${quizScore}`;
+      document.getElementById("quizFeedback").textContent = `Question ${quizIndex + 1} of ${quiz.length}. Score: ${quizScore}`;
       document.getElementById("quizOptions").innerHTML = current.options.map((option, index) => `
         <button class="quiz-option" type="button" data-answer="${index}">${option}</button>
       `).join("");

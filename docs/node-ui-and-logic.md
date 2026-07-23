@@ -1,20 +1,26 @@
-# Node UI und Logik anpassen
+# Changing Node UI and Logic
 
-Diese Notiz beschreibt, wo native NodeQL-Nodes ihr Aussehen, ihre Slots, ihre Andock-Regeln und ihre SQL-Logik bekommen.
+This note explains where native NodeQL nodes get their appearance, slots,
+docking rules, and SQL behavior.
 
-## Überblick
+## Overview
 
-Bei nativen Nodes sind UI und Logik auf mehrere Stellen verteilt:
+Native node UI and logic are distributed across several locations:
 
-- `lib/engine/block/block_node.dart`: Node-Typen, Serialisierung und Deserialisierung.
-- `lib/engine/block/block_syntax.dart`: visuelle Rolle, Höhe, Connectoren und erlaubte SQL-Reihenfolge.
-- `lib/features/workbench/presentation/engine/sql_labels.dart`: sichtbarer Node-Text, Simple Mode und Advanced Mode.
-- `lib/features/workbench/presentation/workbench_page.dart`: Farben, Palette, Node-Rendering und Eingabe-UI.
-- `lib/features/workbench/presentation/engine/sql_compiler.dart`: Übersetzung von Nodes zu SQL.
+- `lib/engine/block/block_node.dart`: node types, serialization, and
+  deserialization.
+- `lib/engine/block/block_syntax.dart`: visual role, height, connectors, and
+  permitted SQL ordering.
+- `lib/features/workbench/presentation/engine/sql_labels.dart`: visible node
+  text and simple/advanced mode.
+- `lib/features/workbench/presentation/workbench_page.dart`: colors, palette,
+  node rendering, and input UI.
+- `lib/features/workbench/presentation/engine/sql_compiler.dart`: conversion of
+  nodes to SQL.
 
-## 1. Node-Typ definieren
+## 1. Define a node type
 
-Alle nativen Node-Arten hängen am `BlockType` enum:
+All native node kinds belong to the `BlockType` enum:
 
 ```dart
 // lib/engine/block/block_node.dart
@@ -26,15 +32,17 @@ enum BlockType {
 }
 ```
 
-Wenn du einen neuen SQL-Node willst, kommt dort ein neuer Eintrag rein, zum Beispiel:
+To add a SQL node, add an entry such as:
 
 ```dart
 sqlLimit,
 ```
 
-Danach muss `BlockNode.fromJson()` wissen, welche konkrete Node-Klasse daraus gebaut wird. Die meisten SQL-Nodes sind aktuell `OperatorBlock`. Container-Nodes verwenden `ControlBlock`, manche ältere Blöcke verwenden `MotionBlock`.
+Then teach `BlockNode.fromJson()` which concrete node class it creates. Most
+current SQL nodes are `OperatorBlock`s. Container nodes use `ControlBlock`,
+while some older blocks use `MotionBlock`.
 
-Für einen einfachen SQL-Node ist meistens richtig:
+For a simple SQL node, this is usually appropriate:
 
 ```dart
 case BlockType.sqlLimit:
@@ -46,38 +54,38 @@ case BlockType.sqlLimit:
   );
 ```
 
-## 2. Form, Höhe und Andock-Logik
+## 2. Shape, height, and docking logic
 
-Die visuelle Rolle eines Blocks wird in `block_syntax.dart` festgelegt.
+`block_syntax.dart` defines a block's visual role.
 
-Wichtige Rollen:
+Important roles:
 
-- `statement`: Haupt-SQL-Anweisung, zum Beispiel `SELECT`, `INSERT`, `UPDATE`.
-- `clause`: SQL-Klausel, zum Beispiel `FROM`, `WHERE`, `GROUP BY`.
-- `join`: Join-Blöcke.
-- `expression`: Wert-/Reporter-Blöcke, zum Beispiel `COUNT`, `TEXT`, `COLUMN`.
-- `container`: Blöcke mit Kind-Blöcken.
-- `terminal`: Abschluss-Blöcke, zum Beispiel `COMMIT`, `ROLLBACK`.
+- `statement`: primary SQL statements such as `SELECT`, `INSERT`, and `UPDATE`.
+- `clause`: SQL clauses such as `FROM`, `WHERE`, and `GROUP BY`.
+- `join`: join blocks.
+- `expression`: value/reporter blocks such as `COUNT`, `TEXT`, and `COLUMN`.
+- `container`: blocks with child blocks.
+- `terminal`: ending blocks such as `COMMIT` and `ROLLBACK`.
 
-Beispiel:
+Example:
 
 ```dart
 BlockType.sqlLimit => BlockVisualKind.clause,
 ```
 
-Die Grundhöhe kommt aus:
+The base height comes from:
 
 ```dart
 double baseHeightForBlock(BlockNode node)
 ```
 
-Die SQL-Reihenfolge beim Snappen wird hier gesteuert:
+The SQL ordering used while snapping is controlled here:
 
 ```dart
 bool canFollowInSqlChain(BlockType previous, BlockType next)
 ```
 
-Wenn `LIMIT` nach `ORDER BY` erlaubt sein soll, brauchst du dort eine Regel wie:
+To allow `LIMIT` after `ORDER BY`, add a rule such as:
 
 ```dart
 if (previous == BlockType.sqlOrderBy) {
@@ -86,64 +94,58 @@ if (previous == BlockType.sqlOrderBy) {
 }
 ```
 
-## 3. Text, Slots und Simple/Advanced Mode
+## 3. Text, slots, and simple/advanced mode
 
-Der sichtbare Text eines Nodes kommt aus `sql_labels.dart`.
+Visible node text comes from `sql_labels.dart`.
 
-Dort gibt es mehrere Maps:
+It contains several maps:
 
-- `adv`: technische SQL-Anzeige.
-- `simpleDe`: deutsche Anfänger-Anzeige.
-- `simpleEn`: englische Anfänger-Anzeige.
-- `_simpleByLanguage()`: Sonderfälle für weitere Sprachen.
+- `adv`: technical SQL display.
+- `simpleDe`: beginner-oriented German display.
+- `simpleEn`: beginner-oriented English display.
+- `_simpleByLanguage()`: special cases for other languages.
 
-Beispiel:
+Example:
 
 ```dart
 BlockType.sqlLimit: 'LIMIT [count]',
 ```
 
-Für Deutsch:
+For a German simple label:
 
 ```dart
 BlockType.sqlLimit: 'zeige nur [count] Zeilen',
 ```
 
-Wichtig:
+Important details:
 
-- Platzhalter in eckigen Klammern wie `[count]` werden als editierbare Inline-Inputs behandelt.
-- Platzhalter in geschweiften Klammern wie `{value}` werden eher als Value-/Reporter-Slots verwendet.
+- Square-bracket placeholders such as `[count]` become editable inline inputs.
+- Curly-brace placeholders such as `{value}` are normally value/reporter slots.
 
-Wenn du also möchtest, dass ein Node direkt im Block editierbare Felder hat, nutzt du passende Platzhalter im Label.
+Use the appropriate placeholder when a node needs directly editable fields.
 
-## 4. Farben und Rendering
+## 4. Colors and rendering
 
-Die Farben für native SQL-Nodes werden in `workbench_page.dart` bestimmt:
+`workbench_page.dart` assigns colors to native SQL nodes:
 
 ```dart
 Color _sqlColorForType(BlockType type)
 ```
 
-Dort wird anhand von `BlockVisualKind` oder konkretem `BlockType` eine Farbe aus `ScratchPalette` gewählt.
+It selects a `ScratchPalette` color from `BlockVisualKind` or a concrete
+`BlockType`.
 
-Beispiel:
+Example:
 
 ```dart
 BlockVisualKind.clause when type == BlockType.sqlWhere =>
   ScratchPalette.sqlFilter,
 ```
 
-Das tatsächliche Rendering des Blocks passiert im Workspace ebenfalls in `workbench_page.dart`. Dort werden berechnet:
+The workbench also renders the actual block. It calculates the color, height,
+width, template, inline slots, label mask, and `BlockShape`.
 
-- Farbe
-- Höhe
-- Breite
-- Template
-- Inline-Slots
-- Label-Maske
-- `BlockShape`
-
-Der zentrale Widget-Aufbau nutzt:
+The central widget construction is:
 
 ```dart
 BlockShape(
@@ -151,22 +153,23 @@ BlockShape(
   color: color,
   width: blockWidth,
   height: height,
-  label: ...
+  label: ...,
 )
 ```
 
-Wenn du nur das Aussehen änderst, suchst du meistens in:
+For an appearance-only change, start with:
 
 - `block_syntax.dart`
 - `sql_labels.dart`
 - `workbench_page.dart`
 - `lib/features/workbench/presentation/widgets/block_shape_painter.dart`
 
-## 5. Palette anpassen
+## 5. Change the palette
 
-Ob ein Node links in der Palette auftaucht, wird in `workbench_page.dart` in `_blocksForCategory()` gesteuert.
+`_blocksForCategory()` in `workbench_page.dart` controls whether a node appears
+in the left palette.
 
-Beispiel:
+Example:
 
 ```dart
 SqlPaletteCategory.dql => <_PaletteItem>[
@@ -177,124 +180,125 @@ SqlPaletteCategory.dql => <_PaletteItem>[
 ]
 ```
 
-Wenn ein neuer Node nicht in der Palette steht, kann er nicht normal per UI hinzugefügt werden.
+If a new node is not in the palette, users cannot normally add it through the
+UI.
 
-## 6. SQL-Logik anpassen
+## 6. Change SQL behavior
 
-Die eigentliche Übersetzung von Nodes zu SQL liegt im `SqlCompiler`:
+`SqlCompiler` contains the actual translation from nodes to SQL:
 
 ```dart
 // lib/features/workbench/presentation/engine/sql_compiler.dart
 String _compileSingle(BlockNode node, ...)
 ```
 
-Dort gibt es pro `BlockType` einen `case`.
+It has a `case` for each `BlockType`.
 
-Beispiel für einen neuen `LIMIT`-Node:
-
-```dart
-case BlockType.sqlLimit:
-  return 'LIMIT ${node.inputs['count'] as String? ?? '10'}';
-```
-
-Wenn du das Verhalten eines bestehenden Nodes ändern willst, änderst du den passenden `case`.
-
-Beispiele:
-
-- `sqlSelect`: Welche Spalten und welche Tabelle erzeugt werden.
-- `sqlWhere`: Wie Bedingungen gebaut werden.
-- `sqlJoin`: Wie Join-Type, Tabelle und `ON`-Bedingung erzeugt werden.
-- `sqlGroupBy`: Wie Gruppierungen kompiliert werden.
-- `sqlHaving`: Wie Aggregat-Bedingungen gebaut werden.
-
-## 7. Beispiel: neuen LIMIT-Node hinzufügen
-
-Minimaler Ablauf:
-
-1. `BlockType.sqlLimit` in `block_node.dart` hinzufügen.
-2. `sqlLimit` in `BlockNode.fromJson()` als `OperatorBlock` behandeln.
-3. `sqlLimit` in `block_syntax.dart` als `BlockVisualKind.clause` einordnen.
-4. `canFollowInSqlChain()` anpassen, damit `LIMIT` an der richtigen Stelle erlaubt ist.
-5. Labels in `sql_labels.dart` ergänzen:
-
-```dart
-BlockType.sqlLimit: 'LIMIT [count]',
-```
-
-6. Den Node in `_blocksForCategory()` zur Palette hinzufügen.
-7. Den Compiler in `sql_compiler.dart` ergänzen:
+Example for a new `LIMIT` node:
 
 ```dart
 case BlockType.sqlLimit:
   return 'LIMIT ${node.inputs['count'] as String? ?? '10'}';
 ```
 
-8. Tests ergänzen:
+To change an existing node's behavior, update its corresponding `case`.
 
-- Compiler-Test für erzeugtes SQL.
-- Snap-/Syntax-Test für erlaubte Reihenfolge.
-- Optional Widget-Test, wenn die UI des Blocks besonders ist.
+Examples:
 
-## 8. Bestehenden Node ändern
+- `sqlSelect`: columns and table generation.
+- `sqlWhere`: condition construction.
+- `sqlJoin`: join type, table, and `ON` condition construction.
+- `sqlGroupBy`: grouping construction.
+- `sqlHaving`: aggregate condition construction.
 
-Wenn du nur den Text ändern willst:
+## 7. Example: add a LIMIT node
+
+Minimal sequence:
+
+1. Add `BlockType.sqlLimit` to `block_node.dart`.
+2. Handle `sqlLimit` as an `OperatorBlock` in `BlockNode.fromJson()`.
+3. Classify `sqlLimit` as `BlockVisualKind.clause` in `block_syntax.dart`.
+4. Update `canFollowInSqlChain()` so `LIMIT` is allowed at the correct point.
+5. Add labels in `sql_labels.dart`:
+
+   ```dart
+   BlockType.sqlLimit: 'LIMIT [count]',
+   ```
+
+6. Add the node to the palette in `_blocksForCategory()`.
+7. Add the compiler case in `sql_compiler.dart`:
+
+   ```dart
+   case BlockType.sqlLimit:
+     return 'LIMIT ${node.inputs['count'] as String? ?? '10'}';
+   ```
+
+8. Add tests:
+
+   - compiler test for generated SQL;
+   - snap/syntax test for permitted ordering;
+   - widget test when the node UI is special.
+
+## 8. Change an existing node
+
+To change only text:
 
 - `sql_labels.dart`
 
-Wenn du Farbe oder Form ändern willst:
+To change color or shape:
 
 - `block_syntax.dart`
 - `workbench_page.dart`
-- eventuell `block_shape_painter.dart`
+- optionally `block_shape_painter.dart`
 
-Wenn du ändern willst, wo der Node andocken darf:
+To change allowed docking locations:
 
 - `block_syntax.dart`
-- `workspace_engine.dart`, falls die Platzierungslogik selbst betroffen ist.
+- `workspace_engine.dart` when placement logic itself is affected.
 
-Wenn du ändern willst, welches SQL entsteht:
+To change generated SQL:
 
 - `sql_compiler.dart`
 
-Wenn du ändern willst, welche Felder der Node hat:
+To change a node's fields:
 
-- `sql_labels.dart` für sichtbare Slots.
-- `sql_compiler.dart` für die Nutzung der Inputs.
-- eventuell Palette-Defaults in `workbench_page.dart`.
+- `sql_labels.dart` for visible slots;
+- `sql_compiler.dart` for input usage;
+- optionally palette defaults in `workbench_page.dart`.
 
 ## 9. Tests
 
-Nach Node-Änderungen solltest du mindestens ausführen:
+After node changes, run at least:
 
 ```bash
 flutter analyze
 flutter test
 ```
 
-Sinnvolle Testdateien:
+Useful test files:
 
 - `test/runtime/sql_compiler_query_chain_test.dart`
 - `test/workspace/block_syntax_test.dart`
 - `test/workspace/workspace_engine_test.dart`
 - `test/workspace/block_shape_widget_test.dart`
 
-Wenn du neue Inputs oder Serialisierung änderst, prüfe zusätzlich die Serialization-Tests.
+When adding inputs or changing serialization, also check serialization tests.
 
-## Kurzregel
+## Short rule
 
-Für einen nativen Node brauchst du fast immer:
+For a native node, you almost always need:
 
 ```text
-BlockType -> Syntax/Form -> Label/Slots -> Palette -> Compiler -> Tests
+BlockType -> syntax/shape -> labels/slots -> palette -> compiler -> tests
 ```
 
-Für reine UI-Anpassungen reichen oft:
+For a UI-only adjustment, these are often sufficient:
 
 ```text
 sql_labels.dart -> block_syntax.dart -> workbench_page.dart
 ```
 
-Für echtes Verhalten brauchst du fast immer:
+For behavior, you almost always need:
 
 ```text
 sql_compiler.dart
