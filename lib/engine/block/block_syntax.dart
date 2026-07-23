@@ -215,3 +215,4 @@ bool canFollowInSqlChain(BlockType previous, BlockType next) {
 
   return false;
 }
+
