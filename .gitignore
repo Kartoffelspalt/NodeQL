@@ -69,3 +69,4 @@ key.properties
 
 # VSCode related
 .vscode/
+/tool/nodeql.code-workspace

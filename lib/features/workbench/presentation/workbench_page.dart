@@ -2955,9 +2955,19 @@ class _PaletteState extends State<_Palette> {
         title: Text(label),
         content: Text(description),
         actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(widget.catalog.text('common.ok')),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    NodeQlDesign.radiusMedium,
+                  ),
+                ),
+              ),
+              child: Text(widget.catalog.text('common.ok')),
+            ),
           ),
         ],
       ),
