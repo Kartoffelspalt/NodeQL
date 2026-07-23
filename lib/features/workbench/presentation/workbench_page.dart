@@ -436,9 +436,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   int _blockDiagnosticsRunToken = 0;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
   bool _startupHintShown = false;
-  bool _showStartupHint = false;
+  static const bool _showStartupHint = false;
 
-  String _startupHintText =
+  static const String _startupHintText =
       'Since various changes in the underlying engine, some projects may not '
       'load correctly. If you encounter issues, please check your project files '
       'or restore from a backup.';
@@ -1682,9 +1682,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         'mode': mode.name,
         'locale': locale.languageCode,
         'theme': theme.theme.name,
-      },
-      'settings': <String, dynamic>{
-        'autosaveEnabled': _autosaveEnabledForProject,
       },
       'settings': <String, dynamic>{
         'autosaveEnabled': _autosaveEnabledForProject,
