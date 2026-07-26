@@ -14,5 +14,5 @@ Maintainers will acknowledge a complete report within seven days and will
 coordinate disclosure after a fix or mitigation is available.
 
 NodeQL plugins are declarative JSON packages. Reports involving arbitrary code
-execution, unsafe file access, SQL escaping, update downloads, or translation
+execution, unsafe file access, SQLite escaping, update downloads, or translation
 package validation are especially important.

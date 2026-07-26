@@ -286,7 +286,7 @@ void main() {
     );
     expect(
       const SqlCompiler().compileWorkspace([ifRoot]).sql,
-      "IF(active = 1, 'ja', 'nein');",
+      "CASE WHEN active = 1 THEN 'ja' ELSE 'nein' END;",
     );
   });
 
@@ -383,5 +383,42 @@ void main() {
       ]).sql,
       "SELECT 'O''Reilly' FROM books;",
     );
+  });
+
+  test('renders visual operations with SQLite syntax', () {
+    final root = EventBlock(id: 'run', position: Offset.zero);
+    root.next = OperatorBlock(
+      id: 'clear',
+      position: Offset.zero,
+      operatorType: BlockType.sqlTruncate,
+      inputs: <String, dynamic>{'table': 'logs'},
+    );
+
+    final cleared = const SqlCompiler().compileWorkspace(<BlockNode>[root]);
+    expect(cleared.sql, 'DELETE FROM logs;');
+
+    final concatRoot = EventBlock(id: 'concat-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'concat',
+        position: Offset.zero,
+        operatorType: BlockType.sqlConcat,
+        inputs: <String, dynamic>{'a': "'A'", 'b': "'B'"},
+      );
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[concatRoot]).sql,
+      "('A' || 'B');",
+    );
+
+    final grantRoot = EventBlock(id: 'grant-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'grant',
+        position: Offset.zero,
+        operatorType: BlockType.sqlGrant,
+      );
+    final unsupported = const SqlCompiler().compileWorkspace(<BlockNode>[
+      grantRoot,
+    ]);
+    expect(unsupported.sql, isEmpty);
+    expect(unsupported.warnings.single, contains('SQLite has no GRANT'));
   });
 }

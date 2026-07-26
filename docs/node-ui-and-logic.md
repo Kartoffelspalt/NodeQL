@@ -1,7 +1,7 @@
 # Changing Node UI and Logic
 
 This note explains where native NodeQL nodes get their appearance, slots,
-docking rules, and SQL behavior.
+docking rules, and SQLite behavior.
 
 ## Overview
 
@@ -10,13 +10,13 @@ Native node UI and logic are distributed across several locations:
 - `lib/engine/block/block_node.dart`: node types, serialization, and
   deserialization.
 - `lib/engine/block/block_syntax.dart`: visual role, height, connectors, and
-  permitted SQL ordering.
+  permitted SQLite ordering.
 - `lib/features/workbench/presentation/engine/sql_labels.dart`: visible node
   text and simple/advanced mode.
 - `lib/features/workbench/presentation/workbench_page.dart`: colors, palette,
   node rendering, and input UI.
 - `lib/features/workbench/presentation/engine/sql_compiler.dart`: conversion of
-  nodes to SQL.
+  nodes to SQLite.
 
 ## 1. Define a node type
 
@@ -32,17 +32,17 @@ enum BlockType {
 }
 ```
 
-To add a SQL node, add an entry such as:
+To add a SQLite node, add an entry such as:
 
 ```dart
 sqlLimit,
 ```
 
 Then teach `BlockNode.fromJson()` which concrete node class it creates. Most
-current SQL nodes are `OperatorBlock`s. Container nodes use `ControlBlock`,
+current SQLite nodes are `OperatorBlock`s. Container nodes use `ControlBlock`,
 while some older blocks use `MotionBlock`.
 
-For a simple SQL node, this is usually appropriate:
+For a simple SQLite node, this is usually appropriate:
 
 ```dart
 case BlockType.sqlLimit:
@@ -60,8 +60,8 @@ case BlockType.sqlLimit:
 
 Important roles:
 
-- `statement`: primary SQL statements such as `SELECT`, `INSERT`, and `UPDATE`.
-- `clause`: SQL clauses such as `FROM`, `WHERE`, and `GROUP BY`.
+- `statement`: primary SQLite statements such as `SELECT`, `INSERT`, and `UPDATE`.
+- `clause`: SQLite clauses such as `FROM`, `WHERE`, and `GROUP BY`.
 - `join`: join blocks.
 - `expression`: value/reporter blocks such as `COUNT`, `TEXT`, and `COLUMN`.
 - `container`: blocks with child blocks.
@@ -79,7 +79,7 @@ The base height comes from:
 double baseHeightForBlock(BlockNode node)
 ```
 
-The SQL ordering used while snapping is controlled here:
+The SQLite ordering used while snapping is controlled here:
 
 ```dart
 bool canFollowInSqlChain(BlockType previous, BlockType next)
@@ -100,7 +100,7 @@ Visible node text comes from `sql_labels.dart`.
 
 It contains several maps:
 
-- `adv`: technical SQL display.
+- `adv`: technical SQLite display.
 - `simpleDe`: beginner-oriented German display.
 - `simpleEn`: beginner-oriented English display.
 - `_simpleByLanguage()`: special cases for other languages.
@@ -126,7 +126,7 @@ Use the appropriate placeholder when a node needs directly editable fields.
 
 ## 4. Colors and rendering
 
-`workbench_page.dart` assigns colors to native SQL nodes:
+`workbench_page.dart` assigns colors to native SQLite nodes:
 
 ```dart
 Color _sqlColorForType(BlockType type)
@@ -183,9 +183,9 @@ SqlPaletteCategory.dql => <_PaletteItem>[
 If a new node is not in the palette, users cannot normally add it through the
 UI.
 
-## 6. Change SQL behavior
+## 6. Change SQLite behavior
 
-`SqlCompiler` contains the actual translation from nodes to SQL:
+`SqlCompiler` contains the actual translation from nodes to SQLite:
 
 ```dart
 // lib/features/workbench/presentation/engine/sql_compiler.dart
@@ -235,7 +235,7 @@ Minimal sequence:
 
 8. Add tests:
 
-   - compiler test for generated SQL;
+   - compiler test for generated SQLite;
    - snap/syntax test for permitted ordering;
    - widget test when the node UI is special.
 
@@ -256,7 +256,7 @@ To change allowed docking locations:
 - `block_syntax.dart`
 - `workspace_engine.dart` when placement logic itself is affected.
 
-To change generated SQL:
+To change generated SQLite:
 
 - `sql_compiler.dart`
 

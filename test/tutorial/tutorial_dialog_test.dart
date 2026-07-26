@@ -23,7 +23,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Build SQL without losing sight of SQL'), findsOneWidget);
+    expect(find.text('Build SQLite without losing sight of SQLite'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('tutorial-next')));
     await tester.pumpAndSettle();
@@ -69,7 +69,7 @@ void main() {
 
     final body = tester.widget<Text>(
       find.text(
-        'NodeQL combines visual blocks with real SQL output. You can '
+        'NodeQL combines visual blocks with real SQLite output. You can '
         'learn query structure, experiment locally and inspect every '
         'generated statement.',
       ),

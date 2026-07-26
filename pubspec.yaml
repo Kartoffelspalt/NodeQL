@@ -1,5 +1,5 @@
 name: nodeql
-description: Local-first visual SQL learning and development desktop application.
+description: Local-first visual SQLite learning and development desktop application.
 publish_to: 'none'
 version: 0.3.4+4
 
@@ -42,19 +42,19 @@ flutter:
     - assets/translations/
 
 flutter_launcher_icons:
-  image_path: assets/appicon/iconv4dark.png
+  image_path: assets/appicon/iconv3dark.png
   android: true
   ios: true
   remove_alpha_ios: true
   macos:
     generate: true
-    image_path: assets/appicon/iconv4dark.png
+    image_path: assets/appicon/iconv3dark.png
   web:
     generate: true
-    image_path: assets/appicon/iconv4dark.png
+    image_path: assets/appicon/iconv3dark.png
     background_color: "#0175C2"
     theme_color: "#0175C2"
   windows:
     generate: true
-    image_path: assets/appicon/iconv4dark.png
+    image_path: assets/appicon/iconv3dark.png
     icon_size: 256

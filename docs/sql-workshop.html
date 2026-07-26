@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="NodeQL SQL Workshop: an interactive tutorial for learning SQL with visual NodeQL blocks.">
-  <title>NodeQL SQL Workshop</title>
+  <meta name="description" content="NodeQL SQLite Workshop: an interactive tutorial for learning SQLite with visual NodeQL blocks.">
+  <title>NodeQL SQLite Workshop</title>
   <style>
     :root {
       color-scheme: light;
@@ -956,11 +956,11 @@
   <a class="skip-link" href="#workshop">Zum Workshop springen</a>
   <header class="site-header">
     <nav class="nav" aria-label="Main navigation">
-      <a class="brand" href="#top" aria-label="NodeQL SQL Workshop home">
+      <a class="brand" href="#top" aria-label="NodeQL SQLite Workshop home">
         <div>
           <img src="../assets/appicon/icon.png" width="32" height="32" alt="NodeQL Logo">
         </div>
-        <span>NodeQL SQL Workshop</span>
+        <span>NodeQL SQLite Workshop</span>
       </a>
       <div class="nav-links">
         <a href="#pfad">Learning path</a>
@@ -976,8 +976,8 @@
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-inner">
         <div>
-          <p class="eyebrow">Learn SQL with real NodeQL workflows</p>
-          <h1 id="hero-title">Build SQL visually, understand every line.</h1>
+          <p class="eyebrow">Learn SQLite with real NodeQL workflows</p>
+          <h1 id="hero-title">Build SQLite visually, understand every line.</h1>
           <p class="lead">A complete workshop for beginners and experienced learners: from tables through SELECT, WHERE, and JOIN to aggregations, debugging, and working with local SQLite databases in NodeQL.</p>
           <div class="hero-actions">
             <a class="button" href="#workshop" aria-label="Start workshop">▶ Start workshop</a>
@@ -986,11 +986,11 @@
         </div>
         <div class="hero-visual">
           <div class="screenshot-frame">
-            <img src="screenshots/darkmode-preview.png" alt="NodeQL workspace with visual SQL blocks in dark mode">
+            <img src="screenshots/darkmode-preview.png" alt="NodeQL workspace with visual SQLite blocks in dark mode">
           </div>
           <div class="hero-strip" aria-label="Workshop metrics">
             <div class="stat"><strong>8</strong><span>Module</span></div>
-            <div class="stat"><strong>14</strong><span>SQL patterns</span></div>
+            <div class="stat"><strong>14</strong><span>SQLite patterns</span></div>
             <div class="stat"><strong>6</strong><span>Checks</span></div>
             <div class="stat"><strong>100%</strong><span>practice locally</span></div>
           </div>
@@ -1026,7 +1026,7 @@
             <p class="eyebrow">Workshop</p>
             <h2 id="workshop-title">Eight modules, directly reflected in NodeQL.</h2>
           </div>
-          <p>Each module connects an SQL concept with the NodeQL approach: read blocks from top to bottom, inspect the SQL preview, then run it against a local SQLite database.</p>
+          <p>Each module connects an SQLite concept with the NodeQL approach: read blocks from top to bottom, inspect the SQLite preview, then run it against a local SQLite database.</p>
         </div>
 
         <div class="tabs">
@@ -1041,15 +1041,15 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Query-Lab</p>
-            <h2 id="builder-title">Assemble blocks and read the SQL.</h2>
+            <h2 id="builder-title">Assemble blocks and read the SQLite.</h2>
           </div>
-          <p>This lab simulates the core of NodeQL: choose visual components and the SQL preview appears immediately. Then check whether the clauses are in a meaningful order.</p>
+          <p>This lab simulates the core of NodeQL: choose visual components and the SQLite preview appears immediately. Then check whether the clauses are in a meaningful order.</p>
         </div>
 
         <div class="workshop-split">
           <div class="data-browser">
             <h3>Example database: learning shop</h3>
-            <p class="lead" style="font-size:1rem;margin-top:10px;">Three tables are enough for many SQL fundamentals. In NodeQL, you would connect a local SQLite file for this.</p>
+            <p class="lead" style="font-size:1rem;margin-top:10px;">Three tables are enough for many SQLite fundamentals. In NodeQL, you would connect a local SQLite file for this.</p>
             <div class="schema-list">
               <div class="schema-item">
                 <span><strong>customers</strong><br><small>id, name, city</small></span>
@@ -1123,12 +1123,12 @@
             <div class="node-stack" aria-label="Visual NodeQL block sequence" id="builderNodes"></div>
             <div class="sql-window" style="margin-top:16px;">
               <div class="sql-titlebar">
-                <span>SQL preview</span>
+                <span>SQLite preview</span>
                 <button class="copy-sql" type="button" data-copy-target="builderSql">copy</button>
               </div>
               <pre><code id="builderSql"></code></pre>
             </div>
-            <div class="feedback" id="builderFeedback">Choose components to inspect the SQL structure.</div>
+            <div class="feedback" id="builderFeedback">Choose components to inspect the SQLite structure.</div>
           </div>
         </div>
       </div>
@@ -1139,9 +1139,9 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Exercises</p>
-            <h2 id="exercise-title">Write SQL, then think of it as blocks.</h2>
+            <h2 id="exercise-title">Write SQLite, then think of it as blocks.</h2>
           </div>
-          <p>The checks are intentionally tolerant: they look for the essential SQL building blocks. In NodeQL, you would assemble the same building blocks from the palette.</p>
+          <p>The checks are intentionally tolerant: they look for the essential SQLite building blocks. In NodeQL, you would assemble the same building blocks from the palette.</p>
         </div>
         <div class="exercise-grid" id="exerciseGrid"></div>
       </div>
@@ -1154,16 +1154,16 @@
             <p class="eyebrow">NodeQL orientation</p>
             <h2 id="visual-title">The app remains the common thread.</h2>
           </div>
-          <p>The workshop intentionally refers to the real app: workspace, SQL output, interactive tutorial, and plugin blocks.</p>
+          <p>The workshop intentionally refers to the real app: workspace, SQLite output, interactive tutorial, and plugin blocks.</p>
         </div>
         <div class="screenshot-grid">
           <figure class="figure">
             <img src="screenshots/NodeQL-Einfuehrung.png" alt="NodeQL interactive introduction tutorial">
-            <figcaption>The built-in tutorial explains the interface. This workshop then develops the SQL concepts further.</figcaption>
+            <figcaption>The built-in tutorial explains the interface. This workshop then develops the SQLite concepts further.</figcaption>
           </figure>
           <figure class="figure">
             <img src="screenshots/Plugins.png" alt="NodeQL plugin blocks in the workspace">
-            <figcaption>Plugin blocks can extend SQL. The core rule remains the same: check block order, read the SQL preview, and run locally.</figcaption>
+            <figcaption>Plugin blocks can extend SQLite. The core rule remains the same: check block order, read the SQLite preview, and run locally.</figcaption>
           </figure>
         </div>
       </div>
@@ -1176,7 +1176,7 @@
             <p class="eyebrow">Finish</p>
             <h2 id="quiz-title">Test whether the structure is clear.</h2>
           </div>
-          <p>A quick check of the key decisions: which clause does what, when do you need JOIN, and why is the SQL preview so valuable?</p>
+          <p>A quick check of the key decisions: which clause does what, when do you need JOIN, and why is the SQLite preview so valuable?</p>
         </div>
         <div class="quiz">
           <div class="quiz-panel">
@@ -1189,7 +1189,7 @@
             </div>
           </div>
           <div class="cheat-panel" id="cheatsheet">
-            <h3>NodeQL SQL Cheat-Sheet</h3>
+            <h3>NodeQL SQLite Cheat-Sheet</h3>
             <div class="cheat-list">
               <div class="cheat-item"><strong>SELECT</strong><code>SELECT name, city</code> chooses the visible columns.</div>
               <div class="cheat-item"><strong>FROM</strong><code>FROM customers</code> identifies the table.</div>
@@ -1197,7 +1197,7 @@
               <div class="cheat-item"><strong>JOIN</strong><code>INNER JOIN orders ON customers.id = orders.customer_id</code> connects tables through keys.</div>
               <div class="cheat-item"><strong>GROUP BY</strong><code>GROUP BY city</code> creates groups for <code>COUNT</code>, <code>SUM</code>, or <code>AVG</code>.</div>
               <div class="cheat-item"><strong>ORDER BY</strong><code>ORDER BY total DESC</code> sorts the result.</div>
-              <div class="cheat-item"><strong>NodeQL rule</strong>When blocks look logical, still read the SQL output before running it.</div>
+              <div class="cheat-item"><strong>NodeQL rule</strong>When blocks look logical, still read the SQLite output before running it.</div>
             </div>
             <div class="button-row">
               <button class="button secondary" type="button" onclick="window.print()">Print</button>
@@ -1211,7 +1211,7 @@
 
   <footer class="footer">
     <div class="wrap">
-      <p><strong>NodeQL SQL Workshop</strong><br>Local learning with visual blocks, SQLite, and inspectable SQL output.</p>
+      <p><strong>NodeQL SQLite Workshop</strong><br>Local learning with visual blocks, SQLite, and inspectable SQLite output.</p>
       <p><a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">README</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/plugins/README.md">Plugin SDK</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/RELEASING.md">Release notes</a></p>
     </div>
   </footer>
@@ -1221,17 +1221,17 @@
       {
         title: "Orientation",
         tag: "Module 1",
-        summary: "Understand the palette, workspace, and SQL output.",
+        summary: "Understand the palette, workspace, and SQLite output.",
         sql: "SELECT name, city\nFROM customers;",
         nodes: [
           ["select", "SELECT name, city", "Which columns should be visible?"],
           ["from", "FROM customers", "Which table supplies the data?"]
         ],
         body: [
-          "NodeQL is not a replacement for understanding SQL; it is a learning interface: build a query with blocks while seeing the real SQL statement alongside it.",
-          "Read a query in NodeQL from top to bottom. The start block triggers execution, followed by SQL clauses in the order SQLite expects."
+          "NodeQL is not a replacement for understanding SQLite; it is a learning interface: build a query with blocks while seeing the real SQLite statement alongside it.",
+          "Read a query in NodeQL from top to bottom. The start block triggers execution, followed by SQLite clauses in the order SQLite expects."
         ],
-        tips: ["Start every exercise with SELECT and FROM.", "Use the SQL preview as a check before you run it."]
+        tips: ["Start every exercise with SELECT and FROM.", "Use the SQLite preview as a check before you run it."]
       },
       {
         title: "Tables & Columns",
@@ -1245,7 +1245,7 @@
         ],
         body: [
           "SELECT * is convenient, but it is rarely the best learning habit. When you choose columns deliberately, you understand more quickly which data truly supports your result.",
-          "In NodeQL, this is a SELECT block with editable column values. Change a column and observe how the SQL preview changes."
+          "In NodeQL, this is a SELECT block with editable column values. Change a column and observe how the SQLite preview changes."
         ],
         tips: ["Use descriptive column names.", "Sort early examples so results are easier to verify."]
       },
@@ -1295,7 +1295,7 @@
           ["where", "WHERE orders.total >= 100", "Filter the result."]
         ],
         body: [
-          "JOIN is where SQL becomes especially useful. You connect tables that are stored separately but belong together conceptually.",
+          "JOIN is where SQLite becomes especially useful. You connect tables that are stored separately but belong together conceptually.",
           "The ON condition is not an extra detail. It is the bridge between the primary key and foreign key. Without it, incorrect combinations result."
         ],
         tips: ["Qualify columns with table names when names occur more than once.", "INNER JOIN shows only matching pairs."]
@@ -1328,10 +1328,10 @@
           ["where", "WHERE city = Berlin", "A text value needs quotation marks."],
         ],
         body: [
-          "Errors are normal when learning SQL. NodeQL helps because you can inspect the block structure and generated SQL line side by side.",
+          "Errors are normal when learning SQLite. NodeQL helps because you can inspect the block structure and generated SQLite line side by side.",
           "First look for simple causes: missing commas, incorrect quotation marks, swapped clauses, or columns that do not exist in the table."
         ],
-        tips: ["Compare the block and SQL line.", "Reduce the query until the smallest part works again."]
+        tips: ["Compare the block and SQLite line.", "Reduce the query until the smallest part works again."]
       },
       {
         title: "Local Workflow",
@@ -1346,7 +1346,7 @@
         ],
         body: [
           "NodeQL is local-first: projects, settings, plugins, and databases remain on the device. This suits learning because you can experiment without a cloud dependency.",
-          "The professional workflow is simple: formulate a question, build blocks, read the SQL, run it locally, inspect the result, then extend it step by step."
+          "The professional workflow is simple: formulate a question, build blocks, read the SQLite, run it locally, inspect the result, then extend it step by step."
         ],
         tips: ["Save learning projects by topic.", "Document good queries as examples for later projects."]
       }
@@ -1405,10 +1405,10 @@
         note: "FROM is the data source. SELECT then decides what becomes visible."
       },
       {
-        question: "Why is the SQL preview important in NodeQL?",
+        question: "Why is the SQLite preview important in NodeQL?",
         options: ["It replaces every database.", "It shows the real query before you run it.", "It deletes invalid rows automatically."],
         answer: 1,
-        note: "The preview turns visual blocks into inspectable SQL."
+        note: "The preview turns visual blocks into inspectable SQLite."
       },
       {
         question: "Wann brauchst du einen JOIN?",
@@ -1492,7 +1492,7 @@
               </div>
               <div class="sql-window" style="margin-top:16px;">
                 <div class="sql-titlebar">
-                  <span>Erzeugtes SQL</span>
+                  <span>Erzeugtes SQLite</span>
                   <button class="copy-sql" type="button" data-copy-text="${encodeURIComponent(module.sql)}">kopieren</button>
                 </div>
                 <pre><code>${escapeHtml(module.sql)}</code></pre>
@@ -1561,7 +1561,7 @@
         feedback.textContent = "The selected JOIN starts at customers. Set FROM to customers so the ON condition is semantically correct.";
       } else {
         feedback.className = "feedback ok";
-        feedback.textContent = "The clause order is correct. Now read the SQL lines from top to bottom.";
+        feedback.textContent = "The clause order is correct. Now read the SQLite lines from top to bottom.";
       }
     }
 
@@ -1580,7 +1580,7 @@
         <article class="exercise">
           <h3>${exercise.title}</h3>
           <p>${exercise.task}</p>
-          <textarea aria-label="${exercise.title} SQL Eingabe" spellcheck="false" id="exercise-${index}">${exercise.starter}</textarea>
+          <textarea aria-label="${exercise.title} SQLite Eingabe" spellcheck="false" id="exercise-${index}">${exercise.starter}</textarea>
           <button class="button secondary" type="button" data-check-exercise="${index}">check</button>
           <div class="feedback" id="exercise-feedback-${index}">Not checked yet.</div>
         </article>

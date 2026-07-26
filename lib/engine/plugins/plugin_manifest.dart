@@ -147,7 +147,7 @@ class PluginInputDefinition {
           r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$',
         ).hasMatch(identifier)) {
           throw FormatException(
-            'Value "$identifier" is not a valid SQL identifier.',
+            'Value "$identifier" is not a valid SQLite identifier.',
           );
         }
         return identifier;
@@ -241,7 +241,7 @@ class NodeQlPluginBlock {
         final input = inputByName[name];
         if (input == null) {
           throw FormatException(
-            'SQL template references unknown input "$name".',
+            'SQLite template references unknown input "$name".',
           );
         }
         return input.format(values[name] ?? input.defaultValue);
@@ -317,7 +317,7 @@ class NodeQlPluginBlock {
     final sqlTemplate = json['sql'] as String?;
     if (sqlTemplate == null || sqlTemplate.trim().isEmpty) {
       throw FormatException(
-        'Block "$id" must define a non-empty SQL template.',
+        'Block "$id" must define a non-empty SQLite template.',
       );
     }
     final placeholders = RegExp(
@@ -328,7 +328,7 @@ class NodeQlPluginBlock {
     final unknown = placeholders.difference(allowed);
     if (unknown.isNotEmpty) {
       throw FormatException(
-        'Block "$id" references unknown SQL input(s): ${unknown.join(', ')}.',
+        'Block "$id" references unknown SQLite input(s): ${unknown.join(', ')}.',
       );
     }
     if (shape.first != PluginBlockShape.container &&

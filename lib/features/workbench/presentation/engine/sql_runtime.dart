@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -169,6 +170,17 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         await snapshot.delete();
       }
     }
+  }
+
+  /// Runs a visual SQLite program. SQLite text is rendered only here, at the
+  /// database adapter boundary, rather than being assembled by workspace UI.
+  Future<void> executeProgram(SqliteProgram program) {
+    final rendered = const SqliteDialectRenderer().render(program);
+    if (rendered.sql.trim().isEmpty) {
+      state = state.copyWith(lastMessage: 'No executable SQLite operation.');
+      return Future<void>.value();
+    }
+    return executeWithSnapshot(rendered.sql);
   }
 
   bool _isWriteSql(String sql) {

@@ -12,5 +12,5 @@ through **Settings > Manage Plugins > Install plugin.json**.
 | `dev.nodeql.privacy-tools` | Email, phone, and generic value masking |
 | `dev.nodeql.sqlite-power` | CTEs, query plans, upserts, date series |
 
-The SQL examples target SQLite, which is NodeQL's current local runtime.
-Plugins remain plain JSON packages and can be adapted to other SQL dialects.
+The SQLite examples target SQLite, which is NodeQL's current local runtime.
+Plugins remain plain JSON packages and can be adapted to other SQLite dialects.

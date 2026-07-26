@@ -2,6 +2,57 @@ import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 
+/// A database-neutral representation of the connected visual blocks.
+///
+/// Workspace nodes are deliberately kept as structured data until they reach
+/// the SQLite adapter. This prevents the UI and the workspace engine from
+/// passing hand-built SQLite strings around.
+class SqliteProgram {
+  const SqliteProgram({required this.roots, required this.pluginBlocks});
+
+  final List<BlockNode> roots;
+  final Map<String, NodeQlPluginBlock> pluginBlocks;
+
+  bool get isEmpty => roots
+      .where((node) => node.type == BlockType.eventGreenFlag)
+      .every((node) => node.next == null);
+}
+
+class SqlitePlanResult {
+  const SqlitePlanResult({required this.program, required this.warnings});
+
+  final SqliteProgram program;
+  final List<String> warnings;
+}
+
+/// Converts the visual workspace into a structured SQLite program.
+class SqliteProgramCompiler {
+  const SqliteProgramCompiler();
+
+  SqlitePlanResult compileWorkspace(
+    List<BlockNode> roots, {
+    Map<String, NodeQlPluginBlock> pluginBlocks =
+        const <String, NodeQlPluginBlock>{},
+  }) {
+    final warnings = <String>[];
+    for (final node in roots.where(
+      (node) => node.type != BlockType.eventGreenFlag,
+    )) {
+      warnings.add(
+        'Root "${node.id}" is not executable. Attach it under an EXECUTE QUERY trigger block.',
+      );
+    }
+    return SqlitePlanResult(
+      program: SqliteProgram(roots: roots, pluginBlocks: pluginBlocks),
+      warnings: warnings,
+    );
+  }
+}
+
+/// Compatibility facade for the SQLite command preview.
+///
+/// The app executes [SqliteProgram]s. The text returned here is only a
+/// preview that users can inspect or copy.
 class SqlCompiler {
   const SqlCompiler();
 
@@ -10,16 +61,28 @@ class SqlCompiler {
     Map<String, NodeQlPluginBlock> pluginBlocks =
         const <String, NodeQlPluginBlock>{},
   }) {
+    final plan = const SqliteProgramCompiler().compileWorkspace(
+      roots,
+      pluginBlocks: pluginBlocks,
+    );
+    final rendered = const SqliteDialectRenderer().render(plan.program);
+    return SqlCompileResult(
+      program: plan.program,
+      sql: rendered.sql,
+      warnings: <String>[...plan.warnings, ...rendered.warnings],
+    );
+  }
+}
+
+/// The sole boundary that turns a visual program into SQLite syntax.
+class SqliteDialectRenderer {
+  const SqliteDialectRenderer();
+
+  SqliteRenderResult render(SqliteProgram program) {
+    final roots = program.roots;
+    final pluginBlocks = program.pluginBlocks;
     final statements = <String>[];
     final warnings = <String>[];
-    final floatingRoots = roots.where(
-      (n) => n.type != BlockType.eventGreenFlag,
-    );
-    for (final floating in floatingRoots) {
-      warnings.add(
-        'Root "${floating.id}" is not executable. Attach it under an EXECUTE QUERY trigger block.',
-      );
-    }
 
     for (final root in roots.where((n) => n.type == BlockType.eventGreenFlag)) {
       if (root.next == null) continue;
@@ -33,7 +96,7 @@ class SqlCompiler {
         statements.add(sql.endsWith(';') ? sql : '$sql;');
       }
     }
-    return SqlCompileResult(sql: statements.join('\n'), warnings: warnings);
+    return SqliteRenderResult(sql: statements.join('\n'), warnings: warnings);
   }
 
   String _compileNode(
@@ -195,9 +258,12 @@ class SqlCompiler {
       case BlockType.sqlSubqueryIn:
         return '${node.inputs['lhs'] as String? ?? 'id'} IN (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
       case BlockType.sqlSubqueryAny:
-        return '${node.inputs['lhs'] as String? ?? 'id'} = ANY (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
+        return '${node.inputs['lhs'] as String? ?? 'id'} IN (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
       case BlockType.sqlSubqueryAll:
-        return '${node.inputs['lhs'] as String? ?? 'id'} = ALL (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
+        warnings.add(
+          'SQLite does not support the ALL subquery operator. Use NOT EXISTS instead.',
+        );
+        return '';
       case BlockType.sqlCount:
         return 'COUNT(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? '*'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlSum:
@@ -209,9 +275,9 @@ class SqlCompiler {
       case BlockType.sqlMax:
         return 'MAX(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlConcat:
-        return 'CONCAT(${_compileReporterInput(node, 'a', '${node.inputs['a'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}, ${_compileReporterInput(node, 'b', '${node.inputs['b'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return '(${_compileReporterInput(node, 'a', '${node.inputs['a'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)} || ${_compileReporterInput(node, 'b', '${node.inputs['b'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlSubstring:
-        return 'SUBSTRING(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}, ${node.inputs['start'] as String? ?? '1'}, ${node.inputs['len'] as String? ?? '1'})';
+        return 'substr(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}, ${node.inputs['start'] as String? ?? '1'}, ${node.inputs['len'] as String? ?? '1'})';
       case BlockType.sqlLength:
         return 'LENGTH(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlUpper:
@@ -221,9 +287,9 @@ class SqlCompiler {
       case BlockType.sqlTrim:
         return 'TRIM(${_compileReporterInput(node, 'expr', '${node.inputs['expr'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlLeft:
-        return 'LEFT(${node.inputs['expr'] as String? ?? "''"}, ${node.inputs['n'] as String? ?? '1'})';
+        return 'substr(${node.inputs['expr'] as String? ?? "''"}, 1, ${node.inputs['n'] as String? ?? '1'})';
       case BlockType.sqlRight:
-        return 'RIGHT(${node.inputs['expr'] as String? ?? "''"}, ${node.inputs['n'] as String? ?? '1'})';
+        return 'substr(${node.inputs['expr'] as String? ?? "''"}, -${node.inputs['n'] as String? ?? '1'})';
       case BlockType.sqlReplace:
         return 'REPLACE(${node.inputs['expr'] as String? ?? "''"}, ${node.inputs['from'] as String? ?? "''"}, ${node.inputs['to'] as String? ?? "''"})';
       case BlockType.sqlCurrentDate:
@@ -233,23 +299,29 @@ class SqlCompiler {
       case BlockType.sqlCurrentTimestamp:
         return 'CURRENT_TIMESTAMP';
       case BlockType.sqlDatePart:
-        return 'DATE_PART(${node.inputs['part'] as String? ?? "'day'"}, ${node.inputs['expr'] as String? ?? 'CURRENT_DATE'})';
+        return _sqliteDatePart(
+          '${node.inputs['part'] ?? 'day'}',
+          node.inputs['expr'] as String? ?? 'CURRENT_DATE',
+        );
       case BlockType.sqlDateAdd:
-        return 'DATE_ADD(${node.inputs['expr'] as String? ?? 'CURRENT_DATE'}, INTERVAL ${node.inputs['n'] as String? ?? '1'} ${node.inputs['unit'] as String? ?? 'DAY'})';
+        return _sqliteDateModify(node, '+');
       case BlockType.sqlDateSub:
-        return 'DATE_SUB(${node.inputs['expr'] as String? ?? 'CURRENT_DATE'}, INTERVAL ${node.inputs['n'] as String? ?? '1'} ${node.inputs['unit'] as String? ?? 'DAY'})';
+        return _sqliteDateModify(node, '-');
       case BlockType.sqlExtract:
-        return 'EXTRACT(${node.inputs['part'] as String? ?? 'DAY'} FROM ${node.inputs['expr'] as String? ?? 'CURRENT_DATE'})';
+        return _sqliteDatePart(
+          '${node.inputs['part'] ?? 'day'}',
+          node.inputs['expr'] as String? ?? 'CURRENT_DATE',
+        );
       case BlockType.sqlToChar:
-        return 'TO_CHAR(${node.inputs['expr'] as String? ?? 'CURRENT_DATE'}, ${node.inputs['fmt'] as String? ?? "'YYYY-MM-DD'"})';
+        return "strftime('${_sqliteDateFormat(node.inputs['fmt'] as String? ?? 'YYYY-MM-DD')}', ${node.inputs['expr'] as String? ?? 'CURRENT_DATE'})";
       case BlockType.sqlTimestampDiff:
-        return 'TIMESTAMPDIFF(${node.inputs['unit'] as String? ?? 'DAY'}, ${node.inputs['a'] as String? ?? 'CURRENT_DATE'}, ${node.inputs['b'] as String? ?? 'CURRENT_DATE'})';
+        return _sqliteTimestampDiff(node);
       case BlockType.sqlDateDiff:
-        return 'DATEDIFF(${node.inputs['a'] as String? ?? 'CURRENT_DATE'}, ${node.inputs['b'] as String? ?? 'CURRENT_DATE'})';
+        return 'CAST(julianday(${node.inputs['b'] as String? ?? 'CURRENT_DATE'}) - julianday(${node.inputs['a'] as String? ?? 'CURRENT_DATE'}) AS INTEGER)';
       case BlockType.sqlCase:
         return 'CASE WHEN ${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['when'] as String? ?? '1 = 1')} THEN ${node.inputs['then'] as String? ?? node.inputs['result'] as String? ?? "'x'"} ELSE ${node.inputs['else'] as String? ?? node.inputs['default'] as String? ?? "'y'"} END';
       case BlockType.sqlIf:
-        return 'IF(${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['cond'] as String? ?? '1 = 1')}, ${node.inputs['a'] as String? ?? node.inputs['value'] as String? ?? "'x'"}, ${node.inputs['b'] as String? ?? node.inputs['default'] as String? ?? "'y'"})';
+        return 'CASE WHEN ${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['cond'] as String? ?? '1 = 1')} THEN ${node.inputs['a'] as String? ?? node.inputs['value'] as String? ?? "'x'"} ELSE ${node.inputs['b'] as String? ?? node.inputs['default'] as String? ?? "'y'"} END';
       case BlockType.sqlCoalesce:
         return 'COALESCE(${node.inputs['a'] as String? ?? 'NULL'}, ${node.inputs['b'] as String? ?? 'NULL'})';
       case BlockType.sqlNullIf:
@@ -265,13 +337,15 @@ class SqlCompiler {
       case BlockType.sqlAlterTable:
         return 'ALTER TABLE ${node.inputs['table'] as String? ?? 'table_name'} ${node.inputs['alter'] as String? ?? 'ADD COLUMN c TEXT'}';
       case BlockType.sqlTruncate:
-        return 'TRUNCATE TABLE ${node.inputs['table'] as String? ?? 'table_name'}';
+        return 'DELETE FROM ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlDropTable:
         return 'DROP TABLE ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlGrant:
-        return 'GRANT ${node.inputs['privilege'] as String? ?? 'SELECT'} ON ${node.inputs['table'] as String? ?? 'table_name'} TO ${node.inputs['user'] as String? ?? 'user'}';
+        warnings.add('SQLite has no GRANT statement or user management.');
+        return '';
       case BlockType.sqlRevoke:
-        return 'REVOKE ${node.inputs['privilege'] as String? ?? 'SELECT'} ON ${node.inputs['table'] as String? ?? 'table_name'} FROM ${node.inputs['user'] as String? ?? 'user'}';
+        warnings.add('SQLite has no REVOKE statement or user management.');
+        return '';
       case BlockType.sqlCommit:
         return 'COMMIT';
       case BlockType.sqlRollback:
@@ -281,11 +355,61 @@ class SqlCompiler {
       case BlockType.sqlRollbackToSavepoint:
         return 'ROLLBACK TO SAVEPOINT ${node.inputs['name'] as String? ?? 'sp1'}';
       case BlockType.sqlSetTransaction:
-        return 'SET TRANSACTION ISOLATION LEVEL ${node.inputs['level'] as String? ?? 'READ COMMITTED'}';
+        warnings.add(
+          'SQLite does not support SET TRANSACTION isolation levels.',
+        );
+        return '';
       case BlockType.sqlLoop:
         // NodeQL loop compiles contained statements as transaction body.
         return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}; COMMIT';
     }
+  }
+
+  String _sqliteDatePart(String part, String expression) {
+    final format = switch (part.trim().toLowerCase().replaceAll("'", '')) {
+      'year' => '%Y',
+      'month' => '%m',
+      'day' => '%d',
+      'hour' => '%H',
+      'minute' => '%M',
+      'second' => '%S',
+      'weekday' => '%w',
+      _ => '%d',
+    };
+    return "CAST(strftime('$format', $expression) AS INTEGER)";
+  }
+
+  String _sqliteDateModify(BlockNode node, String sign) {
+    final expression = node.inputs['expr'] as String? ?? 'CURRENT_DATE';
+    final amount = node.inputs['n'] as String? ?? '1';
+    final unit = (node.inputs['unit'] as String? ?? 'DAY').toLowerCase();
+    return "datetime($expression, '$sign$amount $unit')";
+  }
+
+  String _sqliteDateFormat(String format) {
+    return format
+        .replaceAll("'", '')
+        .replaceAll('YYYY', '%Y')
+        .replaceAll('YY', '%y')
+        .replaceAll('MM', '%m')
+        .replaceAll('DD', '%d')
+        .replaceAll('HH24', '%H')
+        .replaceAll('MI', '%M')
+        .replaceAll('SS', '%S');
+  }
+
+  String _sqliteTimestampDiff(BlockNode node) {
+    final a = node.inputs['a'] as String? ?? 'CURRENT_DATE';
+    final b = node.inputs['b'] as String? ?? 'CURRENT_DATE';
+    final divisor = switch ((node.inputs['unit'] as String? ?? 'DAY')
+        .toUpperCase()) {
+      'SECOND' || 'SECONDS' => 1 / 86400,
+      'MINUTE' || 'MINUTES' => 1 / 1440,
+      'HOUR' || 'HOURS' => 1 / 24,
+      'WEEK' || 'WEEKS' => 7,
+      _ => 1,
+    };
+    return 'CAST((julianday($b) - julianday($a)) / $divisor AS INTEGER)';
   }
 
   String _normalizedJoinType(dynamic value) {
@@ -480,9 +604,21 @@ class SqlCompiler {
   }
 }
 
-class SqlCompileResult {
-  const SqlCompileResult({required this.sql, required this.warnings});
+class SqliteRenderResult {
+  const SqliteRenderResult({required this.sql, required this.warnings});
 
+  final String sql;
+  final List<String> warnings;
+}
+
+class SqlCompileResult {
+  const SqlCompileResult({
+    required this.program,
+    required this.sql,
+    required this.warnings,
+  });
+
+  final SqliteProgram program;
   final String sql;
   final List<String> warnings;
 }

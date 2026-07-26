@@ -269,7 +269,7 @@ const builtInMessages = <String, Map<String, String>>{
   'de': {
     'app.name': 'NodeQL',
     'toolbar.mountDatabase': 'DB laden',
-    'toolbar.runSql': 'SQL ausführen',
+    'toolbar.runSql': 'SQLite ausführen',
     'toolbar.simple': 'Einfach',
     'toolbar.advanced': 'Erweitert',
     'toolbar.tutorial': 'Tutorial öffnen',
@@ -333,19 +333,19 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.mode.beginnerSyntax': 'Nodes & Syntax',
     'tutorial.mode.intermediate': 'Mittlere Kenntnisse',
     'tutorial.mode.expert': 'Viele Kenntnisse',
-    'tutorial.visual.blocks': 'Visuelle SQL-Blöcke',
+    'tutorial.visual.blocks': 'Visuelle SQLite-Blöcke',
     'tutorial.visual.database': 'Lokale Datenbanken',
     'tutorial.visual.learn': 'Lernen durch Ausprobieren',
     'tutorial.visual.palette': 'Blockpalette',
     'tutorial.visual.workspace': 'Arbeitsbereich',
-    'tutorial.visual.output': 'SQL und Ergebnisse',
+    'tutorial.visual.output': 'SQLite und Ergebnisse',
     'tutorial.visual.execute': 'ABFRAGE AUSFÜHREN',
     'tutorial.visual.runHint':
-        'NodeQL übersetzt deine verbundenen Blöcke in SQL.',
+        'NodeQL übersetzt deine verbundenen Blöcke in SQLite.',
     'tutorial.visual.pluginStatement': 'Plugin-Aktion',
     'tutorial.visual.pluginValue': 'Plugin-Wert',
     'tutorial.visual.pluginContainer': 'Plugin-Container',
-    'tutorial.visual.sql': 'SQL-Vorschau',
+    'tutorial.visual.sql': 'SQLite-Vorschau',
     'tutorial.visual.errorHint':
         'Syntaxfehler nahe COUNT: Prüfe die ausgewählten Spalten.',
     'tutorial.visual.contract': 'Erweiterungsvertrag',
@@ -355,18 +355,18 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.visual.syntaxStatement': 'Anweisungs-Node',
     'tutorial.visual.syntaxValue': 'Wert-Node',
     'tutorial.visual.syntaxReady':
-        'Du weißt jetzt, wie NodeQL-Nodes SQL-Syntax abbilden.',
+        'Du weißt jetzt, wie NodeQL-Nodes SQLite-Syntax abbilden.',
     'tutorial.visual.ready': 'Du bist bereit für deine erste visuelle Abfrage.',
     'tutorial.step.1.nav': 'Willkommen',
     'tutorial.step.1.eyebrow': 'WILLKOMMEN',
-    'tutorial.step.1.title': 'SQL bauen, ohne SQL aus den Augen zu verlieren',
+    'tutorial.step.1.title': 'SQLite bauen, ohne SQLite aus den Augen zu verlieren',
     'tutorial.step.1.body':
-        'NodeQL verbindet visuelle Blöcke mit echter SQL-Ausgabe. Du lernst Abfragestrukturen, experimentierst lokal und kannst jede erzeugte Anweisung prüfen.',
+        'NodeQL verbindet visuelle Blöcke mit echter SQLite-Ausgabe. Du lernst Abfragestrukturen, experimentierst lokal und kannst jede erzeugte Anweisung prüfen.',
     'tutorial.step.2.nav': 'Die Oberfläche',
     'tutorial.step.2.eyebrow': 'ORIENTIERUNG',
     'tutorial.step.2.title': 'Drei Bereiche, ein Arbeitsablauf',
     'tutorial.step.2.body':
-        'Links wählst du Blöcke, in der Mitte setzt du sie zusammen und rechts prüfst du SQL sowie Datenbankergebnisse.',
+        'Links wählst du Blöcke, in der Mitte setzt du sie zusammen und rechts prüfst du SQLite sowie Datenbankergebnisse.',
     'tutorial.step.2.question': 'Wo setzt du eine Abfrage zusammen?',
     'tutorial.step.2.answer.1': 'In der Ergebnistabelle',
     'tutorial.step.2.answer.2': 'Im Arbeitsbereich',
@@ -384,7 +384,7 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.step.4.eyebrow': 'ANDOCKEN',
     'tutorial.step.4.title': 'Formen zeigen gültige Verbindungen',
     'tutorial.step.4.body':
-        'Ziehe einen Block an einen passenden Anschluss. NodeQL hebt gültige Ziele hervor und erhält die logische SQL-Reihenfolge.',
+        'Ziehe einen Block an einen passenden Anschluss. NodeQL hebt gültige Ziele hervor und erhält die logische SQLite-Reihenfolge.',
     'tutorial.step.4.question':
         'Was solltest du tun, wenn kein Anschluss hervorgehoben wird?',
     'tutorial.step.4.answer.1': 'Den Block irgendwo loslassen',
@@ -392,13 +392,13 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.step.4.answer.3': 'Ihn an eine passende Position bewegen',
     'tutorial.step.5.nav': 'Ausführen',
     'tutorial.step.5.eyebrow': 'AUSFÜHRUNG',
-    'tutorial.step.5.title': 'Sieh das SQL vor der Ausführung',
+    'tutorial.step.5.title': 'Sieh das SQLite vor der Ausführung',
     'tutorial.step.5.body':
-        'Lade eine lokale SQLite-Datenbank, prüfe das erzeugte SQL und wähle SQL ausführen. Ergebnisse und verständliche Fehler erscheinen im unteren Ausgabebereich.',
+        'Lade eine lokale SQLite-Datenbank, prüfe das erzeugte SQLite und wähle SQLite ausführen. Ergebnisse und verständliche Fehler erscheinen im unteren Ausgabebereich.',
     'tutorial.step.5.question':
         'Wo kannst du die erzeugte Anweisung überprüfen?',
     'tutorial.step.5.answer.1': 'Erst nach dem Schließen von NodeQL',
-    'tutorial.step.5.answer.2': 'In der SQL-Ausgabe rechts',
+    'tutorial.step.5.answer.2': 'In der SQLite-Ausgabe rechts',
     'tutorial.step.5.answer.3': 'In der Sprachverwaltung',
     'tutorial.step.6.nav': 'Plugin-Nodes',
     'tutorial.step.6.eyebrow': 'ERWEITERUNGEN',
@@ -439,13 +439,13 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.step.9.answer.1': 'Farbe, Breite und Höhe',
     'tutorial.step.9.answer.2': 'Dateiname, Ordner und Sprache',
     'tutorial.step.9.answer.3': 'Spalte, Operator und Wert',
-    'tutorial.step.10.nav': 'SQL lesen',
+    'tutorial.step.10.nav': 'SQLite lesen',
     'tutorial.step.10.eyebrow': 'ÜBERSETZUNG',
-    'tutorial.step.10.title': 'NodeQL erklärt jeden Block als SQL',
+    'tutorial.step.10.title': 'NodeQL erklärt jeden Block als SQLite',
     'tutorial.step.10.body':
-        'Rechts siehst du die SQL-Ausgabe. Lies sie wie einen Kontrollzettel: Stimmen Tabelle, Spalten und Filter? Wenn ja, kannst du SQL ausführen. Wenn nicht, änderst du die Blöcke.',
+        'Rechts siehst du die SQLite-Ausgabe. Lies sie wie einen Kontrollzettel: Stimmen Tabelle, Spalten und Filter? Wenn ja, kannst du SQLite ausführen. Wenn nicht, änderst du die Blöcke.',
     'tutorial.step.10.question':
-        'Warum lohnt sich der Blick auf die SQL-Ausgabe?',
+        'Warum lohnt sich der Blick auf die SQLite-Ausgabe?',
     'tutorial.step.10.answer.1': 'Sie ersetzt die Datenbankdatei',
     'tutorial.step.10.answer.2':
         'Du erkennst vor dem Ausführen, was die Blöcke bedeuten',
@@ -454,22 +454,22 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.step.11.eyebrow': 'FEHLERKULTUR',
     'tutorial.step.11.title': 'Fehler sind Hinweise, keine Sackgasse',
     'tutorial.step.11.body':
-        'Wenn ein SQL-Fehler erscheint, prüfe zuerst die letzte Änderung. Häufig fehlen Tabellen, Spaltennamen sind falsch oder ein Wert braucht Anführungszeichen. Ändere einen Block und teste erneut.',
+        'Wenn ein SQLite-Fehler erscheint, prüfe zuerst die letzte Änderung. Häufig fehlen Tabellen, Spaltennamen sind falsch oder ein Wert braucht Anführungszeichen. Ändere einen Block und teste erneut.',
     'tutorial.step.12.nav': 'Weiterlernen',
     'tutorial.step.12.eyebrow': 'NÄCHSTER SCHRITT',
     'tutorial.step.12.title': 'Jetzt folgt das Node- und Syntax-Tutorial',
     'tutorial.step.12.body':
-        'Du kennst nun Oberfläche, Datenbank, SELECT, FROM, WHERE und SQL-Ausgabe. Im nächsten Tutorial lernst du genauer, welche Node-Arten es gibt und wie Slots, Reporter, Joins, GROUP BY und HAVING funktionieren.',
+        'Du kennst nun Oberfläche, Datenbank, SELECT, FROM, WHERE und SQLite-Ausgabe. Im nächsten Tutorial lernst du genauer, welche Node-Arten es gibt und wie Slots, Reporter, Joins, GROUP BY und HAVING funktionieren.',
     'tutorial.syntax.step.1.nav': 'Node-Typen',
     'tutorial.syntax.step.1.eyebrow': 'NODE-SYNTAX',
     'tutorial.syntax.step.1.title':
         'Jeder Node hat eine Aufgabe in der Abfrage',
     'tutorial.syntax.step.1.body':
-        'NodeQL nutzt Starter-Nodes, Anweisungs-Nodes und Wert-Nodes. Starter-Nodes beginnen die Ausführung, Anweisungs-Nodes bilden die SQL-Kette und Wert-Nodes füllen Eingaben in anderen Nodes.',
+        'NodeQL nutzt Starter-Nodes, Anweisungs-Nodes und Wert-Nodes. Starter-Nodes beginnen die Ausführung, Anweisungs-Nodes bilden die SQLite-Kette und Wert-Nodes füllen Eingaben in anderen Nodes.',
     'tutorial.syntax.step.2.nav': 'Ketten',
     'tutorial.syntax.step.2.eyebrow': 'ANWEISUNGEN',
     'tutorial.syntax.step.2.title':
-        'Anweisungs-Nodes lesen sich wie SQL-Klauseln',
+        'Anweisungs-Nodes lesen sich wie SQLite-Klauseln',
     'tutorial.syntax.step.2.body':
         'Blöcke, die vertikal andocken, werden zur Anweisungskette. Lies sie von oben nach unten: SELECT beschreibt die Ausgabe, FROM wählt die Tabelle und spätere Klauseln verfeinern das Ergebnis.',
     'tutorial.syntax.step.2.question':
@@ -482,13 +482,13 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.syntax.step.3.title':
         'Slots sind die bearbeitbaren Teile der Syntax',
     'tutorial.syntax.step.3.body':
-        'Ein Slot ist ein Platzhalter innerhalb eines Nodes. Er kann eine Spalte, einen Textwert, eine Zahl, einen Tabellennamen oder einen Reporter-Node aufnehmen, abhängig davon, was die SQL-Klausel erwartet.',
+        'Ein Slot ist ein Platzhalter innerhalb eines Nodes. Er kann eine Spalte, einen Textwert, eine Zahl, einen Tabellennamen oder einen Reporter-Node aufnehmen, abhängig davon, was die SQLite-Klausel erwartet.',
     'tutorial.syntax.step.3.question':
         'Was stellt ein Slot innerhalb eines Nodes dar?',
     'tutorial.syntax.step.3.answer.1': 'Einen Ort zum Speichern von Dateien',
     'tutorial.syntax.step.3.answer.2': 'Die App-Einstellungen',
     'tutorial.syntax.step.3.answer.3':
-        'Einen bearbeitbaren Wert in der SQL-Syntax',
+        'Einen bearbeitbaren Wert in der SQLite-Syntax',
     'tutorial.syntax.step.4.nav': 'Reporter',
     'tutorial.syntax.step.4.eyebrow': 'WERTE',
     'tutorial.syntax.step.4.title': 'Reporter-Nodes geben einen Wert zurück',
@@ -501,9 +501,9 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.syntax.step.5.nav': 'Reihenfolge',
     'tutorial.syntax.step.5.eyebrow': 'KLAUSELREIHENFOLGE',
     'tutorial.syntax.step.5.title':
-        'NodeQL schützt die Reihenfolge der SQL-Klauseln',
+        'NodeQL schützt die Reihenfolge der SQLite-Klauseln',
     'tutorial.syntax.step.5.body':
-        'SQL hat eine logische Klauselreihenfolge. NodeQL hilft, sie einzuhalten: SELECT, FROM, JOIN, WHERE und GROUP BY erscheinen an den Stellen, an denen die Datenbank sie erwartet.',
+        'SQLite hat eine logische Klauselreihenfolge. NodeQL hilft, sie einzuhalten: SELECT, FROM, JOIN, WHERE und GROUP BY erscheinen an den Stellen, an denen die Datenbank sie erwartet.',
     'tutorial.syntax.step.5.question':
         'Welche Klausel wählt normalerweise die Tabellenquelle?',
     'tutorial.syntax.step.5.answer.1': 'WHERE',
@@ -575,7 +575,7 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.syntax.step.11.answer.3': 'Die Anzahl der gespeicherten Projekte',
     'tutorial.syntax.step.12.nav': 'Bereit',
     'tutorial.syntax.step.12.eyebrow': 'NÄCHSTER SCHRITT',
-    'tutorial.syntax.step.12.title': 'Nutze Nodes als lesbare SQL-Bausteine',
+    'tutorial.syntax.step.12.title': 'Nutze Nodes als lesbare SQLite-Bausteine',
     'tutorial.syntax.step.12.body':
         'Wenn du einen Node hinzufügst, frage nach seiner Syntaxrolle: Starter, Anweisung, Slot-Wert, Reporter oder Container. Diese Gewohnheit macht NodeQL leichter lernbar und leichter debugbar.',
     'tutorial.intermediate.step.1.nav': 'Abfragekette',
@@ -611,19 +611,19 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.intermediate.step.4.title':
         'Halte wiederverwendbare Werte getrennt',
     'tutorial.intermediate.step.4.body':
-        'Parameterartige Werte machen eine Abfrage leichter prüfbar und wiederverwendbar. Lege veränderliche Werte in sichtbare Wert-Slots statt in langen SQL-Text.',
+        'Parameterartige Werte machen eine Abfrage leichter prüfbar und wiederverwendbar. Lege veränderliche Werte in sichtbare Wert-Slots statt in langen SQLite-Text.',
     'tutorial.intermediate.step.4.question':
         'Warum sollten veränderliche Werte in sichtbaren Wert-Slots bleiben?',
     'tutorial.intermediate.step.4.answer.1':
         'Sie sind leichter zu prüfen und zu ersetzen',
     'tutorial.intermediate.step.4.answer.2': 'Sie löschen die Datenbank',
-    'tutorial.intermediate.step.4.answer.3': 'Sie verwandeln SQL in Bilder',
+    'tutorial.intermediate.step.4.answer.3': 'Sie verwandeln SQLite in Bilder',
     'tutorial.intermediate.step.5.nav': 'Prüfen',
     'tutorial.intermediate.step.5.eyebrow': 'QUALITÄTSPRÜFUNG',
     'tutorial.intermediate.step.5.title':
-        'Lies das SQL, bevor du ihm vertraust',
+        'Lies das SQLite, bevor du ihm vertraust',
     'tutorial.intermediate.step.5.body':
-        'Scanne vor einer größeren Abfrage die SQL-Ausgabe. Prüfe Tabellennamen, Join-Bedingungen, Filter und Gruppierung, bevor du das Ergebnis nutzt.',
+        'Scanne vor einer größeren Abfrage die SQLite-Ausgabe. Prüfe Tabellennamen, Join-Bedingungen, Filter und Gruppierung, bevor du das Ergebnis nutzt.',
     'tutorial.intermediate.step.5.question':
         'Was solltest du vor einer größeren Abfrage prüfen?',
     'tutorial.intermediate.step.5.answer.1': 'Nur das App-Symbol',
@@ -644,11 +644,11 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.intermediate.step.7.eyebrow': 'DEBUGGING',
     'tutorial.intermediate.step.7.title': 'Nutze Fehlermeldungen als Wegweiser',
     'tutorial.intermediate.step.7.body':
-        'Wenn eine Abfrage fehlschlägt, vergleiche die Fehlermeldung mit der SQL-Ausgabe. Suche nach falsch geschriebenen Spalten, fehlenden Tabellen, ungültigen Join-Bedingungen oder Werten ohne passende Anführungszeichen.',
+        'Wenn eine Abfrage fehlschlägt, vergleiche die Fehlermeldung mit der SQLite-Ausgabe. Suche nach falsch geschriebenen Spalten, fehlenden Tabellen, ungültigen Join-Bedingungen oder Werten ohne passende Anführungszeichen.',
     'tutorial.intermediate.step.7.question':
         'Was prüfst du bei einer fehlerhaften Abfrage zuerst?',
     'tutorial.intermediate.step.7.answer.1': 'Nur die Farbe des Blocks',
-    'tutorial.intermediate.step.7.answer.2': 'Fehlermeldung und erzeugtes SQL',
+    'tutorial.intermediate.step.7.answer.2': 'Fehlermeldung und erzeugtes SQLite',
     'tutorial.intermediate.step.7.answer.3': 'Die Größe der App',
     'tutorial.intermediate.step.8.nav': 'HAVING sicher nutzen',
     'tutorial.intermediate.step.8.eyebrow': 'GRUPPENFILTER',
@@ -677,13 +677,13 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.intermediate.step.10.title':
         'Baue einen Bericht in kleinen Prüfungen nach',
     'tutorial.intermediate.step.10.body':
-        'Wähle einen Bericht, den du verstehst, baue ihn als Blöcke nach und vergleiche nach jedem Teil die SQL-Ausgabe. So bleiben Fehler sichtbar, während die Abfrage wächst.',
+        'Wähle einen Bericht, den du verstehst, baue ihn als Blöcke nach und vergleiche nach jedem Teil die SQLite-Ausgabe. So bleiben Fehler sichtbar, während die Abfrage wächst.',
     'tutorial.expert.step.1.nav': 'Architektur',
     'tutorial.expert.step.1.eyebrow': 'SYSTEMBLICK',
     'tutorial.expert.step.1.title':
         'Betrachte NodeQL als visuelle Abfrageschicht',
     'tutorial.expert.step.1.body':
-        'Der Pfad für viele Kenntnisse zeigt, wie Blöcke, erzeugtes SQL, Plugin-Manifeste und Datenquellen-Grenzen zusammenpassen. Nutze ihn, wenn du SQL-Konzepte bereits kennst.',
+        'Der Pfad für viele Kenntnisse zeigt, wie Blöcke, erzeugtes SQLite, Plugin-Manifeste und Datenquellen-Grenzen zusammenpassen. Nutze ihn, wenn du SQLite-Konzepte bereits kennst.',
     'tutorial.expert.step.2.nav': 'Join-Strategie',
     'tutorial.expert.step.2.eyebrow': 'ABFRAGEDESIGN',
     'tutorial.expert.step.2.title':
@@ -707,12 +707,12 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.expert.step.3.answer.3': 'HAVING',
     'tutorial.expert.step.4.nav': 'Debugging',
     'tutorial.expert.step.4.eyebrow': 'DIAGNOSE',
-    'tutorial.expert.step.4.title': 'Nutze erzeugtes SQL als Debugging-Vertrag',
+    'tutorial.expert.step.4.title': 'Nutze erzeugtes SQLite als Debugging-Vertrag',
     'tutorial.expert.step.4.body':
-        'Wenn ein Ergebnis falsch wirkt, prüfe zuerst das SQL. Die erzeugte Anweisung ist der gemeinsame Vertrag zwischen visueller Arbeitsfläche, Runtime und Datenbank.',
+        'Wenn ein Ergebnis falsch wirkt, prüfe zuerst das SQLite. Die erzeugte Anweisung ist der gemeinsame Vertrag zwischen visueller Arbeitsfläche, Runtime und Datenbank.',
     'tutorial.expert.step.4.question':
         'Welches Artefakt prüfst du zuerst, wenn eine komplexe Abfrage fehlschlägt?',
-    'tutorial.expert.step.4.answer.1': 'Das erzeugte SQL',
+    'tutorial.expert.step.4.answer.1': 'Das erzeugte SQLite',
     'tutorial.expert.step.4.answer.2': 'Den Lizenztext der App',
     'tutorial.expert.step.4.answer.3': 'Die Monitorhelligkeit',
     'tutorial.expert.step.5.nav': 'Plugin-Vertrag',
@@ -751,7 +751,7 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.expert.step.8.nav': 'Plugin-Sicherheit',
     'tutorial.expert.step.8.eyebrow': 'GRENZEN',
     'tutorial.expert.step.8.title':
-        'Trenne lokale SQL-Logik von Plugin-Verhalten',
+        'Trenne lokale SQLite-Logik von Plugin-Verhalten',
     'tutorial.expert.step.8.body':
         'Plugins erweitern NodeQL, aber sie bleiben externe Verträge. Prüfe Host-Anforderungen, Datenzugriff und erwartete Eingaben, bevor du Plugin-Ergebnisse als Teil einer wichtigen Abfrage behandelst.',
     'tutorial.expert.step.8.question':
@@ -765,12 +765,12 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.expert.step.9.eyebrow': 'LANGLEBIGKEIT',
     'tutorial.expert.step.9.title': 'Halte Annahmen änderbar und sichtbar',
     'tutorial.expert.step.9.body':
-        'Gute NodeQL-Projekte erklären sich selbst: feste Grenzwerte stehen in Wert-Slots, wichtige Filter sind benannt, und die SQL-Ausgabe bleibt lesbar genug, um sie mit anderen zu besprechen.',
+        'Gute NodeQL-Projekte erklären sich selbst: feste Grenzwerte stehen in Wert-Slots, wichtige Filter sind benannt, und die SQLite-Ausgabe bleibt lesbar genug, um sie mit anderen zu besprechen.',
     'tutorial.expert.step.9.question': 'Was macht eine Abfrage wartbarer?',
     'tutorial.expert.step.9.answer.1': 'Versteckte Werte in langen Texten',
     'tutorial.expert.step.9.answer.2': 'Unbenannte Tabellen',
     'tutorial.expert.step.9.answer.3':
-        'Sichtbare Werte, klare Filter und lesbares SQL',
+        'Sichtbare Werte, klare Filter und lesbares SQLite',
     'tutorial.expert.step.10.nav': 'Meisterschleife',
     'tutorial.expert.step.10.eyebrow': 'NÄCHSTER SCHRITT',
     'tutorial.expert.step.10.title':
@@ -787,9 +787,9 @@ const builtInMessages = <String, Map<String, String>>{
     'editor.chooseColumn': 'Spalte aus {table} auswählen',
     'editor.textValue': 'Textwert',
     'editor.removeReporter': 'Reporter entfernen',
-    'runtime.copySql': 'SQL kopieren',
-    'runtime.sqlCommandOutput': 'SQL-Command Output',
-    'runtime.copied': 'SQL in Zwischenablage kopiert',
+    'runtime.copySql': 'SQLite kopieren',
+    'runtime.sqlCommandOutput': 'SQLite-Command Output',
+    'runtime.copied': 'SQLite in Zwischenablage kopiert',
     'runtime.noResults': 'Keine Ergebnisse',
     'update.title': 'Update verfügbar',
     'update.message':

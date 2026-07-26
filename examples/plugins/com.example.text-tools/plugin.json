@@ -7,8 +7,8 @@
   "minNodeQlVersion": "0.1.32",
   "author": "Example Developer",
   "description": {
-    "en": "Additional SQL text comparison blocks.",
-    "de": "Zusätzliche SQL-Blöcke für Textvergleiche."
+    "en": "Additional SQLite text comparison blocks.",
+    "de": "Zusätzliche SQLite-Blöcke für Textvergleiche."
   },
   "homepage": "https://example.com/nodeql-text-tools",
   "license": "MIT",

@@ -1,10 +1,42 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  test(
+    'executes a visual SQLite program instead of accepting node SQLite text',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'nodeql_sql_program',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final trigger = EventBlock(id: 'run', position: Offset.zero);
+      trigger.next = OperatorBlock(
+        id: 'create-notes',
+        position: Offset.zero,
+        operatorType: BlockType.sqlCreateTable,
+        inputs: <String, dynamic>{
+          'table': 'notes',
+          'definition': 'id INTEGER PRIMARY KEY, body TEXT',
+        },
+      );
+      final program = const SqliteProgramCompiler().compileWorkspace(
+        <BlockNode>[trigger],
+      ).program;
+      final controller = SqlRuntimeController();
+
+      await controller.createEmptyDatabase(directoryPath: tempDir.path);
+      await controller.executeProgram(program);
+
+      expect(controller.state.lastMessage, 'OK');
+      expect(controller.state.schemas.single.name, 'notes');
+    },
+  );
+
   test('attaches and queries a SQLite database without a system CLI', () async {
     final tempDir = await Directory.systemTemp.createTemp('nodeql_sql_runtime');
     addTearDown(() => tempDir.delete(recursive: true));

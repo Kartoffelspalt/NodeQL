@@ -23,7 +23,7 @@ void main() {
 
     expect(find.byType(WorkbenchPage), findsOneWidget);
     expect(find.text('NodeQL'), findsOneWidget);
-    expect(find.text('SQL-Command Output'), findsOneWidget);
+    expect(find.text('SQLite-Command Output'), findsOneWidget);
   });
 }
 
@@ -36,15 +36,15 @@ class _ReadyTranslationController extends TranslationController {
     const messages = {
       'app.name': 'NodeQL',
       'toolbar.mountDatabase': 'Mount .db',
-      'toolbar.runSql': 'Run SQL',
+      'toolbar.runSql': 'Run SQLite',
       'toolbar.simple': 'Simple',
       'toolbar.advanced': 'Advanced',
       'toolbar.settings': 'Settings',
       'palette.search': 'Search command',
       'palette.category.dql': 'Query data',
-      'runtime.sqlOutput': '-- SQL output --',
-      'runtime.sqlCommandOutput': 'SQL-Command Output',
-      'runtime.copySql': 'Copy SQL',
+      'runtime.sqlOutput': '-- SQLite output --',
+      'runtime.sqlCommandOutput': 'SQLite-Command Output',
+      'runtime.copySql': 'Copy SQLite',
       'runtime.noResults': 'No results',
     };
     state = const TranslationState(

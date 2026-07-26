@@ -13,7 +13,7 @@ Add external Plugin SDK v1 with example plugin library
 ```text
 - add independent JSON-based plugins without requiring Dart or Flutter
 - add manifest validation, version compatibility checks, and safe typed inputs
-- integrate plugin blocks with the palette, workspace, and SQL compiler
+- integrate plugin blocks with the palette, workspace, and SQLite compiler
 - add plugin installation, reload, diagnostics, and uninstall management
 - preserve plugin identity and version metadata in saved projects
 - warn about missing plugins and incompatible plugin block versions
@@ -29,7 +29,7 @@ NodeQL now supports independent external plugins.
 
 Plugin developers no longer need to modify the NodeQL source code or create a
 Dart package. A plugin is distributed as a validated `plugin.json` manifest and
-can provide localized visual blocks, custom colors, editable inputs, SQL
+can provide localized visual blocks, custom colors, editable inputs, SQLite
 expressions, complete statements, and container behavior.
 
 ### Plugin Management
@@ -53,7 +53,7 @@ The loader validates:
 - minimum NodeQL version
 - plugin and block IDs
 - capabilities and supported fields
-- input defaults and SQL placeholders
+- input defaults and SQLite placeholders
 - duplicate plugins and blocks
 - the 1 MiB manifest size limit
 
@@ -83,6 +83,6 @@ individually through the plugin manager.
 - JSON Schema: `docs/plugins/plugin.schema.json`
 - Example library: `examples/plugins/README.md`
 
-Automated tests cover manifest validation, compatibility checks, SQL template
+Automated tests cover manifest validation, compatibility checks, SQLite template
 rendering, missing plugins, version changes, and conflict-free loading of all
 included examples.

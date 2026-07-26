@@ -227,7 +227,7 @@ String _friendlyRuntimeError(String message) {
     return 'Die Abfrage ist unvollständig. Prüfe, ob ein Pflichtfeld leer ist oder ein Block fehlt.';
   }
   if (normalized.contains('syntax error') || normalized.contains('near "')) {
-    return 'Die SQL-Struktur ist an dieser Stelle ungültig. Prüfe die Reihenfolge und die Slots dieses Nodes.';
+    return 'Die SQLite-Struktur ist an dieser Stelle ungültig. Prüfe die Reihenfolge und die Slots dieses Nodes.';
   }
   if (normalized.contains('unique constraint')) {
     return 'Dieser Wert darf in der Tabelle nur einmal vorkommen. Wähle einen anderen Wert.';
@@ -259,7 +259,7 @@ String _friendlyRuntimeError(String message) {
   if (normalized.contains('failed to open database')) {
     return 'Die Datenbank konnte nicht geöffnet werden. Prüfe, ob es wirklich eine SQLite-.db-Datei ist.';
   }
-  return 'Prüfe diesen Node und seine Slots. Die technische Meldung steht rechts im SQL-Ausgabebereich.';
+  return 'Prüfe diesen Node und seine Slots. Die technische Meldung steht rechts im SQLite-Ausgabebereich.';
 }
 
 String _friendlyVisibleRuntimeMessage({
@@ -434,6 +434,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   bool _tutorialWasPresented = false;
   bool _blockDiagnosticsRunning = false;
   int _blockDiagnosticsRunToken = 0;
+  Future<void>? _pendingSave;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
   bool _startupHintShown = false;
   static const bool _showStartupHint = false;
@@ -446,6 +447,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
     _menuChannel.setMethodCallHandler(_handleNativeMenuAction);
     Future<void>.microtask(
       () => ref.read(pluginPaletteProvider.notifier).reload(),
@@ -491,11 +493,24 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
     _menuChannel.setMethodCallHandler(null);
     _autosaveDebounce?.cancel();
     _tutorialSubscription?.close();
     _workspaceFocus.dispose();
     super.dispose();
+  }
+
+  bool _handleGlobalKeyEvent(KeyEvent event) {
+    if (!mounted || event is! KeyDownEvent) return false;
+    final keyboard = HardwareKeyboard.instance;
+    final isSaveShortcut =
+        event.logicalKey == LogicalKeyboardKey.keyS &&
+        (keyboard.isMetaPressed || keyboard.isControlPressed);
+    if (!isSaveShortcut) return false;
+
+    unawaited(_saveProject(context));
+    return true;
   }
 
   @override
@@ -576,7 +591,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     }
                     ref
                         .read(sqlRuntimeProvider.notifier)
-                        .executeWithSnapshot(sql);
+                        .executeProgram(compileResult.program);
                     if (compileResult.warnings.isNotEmpty) {
                       ref
                           .read(sqlRuntimeProvider.notifier)
@@ -908,7 +923,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     await _syncRecentProjectsToNativeMenu();
   }
 
-  Future<void> _saveProject(BuildContext context) async {
+  Future<void> _saveProject(BuildContext context) {
+    final pendingSave = _pendingSave;
+    if (pendingSave != null) return pendingSave;
+
+    final save = _performSaveProject(context);
+    _pendingSave = save;
+    return save.whenComplete(() {
+      if (identical(_pendingSave, save)) {
+        _pendingSave = null;
+      }
+    });
+  }
+
+  Future<void> _performSaveProject(BuildContext context) async {
     final path = _activeProjectPath;
     if (path == null) {
       await _saveProjectAs(context);
@@ -1148,23 +1176,41 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: () => _openPluginManager(context),
-                    child: Text(catalog.text('settings.plugins')),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: FilledButton.tonal(
+                      onPressed: () => _openPluginManager(context),
+                      style: FilledButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      child: Text(catalog.text('settings.plugins')),
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: () => _openLanguageManager(context),
-                    child: Text(catalog.text('settings.languages')),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: FilledButton.tonal(
+                      onPressed: () => _openLanguageManager(context),
+                      style: FilledButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      child: Text(catalog.text('settings.languages')),
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _openTutorial(this.context);
-                    },
-                    icon: const Icon(Icons.school_outlined),
-                    label: Text(catalog.text('settings.tutorial')),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: FilledButton.tonalIcon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _openTutorial(this.context);
+                      },
+                      style: FilledButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      icon: const Icon(Icons.school_outlined),
+                      label: Text(catalog.text('settings.tutorial')),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   TextButton.icon(
@@ -2304,7 +2350,7 @@ class _PluginRepositoriesView extends StatelessWidget {
   }
 }
 
-enum SqlPaletteCategory { dql, dml, ddl, dcl, txn, plugins }
+enum SqlPaletteCategory { dql, dml, ddl, txn, plugins }
 
 class _PaletteItem {
   const _PaletteItem({
@@ -2350,7 +2396,6 @@ class _CategoryRail extends StatelessWidget {
       (SqlPaletteCategory.dql, Icons.search, ScratchPalette.motion),
       (SqlPaletteCategory.dml, Icons.edit_note, ScratchPalette.control),
       (SqlPaletteCategory.ddl, Icons.schema, ScratchPalette.operators),
-      (SqlPaletteCategory.dcl, Icons.lock_open, ScratchPalette.events),
       (SqlPaletteCategory.txn, Icons.account_tree, ScratchPalette.variables),
       if (hasPlugins)
         (SqlPaletteCategory.plugins, Icons.extension, ScratchPalette.myBlocks),
@@ -2567,7 +2612,6 @@ class _PaletteState extends State<_Palette> {
         native(BlockType.sqlOrderBy),
         native(BlockType.sqlSubqueryIn),
         native(BlockType.sqlSubqueryAny),
-        native(BlockType.sqlSubqueryAll),
         native(BlockType.sqlCount),
         native(BlockType.sqlSum),
         native(BlockType.sqlAvg),
@@ -2606,21 +2650,15 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.ddl => <_PaletteItem>[
         native(BlockType.sqlCreateTable),
         native(BlockType.sqlAlterTable),
+        // SQLite has no TRUNCATE; this block executes as DELETE FROM.
         native(BlockType.sqlTruncate),
         native(BlockType.sqlDropTable),
-        native(BlockType.sqlGrant),
-        native(BlockType.sqlRevoke),
-      ],
-      SqlPaletteCategory.dcl => <_PaletteItem>[
-        native(BlockType.sqlGrant),
-        native(BlockType.sqlRevoke),
       ],
       SqlPaletteCategory.txn => <_PaletteItem>[
         native(BlockType.sqlCommit),
         native(BlockType.sqlRollback),
         native(BlockType.sqlSavepoint),
         native(BlockType.sqlRollbackToSavepoint),
-        native(BlockType.sqlSetTransaction),
         native(BlockType.sqlUnion),
         native(BlockType.sqlIntersect),
         native(BlockType.sqlExcept),
@@ -2661,16 +2699,16 @@ class _PaletteState extends State<_Palette> {
     switch (type) {
       case BlockType.eventGreenFlag:
         return de
-            ? 'Startet die SQL-Abfragekette im Workspace.'
-            : 'Starts the SQL query chain in the workspace.';
+            ? 'Startet die SQLite-Abfragekette im Workspace.'
+            : 'Starts the SQLite query chain in the workspace.';
       case BlockType.motionMove:
         return de
-            ? 'Legacy-Block: bewegt ein Objekt (nicht SQL-spezifisch).'
-            : 'Legacy block: moves an object (not SQL specific).';
+            ? 'Legacy-Block: bewegt ein Objekt (nicht SQLite-spezifisch).'
+            : 'Legacy block: moves an object (not SQLite specific).';
       case BlockType.motionTurn:
         return de
-            ? 'Legacy-Block: dreht ein Objekt (nicht SQL-spezifisch).'
-            : 'Legacy block: rotates an object (not SQL specific).';
+            ? 'Legacy-Block: dreht ein Objekt (nicht SQLite-spezifisch).'
+            : 'Legacy block: rotates an object (not SQLite specific).';
       case BlockType.controlRepeat:
         return de
             ? 'Legacy-Block: wiederholt enthaltene Blöcke mehrfach.'
@@ -2939,8 +2977,8 @@ class _PaletteState extends State<_Palette> {
             : 'Sets properties of the current transaction.';
       case BlockType.sqlLoop:
         return de
-            ? 'Führt enthaltene SQL-Blöcke wiederholt aus.'
-            : 'Repeats execution of nested SQL blocks.';
+            ? 'Führt enthaltene SQLite-Blöcke wiederholt aus.'
+            : 'Repeats execution of nested SQLite blocks.';
     }
   }
 
@@ -2979,7 +3017,6 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.dql => widget.catalog.text('palette.category.dql'),
       SqlPaletteCategory.dml => widget.catalog.text('palette.category.dml'),
       SqlPaletteCategory.ddl => widget.catalog.text('palette.category.ddl'),
-      SqlPaletteCategory.dcl => widget.catalog.text('palette.category.dcl'),
       SqlPaletteCategory.txn => widget.catalog.text('palette.category.txn'),
       SqlPaletteCategory.plugins => widget.catalog.text(
         'palette.category.plugins',
@@ -3464,6 +3501,14 @@ class _PointerWorkspaceLayerState
           _secondaryPending = true;
           _secondaryDownWorld = world;
           _rightPanning = false;
+          _primaryPending = false;
+          return;
+        }
+
+        if (event.kind == PointerDeviceKind.mouse &&
+            (event.buttons & kMiddleMouseButton) != 0) {
+          _rightPanning = true;
+          _secondaryPending = false;
           _primaryPending = false;
           return;
         }
@@ -4675,9 +4720,13 @@ class _NodeView extends ConsumerWidget {
             onPressed: () => Navigator.pop(context),
             child: Text(catalog.text('common.cancel')),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: Text(catalog.text('common.ok')),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              style: FilledButton.styleFrom(shape: const StadiumBorder()),
+              child: Text(catalog.text('common.ok')),
+            ),
           ),
         ],
       ),

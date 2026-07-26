@@ -2,7 +2,7 @@
 
 NodeQL plugins are independent, declarative packages. A plugin is not compiled
 into the Flutter application and does not need Dart or the Flutter SDK. Version
-1 plugins add localized visual blocks and compile them to SQL templates.
+1 plugins add localized visual blocks and compile them to SQLite templates.
 
 SDK v2 keeps v1 compatible and adds external data-source adapters plus
 installable community repositories. It does not load arbitrary Dart, native
@@ -104,7 +104,7 @@ NodeQL also accepts HTTP URLs on `localhost`, `127.0.0.1`, and `::1`.
 ## Quick start
 
 1. Copy `examples/plugins/com.example.text-tools/plugin.json`.
-2. Change the reverse-domain `id`, metadata, blocks, and SQL templates.
+2. Change the reverse-domain `id`, metadata, blocks, and SQLite templates.
 3. Validate the file against `docs/plugins/plugin.schema.json`.
 4. In NodeQL, open **Settings > Manage Plugins > Install plugin.json**.
 5. Reload plugins. The blocks appear in the Plugins palette.
@@ -155,9 +155,9 @@ Each block supports:
 | `description` | Text or locale map shown as block help. |
 | `color` | Optional `#RRGGBB` color. |
 | `inputs` | Typed input definitions with defaults. |
-| `sql` | SQL template using `{{inputName}}`. |
+| `sql` | SQLite template using `{{inputName}}`. |
 
-Container blocks may use `{{children}}` in the SQL template. Inputs omitted
+Container blocks may use `{{children}}` in the SQLite template. Inputs omitted
 from a label are appended automatically as editable slots.
 
 NodeQL gives every plugin shape a dedicated extension silhouette:
@@ -167,15 +167,15 @@ NodeQL gives every plugin shape a dedicated extension silhouette:
 - `container`: C-shaped block for nested child statements.
 
 The configured plugin color remains unchanged. A small extension rail
-distinguishes community plugin blocks from built-in SQL blocks without adding
+distinguishes community plugin blocks from built-in SQLite blocks without adding
 fields to the public manifest format.
 
 Input types:
 
-- `identifier`: validates SQL identifiers such as `users` or `main.users`.
+- `identifier`: validates SQLite identifiers such as `users` or `main.users`.
 - `number`: accepts only numeric values.
-- `string`: emits a quoted SQL string and escapes single quotes.
-- `sql`: inserts raw SQL. Use only where arbitrary expressions are intended.
+- `string`: emits a quoted SQLite string and escapes single quotes.
+- `sql`: inserts raw SQLite. Use only where arbitrary expressions are intended.
 
 Example:
 
@@ -214,8 +214,8 @@ silently replacing its behavior. A version change also produces a warning.
 ## Security model
 
 Plugin API v1 does not load Dart libraries, native libraries, scripts, or
-executables. It only parses validated JSON and expands SQL templates. Generated
-SQL runs through the same database execution path and confirmation behavior as
+executables. It only parses validated JSON and expands SQLite templates. Generated
+SQLite runs through the same database execution path and confirmation behavior as
 built-in blocks. The `sql` input type is intentionally unrestricted; plugin
 authors should prefer `identifier`, `number`, and `string`.
 

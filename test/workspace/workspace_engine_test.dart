@@ -194,7 +194,7 @@ void main() {
     );
   });
 
-  test('previews rejected snap target while dragging invalid SQL order', () {
+  test('previews rejected snap target while dragging invalid SQLite order', () {
     final controller = WorkspaceController()..resetWithRoot();
     controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
     controller.addTemplate(BlockType.sqlHaving, const Offset(520, 420));

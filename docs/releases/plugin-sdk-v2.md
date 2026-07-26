@@ -3,7 +3,7 @@
 ## Summary
 
 Plugin SDK v2 extends NodeQL's declarative plugin model without breaking SDK
-v1. Community developers can publish visual SQL blocks, external data-source
+v1. Community developers can publish visual SQLite blocks, external data-source
 adapters, and static plugin repositories.
 
 ## Data-source adapters

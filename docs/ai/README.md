@@ -7,8 +7,8 @@ the repository instructions in `AGENTS.md` take precedence.
 
 ## 1. Project in one sentence
 
-NodeQL is a local Flutter desktop application where users build SQL with visual
-blocks, inspect the generated SQL, and execute it against local SQLite databases.
+NodeQL is a local Flutter desktop application where users build SQLite with visual
+blocks, inspect the generated SQLite, and execute it against local SQLite databases.
 
 Important product boundaries:
 
@@ -36,7 +36,7 @@ Block-Palette / Drag-and-drop
   -> result and status display
 ```
 
-Only chains below `BlockType.eventGreenFlag` (`EXECUTE QUERY`) compile as SQL.
+Only chains below `BlockType.eventGreenFlag` (`EXECUTE QUERY`) compile as SQLite.
 Floating blocks are deliberately not executable.
 
 ## 3. Source map
@@ -47,7 +47,7 @@ Floating blocks are deliberately not executable.
 | Workbench | visible UI and dialogs | `lib/features/workbench/presentation/workbench_page.dart` |
 | Workbench state | blocks, selection, undo/redo, dragging, serialization | `lib/features/workbench/presentation/engine/workspace_engine.dart` |
 | Block model | types, nodes, JSON, syntax, docking | `lib/engine/block/`, `lib/engine/workspace/workspace_docking_service.dart` |
-| SQL | labels, abstraction mode, compilation, SQLite access | `lib/features/workbench/presentation/engine/sql_*.dart` |
+| SQLite | labels, abstraction mode, compilation, SQLite access | `lib/features/workbench/presentation/engine/sql_*.dart` |
 | Projects | project data, JSON persistence, upgrades, default project | `lib/domain/models/`, `lib/data/project/`, `lib/data/persistence/` |
 | Plugins | manifests, validation, repositories, data sources | `lib/engine/plugins/`, `docs/plugins/README.md` |
 | Language | ARB UI text and installable translations | `lib/l10n/`, `lib/localization/`, `translations/` |
@@ -67,7 +67,7 @@ Syntax and ordering    lib/engine/block/block_syntax.dart
 Workspace behavior     .../engine/workspace_engine.dart
 Palette and rendering  workbench_page.dart
 Labels and slots       .../engine/sql_labels.dart
-SQL output             .../engine/sql_compiler.dart
+SQLite output             .../engine/sql_compiler.dart
 Tests                  test/runtime and test/workspace
 ```
 
@@ -99,7 +99,7 @@ mutating state objects from widgets.
   behavior.
 - Plugin and translation downloads are security boundaries: do not weaken
   HTTPS, schema, size, or hash checks.
-- SQL statements can change data. Preserve the existing snapshot/restore flow
+- SQLite statements can change data. Preserve the existing snapshot/restore flow
   and error paths in runtime code.
 - All visible text is localizable. Do not add new hard-coded user-facing text
   to widgets.
