@@ -22,6 +22,7 @@ import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
+import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -418,6 +419,12 @@ class WorkbenchPage extends ConsumerStatefulWidget {
 class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   static const _menuChannel = MethodChannel('nodeql/menu');
   static const _projectUpgradeService = ProjectFileUpgradeService();
+  static const _neoCheatKeys = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.keyN,
+    LogicalKeyboardKey.keyE,
+    LogicalKeyboardKey.keyO,
+  ];
+  static const _neoCheatTimeout = Duration(seconds: 2);
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlCompiler _compiler = const SqlCompiler();
@@ -437,6 +444,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<void>? _pendingSave;
   ProviderSubscription<TutorialState>? _tutorialSubscription;
   bool _startupHintShown = false;
+  int _neoCheatIndex = 0;
+  DateTime? _neoCheatLastKeyAt;
   static const bool _showStartupHint = false;
 
   static const String _startupHintText =
@@ -507,10 +516,56 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final isSaveShortcut =
         event.logicalKey == LogicalKeyboardKey.keyS &&
         (keyboard.isMetaPressed || keyboard.isControlPressed);
-    if (!isSaveShortcut) return false;
+    if (isSaveShortcut) {
+      unawaited(_saveProject(context));
+      return true;
+    }
 
-    unawaited(_saveProject(context));
-    return true;
+    if (_isTextInputFocused() ||
+        keyboard.isMetaPressed ||
+        keyboard.isControlPressed ||
+        keyboard.isAltPressed) {
+      _resetNeoCheat();
+      return false;
+    }
+
+    final now = DateTime.now();
+    final lastKeyAt = _neoCheatLastKeyAt;
+    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
+      _resetNeoCheat();
+    }
+
+    final expectedKey = _neoCheatKeys[_neoCheatIndex];
+    if (event.logicalKey == expectedKey) {
+      _neoCheatIndex++;
+      _neoCheatLastKeyAt = now;
+      if (_neoCheatIndex == _neoCheatKeys.length) {
+        _resetNeoCheat();
+        unawaited(
+          ref
+              .read(nodeQlThemeProvider.notifier)
+              .setTheme(NodeQlTheme.neoBrutalism),
+        );
+        return true;
+      }
+      return false;
+    }
+
+    _neoCheatIndex = event.logicalKey == _neoCheatKeys.first ? 1 : 0;
+    _neoCheatLastKeyAt = _neoCheatIndex == 0 ? null : now;
+    return false;
+  }
+
+  bool _isTextInputFocused() {
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    if (focusContext == null) return false;
+    return focusContext.widget is EditableText ||
+        focusContext.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  void _resetNeoCheat() {
+    _neoCheatIndex = 0;
+    _neoCheatLastKeyAt = null;
   }
 
   @override
@@ -524,6 +579,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final workspaceRoots = ref.read(workspaceProvider).roots;
     final runtime = ref.watch(sqlRuntimeProvider);
     final mode = ref.watch(sqlModeProvider);
+    final columnLinkMode = ref.watch(
+      workspaceProvider.select((state) => state.columnLinkMode),
+    );
     final pluginState = ref.watch(pluginPaletteProvider);
     final compileResult = _compiler.compileWorkspace(
       workspaceRoots,
@@ -605,6 +663,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           );
                     }
                   },
+                  columnLinkMode: columnLinkMode,
+                  onColumnLinkModeChanged: () => ref
+                      .read(workspaceProvider.notifier)
+                      .setColumnLinkMode(!columnLinkMode),
                   mode: mode,
                   onModeChanged: (next) =>
                       ref.read(sqlModeProvider.notifier).setMode(next),
@@ -1081,6 +1143,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         content: Consumer(
           builder: (context, ref, _) {
             final current = ref.watch(nodeQlThemeProvider);
+            final surfaceStyle = NodeQlSurfaceStyle.of(context);
             const accentColors = <Color>[
               Color(0xFF2563EB),
               Color(0xFF7C3AED),
@@ -1176,38 +1239,41 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
+                  NodeQlBrutalPressable(
                     child: FilledButton.tonal(
                       onPressed: () => _openPluginManager(context),
-                      style: FilledButton.styleFrom(
-                        shape: const StadiumBorder(),
-                      ),
+                      style: surfaceStyle.isBrutalist
+                          ? null
+                          : FilledButton.styleFrom(
+                              shape: const StadiumBorder(),
+                            ),
                       child: Text(catalog.text('settings.plugins')),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
+                  NodeQlBrutalPressable(
                     child: FilledButton.tonal(
                       onPressed: () => _openLanguageManager(context),
-                      style: FilledButton.styleFrom(
-                        shape: const StadiumBorder(),
-                      ),
+                      style: surfaceStyle.isBrutalist
+                          ? null
+                          : FilledButton.styleFrom(
+                              shape: const StadiumBorder(),
+                            ),
                       child: Text(catalog.text('settings.languages')),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
+                  NodeQlBrutalPressable(
                     child: FilledButton.tonalIcon(
                       onPressed: () {
                         Navigator.of(context).pop();
                         _openTutorial(this.context);
                       },
-                      style: FilledButton.styleFrom(
-                        shape: const StadiumBorder(),
-                      ),
+                      style: surfaceStyle.isBrutalist
+                          ? null
+                          : FilledButton.styleFrom(
+                              shape: const StadiumBorder(),
+                            ),
                       icon: const Icon(Icons.school_outlined),
                       label: Text(catalog.text('settings.tutorial')),
                     ),
@@ -1966,6 +2032,8 @@ class _TopBar extends StatelessWidget {
     required this.onLocale,
     required this.onPickDb,
     required this.onExecuteGuarded,
+    required this.columnLinkMode,
+    required this.onColumnLinkModeChanged,
     required this.mode,
     required this.onModeChanged,
     required this.onSettings,
@@ -1979,6 +2047,8 @@ class _TopBar extends StatelessWidget {
   final ValueChanged<String> onLocale;
   final VoidCallback onPickDb;
   final VoidCallback onExecuteGuarded;
+  final bool columnLinkMode;
+  final VoidCallback onColumnLinkModeChanged;
   final SqlAbstractionMode mode;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onSettings;
@@ -1989,6 +2059,7 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final localeCode = Localizations.localeOf(context).languageCode;
     final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
     return Container(
       height: 68,
       padding: const EdgeInsets.symmetric(horizontal: NodeQlDesign.space4),
@@ -1997,8 +2068,10 @@ class _TopBar extends StatelessWidget {
         border: Border(
           bottom: BorderSide(
             color: workbenchColors.border.withValues(alpha: .8),
+            width: surfaceStyle.borderWidth,
           ),
         ),
+        boxShadow: surfaceStyle.hardShadow,
       ),
       child: Row(
         children: [
@@ -2013,8 +2086,15 @@ class _TopBar extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primary,
                       borderRadius: BorderRadius.circular(
-                        NodeQlDesign.radiusSmall,
+                        surfaceStyle.radiusSmall,
                       ),
+                      border: surfaceStyle.isBrutalist
+                          ? Border.all(
+                              color: workbenchColors.border,
+                              width: surfaceStyle.borderWidth,
+                            )
+                          : null,
+                      boxShadow: surfaceStyle.hardShadow,
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
@@ -2032,34 +2112,46 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: NodeQlDesign.space4),
-                  OutlinedButton.icon(
-                    onPressed: onPickDb,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: workbenchColors.topBarForeground,
-                      side: BorderSide(color: workbenchColors.border),
-                    ),
-                    icon: const Icon(Icons.storage_outlined, size: 18),
-                    label: Text(catalog.text('toolbar.mountDatabase')),
-                  ),
-                  const SizedBox(width: NodeQlDesign.space2),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(
-                      NodeQlDesign.radiusMedium,
-                    ),
-                    child: FilledButton.icon(
-                      onPressed: onExecuteGuarded,
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            NodeQlDesign.radiusMedium,
-                          ),
+                  NodeQlBrutalPressable(
+                    child: OutlinedButton.icon(
+                      onPressed: onPickDb,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: workbenchColors.topBarForeground,
+                        side: BorderSide(
+                          color: workbenchColors.border,
+                          width: surfaceStyle.borderWidth,
                         ),
                       ),
+                      icon: const Icon(Icons.storage_outlined, size: 18),
+                      label: Text(catalog.text('toolbar.mountDatabase')),
+                    ),
+                  ),
+                  const SizedBox(width: NodeQlDesign.space2),
+                  NodeQlBrutalPressable(
+                    child: FilledButton.icon(
+                      onPressed: onExecuteGuarded,
                       icon: const Icon(Icons.play_arrow_rounded, size: 19),
                       label: Text(catalog.text('toolbar.runSql')),
                     ),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
+                  IconButton(
+                    key: const ValueKey('column-link-tool'),
+                    onPressed: onColumnLinkModeChanged,
+                    tooltip: catalog.text('toolbar.connectColumns'),
+                    color: workbenchColors.topBarForeground,
+                    isSelected: columnLinkMode,
+                    selectedIcon: const Icon(Icons.link_rounded),
+                    style: IconButton.styleFrom(
+                      backgroundColor: columnLinkMode
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: .22)
+                          : Colors.transparent,
+                    ),
+                    icon: const Icon(Icons.format_paint_outlined),
+                  ),
+                  const SizedBox(width: NodeQlDesign.space1),
                   SegmentedButton<SqlAbstractionMode>(
                     segments: [
                       ButtonSegment(
@@ -2271,6 +2363,8 @@ class _PluginRepositoriesView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
     return Column(
       children: [
         Row(
@@ -2326,17 +2420,30 @@ class _PluginRepositoriesView extends StatelessWidget {
                       for (final entry
                           in plugins.repositoryCatalogs[source.url]?.entries ??
                               const <PluginRepositoryEntry>[])
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.extension_outlined),
-                            title: Text(entry.name),
-                            subtitle: Text(
-                              '${entry.id}  •  ${entry.version}\n${entry.description}',
+                        Padding(
+                          padding: EdgeInsets.only(
+                            right: surfaceStyle.shadowOffset.dx,
+                            bottom: NodeQlDesign.space3,
+                          ),
+                          child: Container(
+                            decoration: surfaceStyle.surfaceDecoration(
+                              color: workbenchColors.panel,
+                              borderColor: workbenchColors.border,
                             ),
-                            isThreeLine: true,
-                            trailing: FilledButton(
-                              onPressed: () => onInstall(entry),
-                              child: Text(catalog.text('plugins.install')),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: ListTile(
+                                leading: const Icon(Icons.extension_outlined),
+                                title: Text(entry.name),
+                                subtitle: Text(
+                                  '${entry.id}  •  ${entry.version}\n${entry.description}',
+                                ),
+                                isThreeLine: true,
+                                trailing: FilledButton(
+                                  onPressed: () => onInstall(entry),
+                                  child: Text(catalog.text('plugins.install')),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -2392,6 +2499,7 @@ class _CategoryRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final entries = <(SqlPaletteCategory, IconData, Color)>[
       (SqlPaletteCategory.dql, Icons.search, ScratchPalette.motion),
       (SqlPaletteCategory.dml, Icons.edit_note, ScratchPalette.control),
@@ -2421,7 +2529,7 @@ class _CategoryRail extends StatelessWidget {
                   child: InkWell(
                     onTap: () => onSelect(e.$1),
                     borderRadius: BorderRadius.circular(
-                      NodeQlDesign.radiusMedium,
+                      surfaceStyle.radiusMedium,
                     ),
                     child: AnimatedContainer(
                       duration: NodeQlDesign.quick,
@@ -2430,13 +2538,15 @@ class _CategoryRail extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: e.$3.withValues(alpha: selected ? 1 : .16),
                         borderRadius: BorderRadius.circular(
-                          NodeQlDesign.radiusMedium,
+                          surfaceStyle.radiusMedium,
                         ),
                         border: Border.all(
                           color: selected
                               ? e.$3.withValues(alpha: .8)
                               : Colors.transparent,
+                          width: selected ? surfaceStyle.borderWidth : 1,
                         ),
+                        boxShadow: selected ? surfaceStyle.hardShadow : null,
                       ),
                       child: Icon(e.$2, color: selected ? Colors.white : e.$3),
                     ),
@@ -2482,6 +2592,7 @@ class _PaletteState extends State<_Palette> {
   @override
   Widget build(BuildContext context) {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final tileWidth = (widget.width - 32).clamp(160.0, 500.0);
     final query = _query.trim().toLowerCase();
     final sourceBlocks = query.isEmpty
@@ -2518,16 +2629,27 @@ class _PaletteState extends State<_Palette> {
                 filled: true,
                 fillColor: workbenchColors.panelElevated,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: workbenchColors.border),
+                  borderRadius: BorderRadius.circular(surfaceStyle.radiusSmall),
+                  borderSide: BorderSide(
+                    color: workbenchColors.border,
+                    width: surfaceStyle.borderWidth,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: workbenchColors.border),
+                  borderRadius: BorderRadius.circular(surfaceStyle.radiusSmall),
+                  borderSide: BorderSide(
+                    color: workbenchColors.border,
+                    width: surfaceStyle.borderWidth,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF60A5FA)),
+                  borderRadius: BorderRadius.circular(surfaceStyle.radiusSmall),
+                  borderSide: BorderSide(
+                    color: surfaceStyle.isBrutalist
+                        ? workbenchColors.border
+                        : const Color(0xFF60A5FA),
+                    width: surfaceStyle.isBrutalist ? 3.5 : 1,
+                  ),
                 ),
               ),
             ),
@@ -3113,6 +3235,7 @@ class _PaletteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final blockHeight = baseHeightForBlock(node);
     final previewWidth = _palettePreviewWidth(label, width);
     final block = BlockShape(
@@ -3133,14 +3256,13 @@ class _PaletteCard extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onAdd,
-            borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
+            borderRadius: BorderRadius.circular(surfaceStyle.radiusMedium),
             child: Container(
               width: width,
               padding: const EdgeInsets.all(NodeQlDesign.space2),
-              decoration: BoxDecoration(
+              decoration: surfaceStyle.surfaceDecoration(
                 color: workbenchColors.panel,
-                borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
-                border: Border.all(color: workbenchColors.border),
+                borderColor: workbenchColors.border,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3287,6 +3409,11 @@ class _WorkspaceCanvas extends ConsumerWidget {
             ref.read(workspaceProvider.notifier).redo();
             return KeyEventResult.handled;
           }
+          if (event.logicalKey == LogicalKeyboardKey.escape &&
+              ref.read(workspaceProvider).columnLinkMode) {
+            ref.read(workspaceProvider.notifier).setColumnLinkMode(false);
+            return KeyEventResult.handled;
+          }
           if (event.logicalKey == LogicalKeyboardKey.delete ||
               event.logicalKey == LogicalKeyboardKey.backspace) {
             _handleDeleteWithRootConfirmation(context, ref);
@@ -3309,6 +3436,22 @@ class _WorkspaceCanvas extends ConsumerWidget {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
+                      CustomPaint(
+                        size: const Size(4000, 4000),
+                        painter: _ColumnLinksPainter(
+                          links: controller.columnLinks(),
+                          source: workspace.columnLinkSourceId == null
+                              ? null
+                              : controller.findById(
+                                  workspace.columnLinkSourceId!,
+                                ),
+                          pointer: workspace.columnLinkPointer,
+                          validTarget: workspace.columnLinkTargetId != null,
+                          nodeWidth: controller.nodeWidth,
+                          nodeHeight: controller.blockHeight,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
                       for (final block in controller.allBlocks())
                         Positioned(
                           left: block.position.dx,
@@ -3326,9 +3469,12 @@ class _WorkspaceCanvas extends ConsumerWidget {
                                           SnapZone.innerTop ||
                                       workspace.highlightZone ==
                                           SnapZone.innerBottom),
-                              selected: workspace.selectedBlockIds.contains(
-                                block.id,
-                              ),
+                              selected:
+                                  workspace.selectedBlockIds.contains(
+                                    block.id,
+                                  ) ||
+                                  workspace.columnLinkSourceId == block.id ||
+                                  workspace.columnLinkTargetId == block.id,
                             ),
                           ),
                         ),
@@ -3347,6 +3493,86 @@ class _WorkspaceCanvas extends ConsumerWidget {
     final matrix = transform.value.clone()..invert();
     return MatrixUtils.transformPoint(matrix, local);
   }
+}
+
+class _ColumnLinksPainter extends CustomPainter {
+  const _ColumnLinksPainter({
+    required this.links,
+    required this.source,
+    required this.pointer,
+    required this.validTarget,
+    required this.nodeWidth,
+    required this.nodeHeight,
+    required this.color,
+  });
+
+  final List<WorkspaceColumnLink> links;
+  final BlockNode? source;
+  final Offset? pointer;
+  final bool validTarget;
+  final double Function(BlockNode) nodeWidth;
+  final double Function(BlockNode) nodeHeight;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final link in links) {
+      _drawConnection(
+        canvas,
+        _sourcePoint(link.source),
+        _targetPoint(link.target),
+        color.withValues(alpha: .72),
+      );
+    }
+    final activeSource = source;
+    final activePointer = pointer;
+    if (activeSource != null && activePointer != null) {
+      _drawConnection(
+        canvas,
+        _sourcePoint(activeSource),
+        activePointer,
+        validTarget ? const Color(0xFF22C55E) : color,
+      );
+    }
+  }
+
+  Offset _sourcePoint(BlockNode node) => Offset(
+    node.position.dx + nodeWidth(node),
+    node.position.dy + nodeHeight(node) / 2,
+  );
+
+  Offset _targetPoint(BlockNode node) =>
+      Offset(node.position.dx, node.position.dy + nodeHeight(node) / 2);
+
+  void _drawConnection(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Color paintColor,
+  ) {
+    final horizontal = math.max(56.0, (end.dx - start.dx).abs() * .45);
+    final path = Path()
+      ..moveTo(start.dx, start.dy)
+      ..cubicTo(
+        start.dx + horizontal,
+        start.dy,
+        end.dx - horizontal,
+        end.dy,
+        end.dx,
+        end.dy,
+      );
+    final paint = Paint()
+      ..color = paintColor
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(path, paint);
+    canvas.drawCircle(start, 4.5, Paint()..color = paintColor);
+    canvas.drawCircle(end, 4.5, Paint()..color = paintColor);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColumnLinksPainter oldDelegate) => true;
 }
 
 Future<void> _handleDeleteWithRootConfirmation(
@@ -3496,6 +3722,15 @@ class _PointerWorkspaceLayerState
       onPointerDown: (event) {
         widget.focusNode.requestFocus();
         final world = _toWorld(event.localPosition);
+        final workspace = ref.read(workspaceProvider);
+        if (workspace.columnLinkMode &&
+            (event.buttons & kPrimaryMouseButton) != 0) {
+          _primaryPending = false;
+          _leftDraggingBlock = false;
+          _marqueeSelecting = false;
+          engine.beginColumnLink(world);
+          return;
+        }
         if (event.kind == PointerDeviceKind.mouse &&
             (event.buttons & kSecondaryMouseButton) != 0) {
           _secondaryPending = true;
@@ -3523,6 +3758,11 @@ class _PointerWorkspaceLayerState
         }
       },
       onPointerMove: (event) {
+        final workspace = ref.read(workspaceProvider);
+        if (workspace.columnLinkMode && workspace.columnLinkSourceId != null) {
+          engine.updateColumnLink(_toWorld(event.localPosition));
+          return;
+        }
         if (_secondaryPending &&
             !_rightPanning &&
             event.delta.distanceSquared > 9) {
@@ -3560,6 +3800,18 @@ class _PointerWorkspaceLayerState
         }
       },
       onPointerUp: (event) {
+        final workspace = ref.read(workspaceProvider);
+        if (workspace.columnLinkMode) {
+          if (workspace.columnLinkSourceId != null) {
+            engine.finishColumnLink(_toWorld(event.localPosition));
+          } else {
+            engine.cancelColumnLink();
+          }
+          _primaryPending = false;
+          _leftDraggingBlock = false;
+          _marqueeSelecting = false;
+          return;
+        }
         if (_rightPanning) {
           _rightPanning = false;
           _secondaryPending = false;
@@ -3619,50 +3871,55 @@ class _PointerWorkspaceLayerState
           _primaryDownLocal = null;
         }
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        trackpadScrollCausesScale: true,
-        trackpadScrollToScaleFactor: const Offset(0.001, 0.001),
-        onScaleStart: (details) {
-          widget.focusNode.requestFocus();
-          _scaleGestureStartScale = ref.read(workspaceProvider).scale;
-        },
-        onScaleUpdate: (details) {
-          final pointerCount = details.pointerCount;
-          final isZooming =
-              pointerCount > 1 || (details.scale - 1).abs() > 0.001;
-          if (!isZooming) return;
+      child: MouseRegion(
+        cursor: widget.workspace.columnLinkMode
+            ? SystemMouseCursors.precise
+            : MouseCursor.defer,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          trackpadScrollCausesScale: true,
+          trackpadScrollToScaleFactor: const Offset(0.001, 0.001),
+          onScaleStart: (details) {
+            widget.focusNode.requestFocus();
+            _scaleGestureStartScale = ref.read(workspaceProvider).scale;
+          },
+          onScaleUpdate: (details) {
+            final pointerCount = details.pointerCount;
+            final isZooming =
+                pointerCount > 1 || (details.scale - 1).abs() > 0.001;
+            if (!isZooming) return;
 
-          final startScale =
-              _scaleGestureStartScale ?? ref.read(workspaceProvider).scale;
-          engine.zoomAt(details.localFocalPoint, startScale * details.scale);
-          if (details.focalPointDelta.distanceSquared > 0) {
-            engine.panBy(details.focalPointDelta);
-          }
-        },
-        onScaleEnd: (_) {
-          _scaleGestureStartScale = null;
-        },
-        child: Stack(
-          children: [
-            widget.child,
-            if (_marqueeRectLocal != null)
-              Positioned.fromRect(
-                rect: _marqueeRectLocal!,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: const Color(0x334C97FF),
-                      border: Border.all(
-                        color: const Color(0xFF4C97FF),
-                        width: 1.5,
+            final startScale =
+                _scaleGestureStartScale ?? ref.read(workspaceProvider).scale;
+            engine.zoomAt(details.localFocalPoint, startScale * details.scale);
+            if (details.focalPointDelta.distanceSquared > 0) {
+              engine.panBy(details.focalPointDelta);
+            }
+          },
+          onScaleEnd: (_) {
+            _scaleGestureStartScale = null;
+          },
+          child: Stack(
+            children: [
+              widget.child,
+              if (_marqueeRectLocal != null)
+                Positioned.fromRect(
+                  rect: _marqueeRectLocal!,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0x334C97FF),
+                        border: Border.all(
+                          color: const Color(0xFF4C97FF),
+                          width: 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -3670,6 +3927,10 @@ class _PointerWorkspaceLayerState
 
   Future<void> _showNodeContextMenu(Offset globalPosition) async {
     final catalog = ref.read(translationControllerProvider).catalog;
+    final engine = ref.read(workspaceProvider.notifier);
+    final selectedId = ref.read(workspaceProvider).selectedBlockId;
+    final hasColumnSource =
+        selectedId != null && engine.columnSourceForNode(selectedId) != null;
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
@@ -3682,13 +3943,23 @@ class _PointerWorkspaceLayerState
       position: position,
       color: NodeQlWorkbenchColors.of(context).panelElevated,
       items: [
+        if (hasColumnSource)
+          PopupMenuItem<String>(
+            value: 'disconnect-column-source',
+            child: Text(catalog.text('workspace.disconnectColumns')),
+          ),
         PopupMenuItem<String>(
           value: 'delete',
           child: Text(catalog.text('workspace.delete')),
         ),
       ],
     );
-    if (!mounted || action != 'delete') return;
+    if (!mounted || action == null) return;
+    if (action == 'disconnect-column-source' && selectedId != null) {
+      engine.disconnectColumnSource(selectedId);
+      return;
+    }
+    if (action != 'delete') return;
     await _handleDeleteWithRootConfirmation(context, ref);
   }
 
@@ -4122,17 +4393,11 @@ class _NodeView extends ConsumerWidget {
         nestedReporter?.type == BlockType.sqlColumn) {
       final columnReporter = nestedReporter ?? reporter;
       final allowMultiple = nestedReporter == null;
-      final selectedTable =
-          '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}';
-      final selectedSchema = runtime.schemas.where(
-        (schema) => schema.name == selectedTable,
-      );
-      final columns = selectedSchema.isEmpty
-          ? runtime.schemas
-                .expand((schema) => schema.columns)
-                .toSet()
-                .toList(growable: false)
-          : selectedSchema.first.columns;
+      final linkedSource = engine.columnSourceForNode(node.id);
+      final selectedTable = linkedSource == null
+          ? '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}'
+          : engine.contextTableForNode(node.id) ?? '';
+      final columns = _availableColumns(node, runtime, engine);
       final selectedColumns = '${columnReporter.inputs['column'] ?? '*'}'
           .split(',')
           .map((value) => value.trim())
@@ -4749,8 +5014,10 @@ class _NodeView extends ConsumerWidget {
     final catalog = translationCatalogOf(context);
     final mappedKey = _slotInputKey(slotKey);
     if (mappedKey == 'columns') {
-      final selectedTable =
-          '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}';
+      final linkedSource = engine.columnSourceForNode(node.id);
+      final selectedTable = linkedSource == null
+          ? '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}'
+          : engine.contextTableForNode(node.id) ?? '';
       final picked = await _pickColumnsDialog(
         context: context,
         columns: _availableColumns(node, runtime, engine),
@@ -5024,8 +5291,18 @@ class _NodeView extends ConsumerWidget {
     SqlRuntimeState runtime,
     WorkspaceController engine,
   ) {
-    final selectedTable =
-        '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}';
+    final linkedSource = engine.columnSourceForNode(node.id);
+    if (linkedSource != null) {
+      final linkedColumns = engine.outputColumnsForNode(linkedSource.id);
+      if (linkedColumns.isNotEmpty) return linkedColumns;
+      return _qualifiedColumnsForTable(
+        runtime,
+        engine.contextTableForNode(node.id),
+      );
+    }
+    final selectedTable = linkedSource == null
+        ? '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}'
+        : engine.contextTableForNode(node.id) ?? '';
     final schema = runtime.schemas.where((s) => s.name == selectedTable);
     return schema.isEmpty
         ? runtime.schemas
@@ -5041,6 +5318,11 @@ class _NodeView extends ConsumerWidget {
     SqlRuntimeState runtime,
     WorkspaceController engine,
   ) {
+    final linkedSource = engine.columnSourceForNode(node.id);
+    if (mappedKey != 'right_column' && linkedSource != null) {
+      final linkedColumns = engine.outputColumnsForNode(linkedSource.id);
+      if (linkedColumns.isNotEmpty) return linkedColumns;
+    }
     if (mappedKey == 'left_column') {
       final table = engine.contextTableBeforeNode(node.id);
       return _qualifiedColumnsForTable(runtime, table);
@@ -5197,6 +5479,7 @@ class _NodeView extends ConsumerWidget {
     final overlayBox = overlay.context.findRenderObject() as RenderBox;
     final anchor = overlayBox.globalToLocal(anchorGlobal);
     final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final foreground = Theme.of(context).colorScheme.onSurface;
     entry = OverlayEntry(
       builder: (ctx) => Stack(
@@ -5220,10 +5503,9 @@ class _NodeView extends ConsumerWidget {
                 key: const ValueKey('inline-option-overlay'),
                 width: overlayWidth,
                 constraints: BoxConstraints(maxHeight: maxHeight),
-                decoration: BoxDecoration(
+                decoration: surfaceStyle.surfaceDecoration(
                   color: workbenchColors.panelElevated,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: workbenchColors.border),
+                  borderColor: workbenchColors.border,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -5869,6 +6151,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final workbenchColors = NodeQlWorkbenchColors.of(context);
+        final surfaceStyle = NodeQlSurfaceStyle.of(context);
         final sql = widget.sql.isEmpty
             ? widget.catalog.text('runtime.sqlOutput')
             : widget.sql;
@@ -5882,12 +6165,9 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
             SizedBox(
               height: sqlHeight,
               child: Container(
-                decoration: BoxDecoration(
+                decoration: surfaceStyle.surfaceDecoration(
                   color: workbenchColors.panel,
-                  borderRadius: BorderRadius.circular(
-                    NodeQlDesign.radiusMedium,
-                  ),
-                  border: Border.all(color: workbenchColors.border),
+                  borderColor: workbenchColors.border,
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
@@ -5964,6 +6244,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
 
   Widget _buildOutputBody() {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     if (widget.runtime.lastRows.isEmpty) {
       final message = widget.runtime.lastMessage == null
@@ -5975,10 +6256,9 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
+        decoration: surfaceStyle.surfaceDecoration(
           color: workbenchColors.panel,
-          borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
-          border: Border.all(color: workbenchColors.border),
+          borderColor: workbenchColors.border,
         ),
         child: Text(message, style: TextStyle(color: colorScheme.onSurface)),
       );

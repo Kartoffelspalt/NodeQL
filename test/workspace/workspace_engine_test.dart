@@ -1,9 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 
 void main() {
+  test('treats a missing hot-reloaded connection mode as disabled', () {
+    const state = WorkspaceState(
+      roots: <BlockNode>[],
+      scale: 1,
+      pan: Offset.zero,
+      columnLinkMode: null,
+    );
+
+    expect(state.columnLinkMode, isFalse);
+  });
+
   test('does not snap blocks above execute query starter', () {
     final controller = WorkspaceController()..resetWithRoot();
 
@@ -115,6 +127,129 @@ void main() {
     expect(from.inputs['table'], 'customers');
     expect(join.inputs['table'], 'orders');
     expect(controller.contextTableBeforeNode(join.id), 'customers');
+  });
+
+  test('changing a JOIN table does not overwrite later SORT BY context', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 284));
+    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 360));
+
+    final select = controller.state.roots.first.next!;
+    final from = select.next!;
+    final join = from.next!;
+    final order = join.next!;
+    controller.updateInput(select, 'table', 'customers');
+    controller.updateInput(from, 'table', 'customers');
+    controller.updateInput(join, 'table', 'orders');
+
+    expect(join.inputs['table'], 'orders');
+    expect(order.inputs['table'], 'customers');
+    expect(controller.contextTableForNode(order.id), 'customers');
+  });
+
+  test('SORT BY added after JOIN still resolves the SELECT source table', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 234));
+
+    final select = controller.state.roots.first.next!;
+    final join = select.next!;
+    controller.updateInput(select, 'table', 'customers');
+    controller.updateInput(join, 'table', 'orders');
+    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 310));
+    final order = join.next!;
+
+    expect(order.type, BlockType.sqlOrderBy);
+    expect(order.inputs['table'], isNull);
+    expect(controller.contextTableForNode(join.id), 'orders');
+    expect(controller.contextTableBeforeNode(join.id), 'customers');
+    expect(controller.contextTableForNode(order.id), 'customers');
+  });
+
+  test('connects SELECT output columns to SORT BY explicitly', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 234));
+
+    final select = controller.state.roots.first.next!;
+    final order = select.next!;
+    controller.updateInput(select, 'table', 'customers');
+    controller.updateInput(
+      select,
+      'columns',
+      'customers.name, COUNT(orders.id) AS order_count',
+    );
+
+    expect(controller.connectColumnSource(select.id, order.id), isTrue);
+    expect(order.inputs[columnSourceNodeInput], select.id);
+    expect(order.inputs['column'], 'customers.name');
+    expect(order.inputs['expr'], 'customers.name DESC');
+    expect(controller.outputColumnsForNode(select.id), <String>[
+      'customers.name',
+      'order_count',
+    ]);
+    expect(controller.contextTableForNode(order.id), 'customers');
+
+    final restored = WorkspaceController()
+      ..loadFromJsonString(controller.toJsonString());
+    final restoredOrder = restored.findById(order.id)!;
+    expect(restoredOrder.inputs[columnSourceNodeInput], select.id);
+    expect(restored.columnLinks(), hasLength(1));
+  });
+
+  test('qualifies connected SORT BY columns in generated SQLite', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 234));
+
+    final select = controller.state.roots.first.next!;
+    final order = select.next!;
+    controller.updateInput(select, 'table', 'customers');
+    controller.updateInput(select, 'columns', 'id');
+
+    expect(controller.connectColumnSource(select.id, order.id), isTrue);
+    expect(order.inputs['column'], 'customers.id');
+    expect(order.inputs['expr'], 'customers.id DESC');
+    expect(
+      const SqlCompiler().compileWorkspace(controller.state.roots).sql,
+      'SELECT id FROM customers ORDER BY customers.id DESC;',
+    );
+  });
+
+  test('qualifies the existing SORT BY column when SELECT uses star', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 234));
+
+    final select = controller.state.roots.first.next!;
+    final order = select.next!;
+    controller.updateInput(select, 'table', 'customers');
+    controller.updateInput(select, 'columns', '*');
+
+    expect(controller.connectColumnSource(select.id, order.id), isTrue);
+    expect(order.inputs['column'], 'customers.id');
+    expect(order.inputs['expr'], 'customers.id DESC');
+  });
+
+  test('column connection tool rejects invalid targets', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
+    final select = controller.state.roots.first.next!;
+    final from = select.next!;
+
+    controller.setColumnLinkMode(true);
+    expect(
+      controller.beginColumnLink(select.position + const Offset(10, 10)),
+      isTrue,
+    );
+    expect(
+      controller.finishColumnLink(from.position + const Offset(10, 10)),
+      isFalse,
+    );
+    expect(controller.columnLinks(), isEmpty);
   });
 
   test('inserts two INNER JOIN blocks into the starter query chain', () {

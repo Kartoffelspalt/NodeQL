@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-enum NodeQlTheme { light, dark, midnight, matrix }
+enum NodeQlTheme { light, dark, midnight, matrix, neoBrutalism }
 
 @immutable
 class NodeQlThemeSettings {
@@ -43,6 +43,163 @@ abstract final class NodeQlDesign {
 
   static const Duration quick = Duration(milliseconds: 140);
   static const Duration standard = Duration(milliseconds: 220);
+}
+
+/// Canonical Neo-Brutalism colors. Keep these deliberately small and loud:
+/// paper neutrals provide reading comfort while three saturated accents carry
+/// hierarchy and interaction feedback.
+abstract final class NodeQlNeoBrutalism {
+  static const Color ink = Color(0xFF1A1A1A);
+  static const Color cream = Color(0xFFFFF4D8);
+  static const Color paper = Color(0xFFFFFDF5);
+  static const Color white = Color(0xFFFFFFFF);
+  static const Color violet = Color(0xFF5B5BF7);
+  static const Color pink = Color(0xFFFF4D8D);
+  static const Color yellow = Color(0xFFFFDE59);
+  static const Color cyan = Color(0xFFBDE7FF);
+  static const Color mint = Color(0xFFA7F3D0);
+  static const Color mutedInk = Color(0xFF555555);
+
+  static const double borderWidth = 2.5;
+  static const Offset shadowOffset = Offset(4, 4);
+  static const Duration interactionDuration = Duration(milliseconds: 90);
+}
+
+/// Theme-aware geometry and shadow tokens for custom workbench surfaces.
+///
+/// Material component themes cover controls, while NodeQL's canvas, palette,
+/// and output panels are custom widgets. Keeping their styling here lets those
+/// surfaces transition with the selected theme as one coherent system.
+@immutable
+class NodeQlSurfaceStyle extends ThemeExtension<NodeQlSurfaceStyle> {
+  const NodeQlSurfaceStyle({
+    required this.radiusSmall,
+    required this.radiusMedium,
+    required this.radiusLarge,
+    required this.borderWidth,
+    required this.shadowOffset,
+    required this.shadowOpacity,
+  });
+
+  static const standard = NodeQlSurfaceStyle(
+    radiusSmall: NodeQlDesign.radiusSmall,
+    radiusMedium: NodeQlDesign.radiusMedium,
+    radiusLarge: NodeQlDesign.radiusLarge,
+    borderWidth: 1,
+    shadowOffset: Offset.zero,
+    shadowOpacity: 0,
+  );
+
+  static const neoBrutalism = NodeQlSurfaceStyle(
+    radiusSmall: 2,
+    radiusMedium: 4,
+    radiusLarge: 6,
+    borderWidth: NodeQlNeoBrutalism.borderWidth,
+    shadowOffset: NodeQlNeoBrutalism.shadowOffset,
+    shadowOpacity: 1,
+  );
+
+  static NodeQlSurfaceStyle of(BuildContext context) {
+    return Theme.of(context).extension<NodeQlSurfaceStyle>() ?? standard;
+  }
+
+  final double radiusSmall;
+  final double radiusMedium;
+  final double radiusLarge;
+  final double borderWidth;
+  final Offset shadowOffset;
+  final double shadowOpacity;
+
+  bool get isBrutalist => borderWidth > 1.5;
+
+  BorderRadius get smallBorderRadius => BorderRadius.circular(radiusSmall);
+  BorderRadius get mediumBorderRadius => BorderRadius.circular(radiusMedium);
+  BorderRadius get largeBorderRadius => BorderRadius.circular(radiusLarge);
+
+  BorderSide borderSide(Color color, {bool disabled = false}) => BorderSide(
+    color: disabled ? color.withValues(alpha: 0.38) : color,
+    width: borderWidth,
+  );
+
+  List<BoxShadow> get hardShadow => hardShadowFor();
+
+  List<BoxShadow> hardShadowFor({
+    bool hovered = false,
+    bool pressed = false,
+    bool disabled = false,
+  }) {
+    if (shadowOpacity == 0 || disabled) return const [];
+    final offset = pressed
+        ? const Offset(1, 1)
+        : hovered
+        ? shadowOffset + const Offset(1, 1)
+        : shadowOffset;
+    return [
+      BoxShadow(
+        color: NodeQlNeoBrutalism.ink.withValues(alpha: shadowOpacity),
+        offset: offset,
+        blurRadius: 0,
+      ),
+    ];
+  }
+
+  Offset translationFor({bool hovered = false, bool pressed = false}) {
+    if (!isBrutalist) return Offset.zero;
+    if (pressed) return shadowOffset - const Offset(1, 1);
+    if (hovered) return const Offset(-1, -1);
+    return Offset.zero;
+  }
+
+  BoxDecoration surfaceDecoration({
+    required Color color,
+    required Color borderColor,
+    double? radius,
+    bool elevated = true,
+    bool disabled = false,
+  }) {
+    return BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(radius ?? radiusMedium),
+      border: Border.all(
+        color: disabled ? borderColor.withValues(alpha: 0.38) : borderColor,
+        width: borderWidth,
+      ),
+      boxShadow: elevated ? hardShadowFor(disabled: disabled) : null,
+    );
+  }
+
+  @override
+  NodeQlSurfaceStyle copyWith({
+    double? radiusSmall,
+    double? radiusMedium,
+    double? radiusLarge,
+    double? borderWidth,
+    Offset? shadowOffset,
+    double? shadowOpacity,
+  }) {
+    return NodeQlSurfaceStyle(
+      radiusSmall: radiusSmall ?? this.radiusSmall,
+      radiusMedium: radiusMedium ?? this.radiusMedium,
+      radiusLarge: radiusLarge ?? this.radiusLarge,
+      borderWidth: borderWidth ?? this.borderWidth,
+      shadowOffset: shadowOffset ?? this.shadowOffset,
+      shadowOpacity: shadowOpacity ?? this.shadowOpacity,
+    );
+  }
+
+  @override
+  NodeQlSurfaceStyle lerp(covariant NodeQlSurfaceStyle? other, double t) {
+    if (other == null) return this;
+    double lerpValue(double from, double to) => from + (to - from) * t;
+    return NodeQlSurfaceStyle(
+      radiusSmall: lerpValue(radiusSmall, other.radiusSmall),
+      radiusMedium: lerpValue(radiusMedium, other.radiusMedium),
+      radiusLarge: lerpValue(radiusLarge, other.radiusLarge),
+      borderWidth: lerpValue(borderWidth, other.borderWidth),
+      shadowOffset: Offset.lerp(shadowOffset, other.shadowOffset, t)!,
+      shadowOpacity: lerpValue(shadowOpacity, other.shadowOpacity),
+    );
+  }
 }
 
 final nodeQlThemeProvider =
@@ -168,6 +325,29 @@ ThemeData themeFor(NodeQlTheme theme, {Color? accentColor}) {
         workbenchColors: NodeQlWorkbenchColors.matrix,
         accentColor: accentColor,
       );
+    case NodeQlTheme.neoBrutalism:
+      return _buildTheme(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: NodeQlNeoBrutalism.cream,
+        colorScheme: const ColorScheme.light(
+          primary: NodeQlNeoBrutalism.violet,
+          onPrimary: NodeQlNeoBrutalism.white,
+          secondary: NodeQlNeoBrutalism.pink,
+          onSecondary: NodeQlNeoBrutalism.ink,
+          tertiary: NodeQlNeoBrutalism.yellow,
+          onTertiary: NodeQlNeoBrutalism.ink,
+          surface: NodeQlNeoBrutalism.paper,
+          onSurface: NodeQlNeoBrutalism.ink,
+          surfaceContainerHighest: NodeQlNeoBrutalism.mint,
+          onSurfaceVariant: NodeQlNeoBrutalism.mutedInk,
+          error: Color(0xFFE63946),
+          onError: NodeQlNeoBrutalism.white,
+          outline: NodeQlNeoBrutalism.ink,
+        ),
+        workbenchColors: NodeQlWorkbenchColors.neoBrutalism,
+        accentColor: accentColor,
+        neoBrutalist: true,
+      );
   }
 }
 
@@ -195,6 +375,7 @@ ThemeData _buildTheme({
   required ColorScheme colorScheme,
   required NodeQlWorkbenchColors workbenchColors,
   Color? accentColor,
+  bool neoBrutalist = false,
 }) {
   colorScheme = _withAccent(colorScheme, accentColor);
   final base = ThemeData(
@@ -203,39 +384,120 @@ ThemeData _buildTheme({
     colorScheme: colorScheme,
     scaffoldBackgroundColor: scaffoldBackgroundColor,
     visualDensity: VisualDensity.standard,
+    splashFactory: neoBrutalist ? NoSplash.splashFactory : null,
   );
   final onSurface = colorScheme.onSurface;
   final outline = colorScheme.outline;
-  final roundedMedium = BorderRadius.circular(NodeQlDesign.radiusMedium);
+  final surfaceStyle = neoBrutalist
+      ? NodeQlSurfaceStyle.neoBrutalism
+      : NodeQlSurfaceStyle.standard;
+  final roundedMedium = surfaceStyle.mediumBorderRadius;
+  final roundedLarge = surfaceStyle.largeBorderRadius;
+  final borderSide = surfaceStyle.borderSide(outline);
+  final disabledBorderSide = surfaceStyle.borderSide(outline, disabled: true);
+  final brutalButtonSide = WidgetStateProperty.resolveWith<BorderSide?>((
+    states,
+  ) {
+    return states.contains(WidgetState.disabled)
+        ? disabledBorderSide
+        : borderSide;
+  });
+  final brutalButtonElevation = WidgetStateProperty.resolveWith<double?>((
+    states,
+  ) {
+    if (states.contains(WidgetState.disabled) ||
+        states.contains(WidgetState.pressed)) {
+      return 0;
+    }
+    return states.contains(WidgetState.hovered) ? 1 : 0;
+  });
+  final brutalButtonOverlay = WidgetStateProperty.resolveWith<Color?>((states) {
+    if (states.contains(WidgetState.disabled)) return Colors.transparent;
+    if (states.contains(WidgetState.pressed)) {
+      return NodeQlNeoBrutalism.ink.withValues(alpha: 0.18);
+    }
+    if (states.contains(WidgetState.hovered)) {
+      return NodeQlNeoBrutalism.white.withValues(alpha: 0.18);
+    }
+    if (states.contains(WidgetState.focused)) {
+      return colorScheme.tertiary.withValues(alpha: 0.3);
+    }
+    return Colors.transparent;
+  });
+  final brutalButtonForeground = WidgetStateProperty.resolveWith<Color?>((
+    states,
+  ) {
+    return states.contains(WidgetState.disabled)
+        ? onSurface.withValues(alpha: 0.42)
+        : null;
+  });
+  final brutalButtonShape = WidgetStatePropertyAll<OutlinedBorder>(
+    RoundedRectangleBorder(borderRadius: roundedMedium),
+  );
+  final brutalButtonPadding = const WidgetStatePropertyAll<EdgeInsetsGeometry>(
+    EdgeInsets.symmetric(
+      horizontal: NodeQlDesign.space4,
+      vertical: NodeQlDesign.space3,
+    ),
+  );
+  final brutalButtonMinimumSize = const WidgetStatePropertyAll<Size>(
+    Size(44, 44),
+  );
+  final textTheme = base.textTheme
+      .apply(
+        bodyColor: onSurface,
+        displayColor: onSurface,
+        fontFamilyFallback: const [
+          'Inter',
+          'SF Pro Text',
+          'Segoe UI',
+          'Roboto',
+        ],
+      )
+      .copyWith(
+        titleLarge: base.textTheme.titleLarge?.copyWith(
+          fontWeight: neoBrutalist ? FontWeight.w900 : FontWeight.w700,
+          letterSpacing: neoBrutalist ? 0.2 : -0.25,
+        ),
+        titleMedium: base.textTheme.titleMedium?.copyWith(
+          fontWeight: neoBrutalist ? FontWeight.w900 : FontWeight.w700,
+          letterSpacing: neoBrutalist ? 0.15 : -0.1,
+        ),
+        titleSmall: neoBrutalist
+            ? base.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)
+            : null,
+        bodyMedium: base.textTheme.bodyMedium?.copyWith(
+          height: 1.45,
+          fontWeight: neoBrutalist ? FontWeight.w500 : null,
+        ),
+        labelLarge: base.textTheme.labelLarge?.copyWith(
+          fontWeight: neoBrutalist ? FontWeight.w900 : FontWeight.w700,
+          letterSpacing: neoBrutalist ? 0.35 : 0.1,
+        ),
+      );
 
   return base.copyWith(
-    textTheme: base.textTheme
-        .apply(
-          bodyColor: onSurface,
-          displayColor: onSurface,
-          fontFamilyFallback: const [
-            'Inter',
-            'SF Pro Text',
-            'Segoe UI',
-            'Roboto',
-          ],
-        )
-        .copyWith(
-          titleLarge: base.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.25,
-          ),
-          titleMedium: base.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.1,
-          ),
-          bodyMedium: base.textTheme.bodyMedium?.copyWith(height: 1.45),
-          labelLarge: base.textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.1,
-          ),
-        ),
-    dividerColor: outline.withValues(alpha: 0.72),
+    textTheme: textTheme,
+    focusColor: neoBrutalist
+        ? colorScheme.tertiary.withValues(alpha: 0.28)
+        : null,
+    hoverColor: neoBrutalist
+        ? colorScheme.primary.withValues(alpha: 0.08)
+        : null,
+    highlightColor: neoBrutalist
+        ? NodeQlNeoBrutalism.ink.withValues(alpha: 0.08)
+        : null,
+    textSelectionTheme: neoBrutalist
+        ? TextSelectionThemeData(
+            cursorColor: colorScheme.primary,
+            selectionColor: colorScheme.tertiary.withValues(alpha: 0.72),
+            selectionHandleColor: outline,
+          )
+        : null,
+    dividerColor: neoBrutalist ? outline : outline.withValues(alpha: 0.72),
+    dividerTheme: neoBrutalist
+        ? DividerThemeData(color: outline, thickness: 2.5, space: 24)
+        : null,
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: workbenchColors.panelElevated,
@@ -243,73 +505,423 @@ ThemeData _buildTheme({
         horizontal: NodeQlDesign.space3,
         vertical: NodeQlDesign.space3,
       ),
+      hoverColor: neoBrutalist
+          ? colorScheme.tertiary.withValues(alpha: 0.16)
+          : null,
       border: OutlineInputBorder(
         borderRadius: roundedMedium,
-        borderSide: BorderSide(color: outline),
+        borderSide: borderSide,
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: roundedMedium,
-        borderSide: BorderSide(color: outline.withValues(alpha: 0.82)),
+        borderSide: neoBrutalist
+            ? borderSide
+            : BorderSide(color: outline.withValues(alpha: 0.82)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: roundedMedium,
-        borderSide: BorderSide(color: colorScheme.primary, width: 2),
+        borderSide: BorderSide(
+          color: neoBrutalist ? outline : colorScheme.primary,
+          width: neoBrutalist ? 3.5 : 2,
+        ),
       ),
+      disabledBorder: neoBrutalist
+          ? OutlineInputBorder(
+              borderRadius: roundedMedium,
+              borderSide: disabledBorderSide,
+            )
+          : null,
+      errorBorder: neoBrutalist
+          ? OutlineInputBorder(
+              borderRadius: roundedMedium,
+              borderSide: BorderSide(
+                color: colorScheme.error,
+                width: surfaceStyle.borderWidth,
+              ),
+            )
+          : null,
+      focusedErrorBorder: neoBrutalist
+          ? OutlineInputBorder(
+              borderRadius: roundedMedium,
+              borderSide: BorderSide(color: colorScheme.error, width: 3.5),
+            )
+          : null,
+      errorStyle: neoBrutalist
+          ? textTheme.bodySmall?.copyWith(
+              color: colorScheme.error,
+              fontWeight: FontWeight.w800,
+            )
+          : null,
+      prefixIconColor: neoBrutalist
+          ? WidgetStateColor.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return onSurface.withValues(alpha: 0.38);
+              }
+              if (states.contains(WidgetState.focused)) {
+                return colorScheme.primary;
+              }
+              return onSurface;
+            })
+          : null,
+      suffixIconColor: neoBrutalist
+          ? WidgetStateColor.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return onSurface.withValues(alpha: 0.38);
+              }
+              return onSurface;
+            })
+          : null,
     ),
     cardTheme: CardThemeData(
       color: workbenchColors.panel,
       elevation: 0,
+      shadowColor: neoBrutalist ? outline : Colors.transparent,
+      surfaceTintColor: Colors.transparent,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: roundedMedium,
-        side: BorderSide(color: outline.withValues(alpha: 0.7)),
+        side: neoBrutalist
+            ? borderSide
+            : BorderSide(color: outline.withValues(alpha: 0.7)),
       ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: workbenchColors.panelElevated,
+      elevation: neoBrutalist ? 10 : null,
+      shadowColor: neoBrutalist ? outline : null,
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(NodeQlDesign.radiusLarge),
+        borderRadius: roundedLarge,
+        side: neoBrutalist ? borderSide : BorderSide.none,
       ),
       titleTextStyle: base.textTheme.titleLarge?.copyWith(
         color: onSurface,
-        fontWeight: FontWeight.w700,
+        fontWeight: neoBrutalist ? FontWeight.w900 : FontWeight.w700,
       ),
+      actionsPadding: neoBrutalist
+          ? const EdgeInsets.fromLTRB(24, 8, 24, 20)
+          : null,
+      insetPadding: neoBrutalist
+          ? const EdgeInsets.symmetric(horizontal: 32, vertical: 24)
+          : null,
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: workbenchColors.panelElevated,
+      backgroundColor: neoBrutalist
+          ? colorScheme.tertiary
+          : workbenchColors.panelElevated,
       contentTextStyle: TextStyle(color: onSurface),
-      shape: RoundedRectangleBorder(borderRadius: roundedMedium),
+      elevation: neoBrutalist ? 8 : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: roundedMedium,
+        side: neoBrutalist ? borderSide : BorderSide.none,
+      ),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(44, 44),
-        padding: const EdgeInsets.symmetric(horizontal: NodeQlDesign.space4),
-        shape: RoundedRectangleBorder(borderRadius: roundedMedium),
-      ),
+      style: neoBrutalist
+          ? ButtonStyle(
+              minimumSize: brutalButtonMinimumSize,
+              padding: brutalButtonPadding,
+              elevation: brutalButtonElevation,
+              shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+              foregroundColor: brutalButtonForeground,
+              overlayColor: brutalButtonOverlay,
+              side: brutalButtonSide,
+              shape: brutalButtonShape,
+              animationDuration: NodeQlNeoBrutalism.interactionDuration,
+            )
+          : FilledButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              padding: const EdgeInsets.symmetric(
+                horizontal: NodeQlDesign.space4,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: roundedMedium),
+            ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(44, 44),
-        padding: const EdgeInsets.symmetric(horizontal: NodeQlDesign.space4),
-        shape: RoundedRectangleBorder(borderRadius: roundedMedium),
-      ),
+      style: neoBrutalist
+          ? ButtonStyle(
+              minimumSize: brutalButtonMinimumSize,
+              padding: brutalButtonPadding,
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                return states.contains(WidgetState.disabled)
+                    ? workbenchColors.panel.withValues(alpha: 0.62)
+                    : workbenchColors.panelElevated;
+              }),
+              foregroundColor: brutalButtonForeground,
+              elevation: brutalButtonElevation,
+              shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.pressed)) {
+                  return colorScheme.tertiary.withValues(alpha: 0.72);
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return colorScheme.tertiary.withValues(alpha: 0.38);
+                }
+                if (states.contains(WidgetState.focused)) {
+                  return colorScheme.primary.withValues(alpha: 0.16);
+                }
+                return Colors.transparent;
+              }),
+              side: brutalButtonSide,
+              shape: brutalButtonShape,
+              animationDuration: NodeQlNeoBrutalism.interactionDuration,
+            )
+          : OutlinedButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              padding: const EdgeInsets.symmetric(
+                horizontal: NodeQlDesign.space4,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: roundedMedium),
+            ),
     ),
+    elevatedButtonTheme: neoBrutalist
+        ? ElevatedButtonThemeData(
+            style: ButtonStyle(
+              minimumSize: brutalButtonMinimumSize,
+              padding: brutalButtonPadding,
+              elevation: brutalButtonElevation,
+              shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+              foregroundColor: brutalButtonForeground,
+              overlayColor: brutalButtonOverlay,
+              side: brutalButtonSide,
+              shape: brutalButtonShape,
+              animationDuration: NodeQlNeoBrutalism.interactionDuration,
+            ),
+          )
+        : null,
+    textButtonTheme: neoBrutalist
+        ? TextButtonThemeData(
+            style: ButtonStyle(
+              minimumSize: brutalButtonMinimumSize,
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(
+                  horizontal: NodeQlDesign.space3,
+                  vertical: NodeQlDesign.space2,
+                ),
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                return states.contains(WidgetState.disabled)
+                    ? onSurface.withValues(alpha: 0.38)
+                    : colorScheme.primary;
+              }),
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.pressed)) {
+                  return colorScheme.tertiary.withValues(alpha: 0.82);
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return colorScheme.tertiary.withValues(alpha: 0.42);
+                }
+                return Colors.transparent;
+              }),
+              shape: brutalButtonShape,
+              animationDuration: NodeQlNeoBrutalism.interactionDuration,
+            ),
+          )
+        : null,
     iconButtonTheme: IconButtonThemeData(
-      style: IconButton.styleFrom(
-        minimumSize: const Size(44, 44),
-        shape: RoundedRectangleBorder(borderRadius: roundedMedium),
-      ),
+      style: neoBrutalist
+          ? ButtonStyle(
+              minimumSize: brutalButtonMinimumSize,
+              foregroundColor: brutalButtonForeground,
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return workbenchColors.panel.withValues(alpha: 0.45);
+                }
+                if (states.contains(WidgetState.pressed)) {
+                  return colorScheme.tertiary;
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return colorScheme.tertiary.withValues(alpha: 0.62);
+                }
+                return workbenchColors.panelElevated;
+              }),
+              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+              side: brutalButtonSide,
+              shape: brutalButtonShape,
+              animationDuration: NodeQlNeoBrutalism.interactionDuration,
+            )
+          : IconButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              shape: RoundedRectangleBorder(borderRadius: roundedMedium),
+            ),
     ),
+    segmentedButtonTheme: neoBrutalist
+        ? SegmentedButtonThemeData(
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return workbenchColors.panel.withValues(alpha: 0.6);
+                }
+                if (states.contains(WidgetState.pressed)) {
+                  return colorScheme.secondary.withValues(alpha: 0.72);
+                }
+                if (states.contains(WidgetState.selected)) {
+                  return colorScheme.tertiary;
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return colorScheme.tertiary.withValues(alpha: 0.42);
+                }
+                return workbenchColors.panelElevated;
+              }),
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                return states.contains(WidgetState.disabled)
+                    ? onSurface.withValues(alpha: 0.38)
+                    : onSurface;
+              }),
+              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+              side: brutalButtonSide,
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(borderRadius: roundedMedium),
+              ),
+              animationDuration: NodeQlNeoBrutalism.interactionDuration,
+            ),
+          )
+        : null,
+    checkboxTheme: neoBrutalist
+        ? CheckboxThemeData(
+            shape: RoundedRectangleBorder(
+              borderRadius: surfaceStyle.smallBorderRadius,
+            ),
+            side: WidgetStateBorderSide.resolveWith((states) {
+              return states.contains(WidgetState.disabled)
+                  ? disabledBorderSide
+                  : borderSide;
+            }),
+            fillColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return workbenchColors.panel;
+              }
+              return states.contains(WidgetState.selected)
+                  ? colorScheme.primary
+                  : workbenchColors.panelElevated;
+            }),
+            checkColor: const WidgetStatePropertyAll(NodeQlNeoBrutalism.white),
+            overlayColor: WidgetStatePropertyAll(
+              colorScheme.tertiary.withValues(alpha: 0.36),
+            ),
+          )
+        : null,
+    radioTheme: neoBrutalist
+        ? RadioThemeData(
+            fillColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return onSurface.withValues(alpha: 0.38);
+              }
+              return states.contains(WidgetState.selected)
+                  ? colorScheme.primary
+                  : outline;
+            }),
+            overlayColor: WidgetStatePropertyAll(
+              colorScheme.tertiary.withValues(alpha: 0.42),
+            ),
+            materialTapTargetSize: MaterialTapTargetSize.padded,
+          )
+        : null,
+    switchTheme: neoBrutalist
+        ? SwitchThemeData(
+            thumbColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return onSurface.withValues(alpha: 0.38);
+              }
+              return states.contains(WidgetState.selected)
+                  ? NodeQlNeoBrutalism.ink
+                  : workbenchColors.panelElevated;
+            }),
+            trackColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return workbenchColors.panel;
+              }
+              return states.contains(WidgetState.selected)
+                  ? colorScheme.tertiary
+                  : workbenchColors.panelElevated;
+            }),
+            trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+              return states.contains(WidgetState.disabled)
+                  ? outline.withValues(alpha: 0.38)
+                  : outline;
+            }),
+            trackOutlineWidth: WidgetStatePropertyAll(surfaceStyle.borderWidth),
+            overlayColor: WidgetStatePropertyAll(
+              colorScheme.tertiary.withValues(alpha: 0.36),
+            ),
+          )
+        : null,
+    popupMenuTheme: neoBrutalist
+        ? PopupMenuThemeData(
+            color: workbenchColors.panelElevated,
+            elevation: 8,
+            shadowColor: outline,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: roundedMedium,
+              side: borderSide,
+            ),
+          )
+        : null,
+    menuTheme: neoBrutalist
+        ? MenuThemeData(
+            style: MenuStyle(
+              backgroundColor: WidgetStatePropertyAll(
+                workbenchColors.panelElevated,
+              ),
+              surfaceTintColor: const WidgetStatePropertyAll(
+                Colors.transparent,
+              ),
+              elevation: const WidgetStatePropertyAll(0),
+              side: WidgetStatePropertyAll(borderSide),
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(borderRadius: roundedMedium),
+              ),
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(vertical: NodeQlDesign.space1),
+              ),
+            ),
+          )
+        : null,
+    scrollbarTheme: neoBrutalist
+        ? ScrollbarThemeData(
+            thickness: const WidgetStatePropertyAll(12),
+            radius: const Radius.circular(2),
+            thumbColor: WidgetStateProperty.resolveWith((states) {
+              return states.contains(WidgetState.hovered)
+                  ? colorScheme.primary
+                  : outline;
+            }),
+            trackColor: WidgetStatePropertyAll(workbenchColors.panelElevated),
+            trackBorderColor: WidgetStatePropertyAll(outline),
+            crossAxisMargin: 2,
+            mainAxisMargin: 2,
+          )
+        : null,
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
         color: workbenchColors.panelElevated,
-        borderRadius: BorderRadius.circular(NodeQlDesign.radiusSmall),
-        border: Border.all(color: outline),
+        borderRadius: BorderRadius.circular(
+          neoBrutalist ? 2 : NodeQlDesign.radiusSmall,
+        ),
+        border: Border.all(color: outline, width: neoBrutalist ? 2 : 1),
+        boxShadow: neoBrutalist
+            ? const [
+                BoxShadow(
+                  color: NodeQlNeoBrutalism.ink,
+                  offset: Offset(3, 3),
+                  blurRadius: 0,
+                ),
+              ]
+            : null,
       ),
-      textStyle: TextStyle(color: onSurface),
+      textStyle: TextStyle(
+        color: onSurface,
+        fontWeight: neoBrutalist ? FontWeight.w800 : null,
+      ),
     ),
-    extensions: <ThemeExtension<dynamic>>[workbenchColors],
+    extensions: <ThemeExtension<dynamic>>[
+      workbenchColors,
+      neoBrutalist
+          ? NodeQlSurfaceStyle.neoBrutalism
+          : NodeQlSurfaceStyle.standard,
+    ],
   );
 }
 
@@ -368,6 +980,17 @@ class NodeQlWorkbenchColors extends ThemeExtension<NodeQlWorkbenchColors> {
     border: Color(0xFF14532D),
     muted: Color(0xFF86EFAC),
     sqlText: Color(0xFFBBF7D0),
+  );
+
+  static const neoBrutalism = NodeQlWorkbenchColors(
+    topBar: NodeQlNeoBrutalism.yellow,
+    topBarForeground: NodeQlNeoBrutalism.ink,
+    panel: NodeQlNeoBrutalism.paper,
+    panelElevated: NodeQlNeoBrutalism.white,
+    workspace: NodeQlNeoBrutalism.cyan,
+    border: NodeQlNeoBrutalism.ink,
+    muted: NodeQlNeoBrutalism.mutedInk,
+    sqlText: Color(0xFF29298F),
   );
 
   static NodeQlWorkbenchColors of(BuildContext context) {

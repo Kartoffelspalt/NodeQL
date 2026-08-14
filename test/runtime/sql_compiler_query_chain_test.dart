@@ -60,6 +60,88 @@ void main() {
     expect(result.sql, 'SELECT * FROM customers;');
   });
 
+  test('compiles SQLite expressions that do not read from a table', () {
+    final root = EventBlock(id: 'run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'select',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSelect,
+        inputs: <String, dynamic>{'columns': '50 / 2, 51 / 2.0', 'table': ''},
+      );
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
+      'SELECT 50 / 2, 51 / 2.0;',
+    );
+  });
+
+  test('compiles DISTINCT and puts pagination after the complete query', () {
+    final root = EventBlock(id: 'run', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{
+        'columns': 'county',
+        'table': 'executions',
+        'distinct': true,
+        'limit': 10,
+        'offset': 5,
+      },
+    );
+    select.next = MotionBlock(
+      id: 'order',
+      position: Offset.zero,
+      motionType: BlockType.sqlOrderBy,
+      inputs: <String, dynamic>{'column': 'county', 'order': 'ASC'},
+    );
+    root.next = select;
+
+    final result = const SqlCompiler().compileWorkspace(<BlockNode>[root]);
+
+    expect(
+      result.sql,
+      'SELECT DISTINCT county FROM executions ORDER BY county ASC '
+      'LIMIT 10 OFFSET 5;',
+    );
+    expect(result.warnings, isEmpty);
+  });
+
+  test('supports OFFSET without LIMIT and rejects invalid pagination', () {
+    final offsetOnly = EventBlock(id: 'offset-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'offset-select',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSelect,
+        inputs: <String, dynamic>{
+          'columns': '*',
+          'table': 'executions',
+          'offset': 3,
+        },
+      );
+    final invalid = EventBlock(id: 'invalid-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'invalid-select',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSelect,
+        inputs: <String, dynamic>{
+          'columns': '*',
+          'table': 'executions',
+          'limit': 'many',
+        },
+      );
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[offsetOnly]).sql,
+      'SELECT * FROM executions LIMIT -1 OFFSET 3;',
+    );
+    final invalidResult = const SqlCompiler().compileWorkspace(<BlockNode>[
+      invalid,
+    ]);
+    expect(invalidResult.sql, 'SELECT * FROM executions;');
+    expect(invalidResult.warnings.single, contains('invalid LIMIT'));
+  });
+
   test('restores FROM when a legacy separate flag has no FROM block', () {
     final root = EventBlock(id: 'run', position: Offset.zero);
     final select = OperatorBlock(
@@ -163,6 +245,53 @@ void main() {
       result.sql,
       "SELECT * FROM orders WHERE status = 'open' "
       'GROUP BY customer_id HAVING SUM(total) >= 100;',
+    );
+  });
+
+  test('compiles grouped filters including null, ranges and lists', () {
+    final root = EventBlock(id: 'run', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{'columns': '*', 'table': 'executions'},
+    );
+    select.next = MotionBlock(
+      id: 'where',
+      position: Offset.zero,
+      motionType: BlockType.sqlWhere,
+      inputs: <String, dynamic>{
+        'match': 'ALL',
+        'conditions': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'column': 'county',
+            'operator': 'IN',
+            'value': <String>["'Harris'", "'Bexar'"],
+          },
+          <String, dynamic>{
+            'conditions': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'column': 'ex_age',
+                'operator': 'BETWEEN',
+                'lower': 18,
+                'upper': 25,
+              },
+              <String, dynamic>{
+                'column': 'last_statement',
+                'operator': 'IS NULL',
+              },
+            ],
+            'match': 'ANY',
+          },
+        ],
+      },
+    );
+    root.next = select;
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
+      "SELECT * FROM executions WHERE county IN ('Harris', 'Bexar') "
+      'AND (ex_age BETWEEN 18 AND 25 OR last_statement IS NULL);',
     );
   });
 
@@ -382,6 +511,33 @@ void main() {
                 }),
       ]).sql,
       "SELECT 'O''Reilly' FROM books;",
+    );
+  });
+
+  test('compiles SQLite COUNT DISTINCT and safe result aliases', () {
+    final root = EventBlock(id: 'run', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{'columns': '*', 'table': 'executions'},
+    );
+    final count = OperatorBlock(
+      id: 'count',
+      position: Offset.zero,
+      operatorType: BlockType.sqlCount,
+      inputs: <String, dynamic>{
+        'column': 'county',
+        'distinct': true,
+        'alias': 'county count',
+      },
+    );
+    setReporterForInput(select, 'columns', count);
+    root.next = select;
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
+      'SELECT COUNT(DISTINCT county) AS "county count" FROM executions;',
     );
   });
 

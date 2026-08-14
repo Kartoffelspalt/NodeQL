@@ -122,7 +122,11 @@ class SqliteDialectRenderer {
         ? ''
         : ' ${_compileNode(node.next!, pluginBlocks: pluginBlocks, warnings: warnings, visited: seen)}';
     seen.remove(node.id);
-    return '$current$next'.trim();
+    var compiled = '$current$next'.trim();
+    if (node.type == BlockType.sqlSelect) {
+      compiled = '$compiled${_selectPagination(node, warnings)}'.trim();
+    }
+    return compiled;
   }
 
   String _compileSingle(
@@ -201,13 +205,21 @@ class SqliteDialectRenderer {
         final cols = reporterColumns.isNotEmpty
             ? reporterColumns
             : (colsFromChildren.isNotEmpty ? colsFromChildren : colsFromInput);
+        final selectKeyword = _isEnabled(node.inputs['distinct'])
+            ? 'SELECT DISTINCT'
+            : 'SELECT';
         if (node.next?.type == BlockType.sqlFrom) {
-          return 'SELECT $cols';
+          return '$selectKeyword $cols';
         }
-        final from = node.inputs['table'] as String? ?? 'table_name';
-        return 'SELECT $cols FROM $from';
+        final configuredFrom = node.inputs['table'] as String?;
+        if (_isEnabled(node.inputs['omit_from']) ||
+            (configuredFrom != null && configuredFrom.trim().isEmpty)) {
+          return '$selectKeyword $cols';
+        }
+        final from = configuredFrom ?? 'table_name';
+        return '$selectKeyword $cols FROM $from';
       case BlockType.sqlColumn:
-        return node.inputs['column'] as String? ?? '*';
+        return _withAlias(node.inputs['column'] as String? ?? '*', node);
       case BlockType.sqlText:
         final text = '${node.inputs['text'] ?? ''}'.replaceAll("'", "''");
         return "'$text'";
@@ -265,7 +277,18 @@ class SqliteDialectRenderer {
         );
         return '';
       case BlockType.sqlCount:
-        return 'COUNT(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? '*'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        final expression = _compileReporterInputAny(
+          node,
+          const <String>['column', 'expr'],
+          '${node.inputs['column'] ?? node.inputs['expr'] ?? '*'}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        final argument = _isEnabled(node.inputs['distinct'])
+            ? 'DISTINCT $expression'
+            : expression;
+        return _withAlias('COUNT($argument)', node);
       case BlockType.sqlSum:
         return 'SUM(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlAvg:
@@ -431,10 +454,10 @@ class SqliteDialectRenderer {
         node.inputs['column'] as String? ??
         node.inputs['expr'] as String? ??
         'id';
-    final order = _normalizedComparisonOperator(
-      node.inputs['order'],
-      defaultValue: 'ASC',
-    );
+    final requestedOrder = '${node.inputs['order'] ?? 'ASC'}'
+        .trim()
+        .toUpperCase();
+    final order = requestedOrder == 'DESC' ? 'DESC' : 'ASC';
     if (column.toUpperCase().endsWith(' ASC') ||
         column.toUpperCase().endsWith(' DESC')) {
       return column;
@@ -449,13 +472,88 @@ class SqliteDialectRenderer {
     String valueKey = 'value',
     required String fallback,
   }) {
+    final conditions = node.inputs['conditions'];
+    if (conditions is List && conditions.isNotEmpty) {
+      final compiled = _compileStructuredConditions(
+        conditions,
+        node.inputs['match'],
+      );
+      if (compiled.isNotEmpty) return compiled;
+    }
+
     final column = '${node.inputs[columnKey] ?? ''}'.trim();
     final operator = _normalizedComparisonOperator(node.inputs[operatorKey]);
     final value = '${node.inputs[valueKey] ?? ''}'.trim();
-    if (column.isEmpty || value.isEmpty) {
+    if (column.isEmpty ||
+        (value.isEmpty && operator != 'IS NULL' && operator != 'IS NOT NULL')) {
       return node.inputs['predicate'] as String? ?? fallback;
     }
+    if (operator == 'IS NULL' || operator == 'IS NOT NULL') {
+      return '$column $operator';
+    }
     return '$column $operator $value';
+  }
+
+  String _compileStructuredPredicate(Map<String, dynamic> condition) {
+    final nested = condition['conditions'];
+    if (nested is List && nested.isNotEmpty) {
+      final group = _compileStructuredConditions(nested, condition['match']);
+      return group.isEmpty ? '' : '($group)';
+    }
+
+    final column = '${condition['column'] ?? ''}'.trim();
+    if (column.isEmpty) return '';
+    final operator = _normalizedComparisonOperator(condition['operator']);
+    if (operator == 'IS NULL' || operator == 'IS NOT NULL') {
+      return '$column $operator';
+    }
+
+    if (operator == 'BETWEEN' || operator == 'NOT BETWEEN') {
+      final rawValue = condition['value'];
+      final values = rawValue is List ? rawValue : const <dynamic>[];
+      final lower =
+          '${condition['lower'] ?? (values.isNotEmpty ? values[0] : '')}'
+              .trim();
+      final upper =
+          '${condition['upper'] ?? (values.length > 1 ? values[1] : '')}'
+              .trim();
+      if (lower.isEmpty || upper.isEmpty) return '';
+      return '$column $operator $lower AND $upper';
+    }
+
+    if (operator == 'IN' || operator == 'NOT IN') {
+      final rawValue = condition['value'];
+      final value = rawValue is List
+          ? rawValue.map((entry) => '$entry').join(', ')
+          : '${rawValue ?? ''}'.trim();
+      if (value.isEmpty) return '';
+      return '$column $operator ($value)';
+    }
+
+    final value = '${condition['value'] ?? ''}'.trim();
+    if (value.isEmpty) return '';
+    return '$column $operator $value';
+  }
+
+  String _compileStructuredConditions(List<dynamic> conditions, dynamic match) {
+    final fallbackConnector = '${match ?? 'ALL'}'.trim().toUpperCase() == 'ANY'
+        ? 'OR'
+        : 'AND';
+    final compiled = <String>[];
+    for (final condition in conditions) {
+      if (condition is! Map) continue;
+      final values = Map<String, dynamic>.from(condition);
+      final predicate = _compileStructuredPredicate(values);
+      if (predicate.isEmpty) continue;
+      if (compiled.isNotEmpty) {
+        final requested = '${values['connector'] ?? fallbackConnector}'
+            .trim()
+            .toUpperCase();
+        compiled.add(requested == 'OR' ? 'OR' : 'AND');
+      }
+      compiled.add(predicate);
+    }
+    return compiled.join(' ');
   }
 
   String _joinConditionFromInputs(BlockNode node, {String fallback = '1 = 1'}) {
@@ -539,8 +637,59 @@ class SqliteDialectRenderer {
       '<=',
       'LIKE',
       'NOT LIKE',
+      'GLOB',
+      'IS',
+      'IS NOT',
+      'IS NULL',
+      'IS NOT NULL',
+      'IN',
+      'NOT IN',
+      'BETWEEN',
+      'NOT BETWEEN',
     };
     return supported.contains(normalized) ? normalized : defaultValue;
+  }
+
+  String _selectPagination(BlockNode node, List<String> warnings) {
+    final rawLimit = node.inputs['limit'];
+    final rawOffset = node.inputs['offset'];
+    if (rawLimit == null && rawOffset == null) return '';
+
+    final limit = rawLimit == null ? null : int.tryParse('$rawLimit'.trim());
+    final offset = rawOffset == null ? null : int.tryParse('$rawOffset'.trim());
+    if (rawLimit != null && (limit == null || limit < 0)) {
+      warnings.add(
+        'SELECT block "${node.id}" has an invalid LIMIT. Use a non-negative integer.',
+      );
+      return '';
+    }
+    if (rawOffset != null && (offset == null || offset < 0)) {
+      warnings.add(
+        'SELECT block "${node.id}" has an invalid OFFSET. Use a non-negative integer.',
+      );
+      return limit == null ? '' : ' LIMIT $limit';
+    }
+    if (limit == null) return ' LIMIT -1 OFFSET $offset';
+    return offset == null ? ' LIMIT $limit' : ' LIMIT $limit OFFSET $offset';
+  }
+
+  bool _isEnabled(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    return const <String>{
+      'TRUE',
+      'YES',
+      'ON',
+      '1',
+    }.contains('${value ?? ''}'.trim().toUpperCase());
+  }
+
+  String _withAlias(String expression, BlockNode node) {
+    final alias = '${node.inputs['alias'] ?? ''}'.trim();
+    if (alias.isEmpty) return expression;
+    final simpleIdentifier = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+    if (simpleIdentifier.hasMatch(alias)) return '$expression AS $alias';
+    return '$expression AS "${alias.replaceAll('"', '""')}"';
   }
 
   String _compileChildren(
@@ -560,6 +709,7 @@ class SqliteDialectRenderer {
         ),
       );
     }
+
     return parts.where((p) => p.trim().isNotEmpty).join(', ');
   }
 

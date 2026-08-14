@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nodeql/engine/learning/sql_exercise_evaluator.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -183,6 +184,33 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     return executeWithSnapshot(rendered.sql);
   }
 
+  /// Checks a visual query against a SQLite reference query without allowing
+  /// either query to mutate the connected project database.
+  Future<SqlExerciseEvaluation> evaluateProgram(
+    SqliteProgram program, {
+    required String solutionSql,
+    bool orderSensitive = false,
+    bool compareColumnNames = false,
+  }) {
+    final dbPath = state.dbPath;
+    if (dbPath == null) {
+      return Future<SqlExerciseEvaluation>.value(
+        const SqlExerciseEvaluation(
+          verdict: SqlExerciseVerdict.databaseUnavailable,
+          message: 'No database connected.',
+        ),
+      );
+    }
+    final submission = const SqliteDialectRenderer().render(program).sql;
+    return const SqlExerciseEvaluator().evaluate(
+      databasePath: dbPath,
+      submissionSql: submission,
+      solutionSql: solutionSql,
+      orderSensitive: orderSensitive,
+      compareColumnNames: compareColumnNames,
+    );
+  }
+
   bool _isWriteSql(String sql) {
     final normalized = sql.trimLeft().toUpperCase();
     if (normalized.isEmpty) return false;
@@ -255,16 +283,21 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       for (final statement in statements) {
         final cursor = statement.selectCursor();
         final statementRows = <Map<String, String>>[];
+        List<String>? previewColumns;
         while (cursor.moveNext()) {
           if (cursor.columnNames.isEmpty) continue;
           if (statementRows.length >= maxRows) {
             truncated = true;
             break;
           }
+          previewColumns ??= _previewColumnNames(
+            cursor.columnNames,
+            cursor.tableNames,
+          );
           final row = cursor.current;
           statementRows.add(<String, String>{
-            for (final column in cursor.columnNames)
-              column: '${row[column] ?? ''}',
+            for (var index = 0; index < previewColumns.length; index++)
+              previewColumns[index]: '${row.columnAt(index) ?? ''}',
           });
         }
         if (cursor.columnNames.isNotEmpty) {
@@ -278,6 +311,35 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       }
       database.close();
     }
+  }
+
+  static List<String> _previewColumnNames(
+    List<String> columnNames,
+    List<String?>? tableNames,
+  ) {
+    final duplicateNames = <String>{};
+    final nameCounts = <String, int>{};
+    for (final name in columnNames) {
+      final count = (nameCounts[name] ?? 0) + 1;
+      nameCounts[name] = count;
+      if (count > 1) duplicateNames.add(name);
+    }
+
+    final result = <String>[];
+    final usedLabels = <String, int>{};
+    for (var index = 0; index < columnNames.length; index++) {
+      final name = columnNames[index];
+      final table = tableNames != null && index < tableNames.length
+          ? tableNames[index]
+          : null;
+      final baseLabel = duplicateNames.contains(name) && table != null
+          ? '$table.$name'
+          : name;
+      final occurrence = (usedLabels[baseLabel] ?? 0) + 1;
+      usedLabels[baseLabel] = occurrence;
+      result.add(occurrence == 1 ? baseLabel : '$baseLabel ($occurrence)');
+    }
+    return result;
   }
 
   Future<String> _uniqueDatabasePath(String directory, String fileName) async {

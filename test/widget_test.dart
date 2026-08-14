@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/core/app/nodeql_app.dart';
+import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/features/workbench/presentation/workbench_page.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:nodeql/localization/translation_models.dart';
@@ -9,6 +12,8 @@ import 'package:nodeql/localization/translation_controller.dart';
 
 void main() {
   testWidgets('renders localized workspace shell', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -24,6 +29,48 @@ void main() {
     expect(find.byType(WorkbenchPage), findsOneWidget);
     expect(find.text('NodeQL'), findsOneWidget);
     expect(find.text('SQLite-Command Output'), findsOneWidget);
+
+    final connectionTool = find.byKey(const ValueKey('column-link-tool'));
+    expect(connectionTool, findsOneWidget);
+    expect(tester.widget<IconButton>(connectionTool).isSelected, isFalse);
+    await tester.tap(connectionTool);
+    await tester.pump();
+    expect(tester.widget<IconButton>(connectionTool).isSelected, isTrue);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(WorkbenchPage)),
+    );
+    expect(container.read(nodeQlThemeProvider).theme, NodeQlTheme.dark);
+
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is RadioListTile<NodeQlTheme> &&
+            widget.value == NodeQlTheme.neoBrutalism,
+      ),
+      findsNothing,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    final searchField = find.byType(TextField).first;
+    await tester.tap(searchField);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyN);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyO);
+    await tester.pump();
+    expect(container.read(nodeQlThemeProvider).theme, NodeQlTheme.dark);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyN);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyO);
+    await tester.pumpAndSettle();
+
+    expect(container.read(nodeQlThemeProvider).theme, NodeQlTheme.neoBrutalism);
   });
 }
 
@@ -37,6 +84,7 @@ class _ReadyTranslationController extends TranslationController {
       'app.name': 'NodeQL',
       'toolbar.mountDatabase': 'Mount .db',
       'toolbar.runSql': 'Run SQLite',
+      'toolbar.connectColumns': 'Connect column sources',
       'toolbar.simple': 'Simple',
       'toolbar.advanced': 'Advanced',
       'toolbar.settings': 'Settings',
