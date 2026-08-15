@@ -23,7 +23,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Build SQLite without losing sight of SQLite'), findsOneWidget);
+    expect(
+      find.text('Build SQLite without losing sight of SQLite'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('tutorial-next')));
     await tester.pumpAndSettle();

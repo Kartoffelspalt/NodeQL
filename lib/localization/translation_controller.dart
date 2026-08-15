@@ -376,7 +376,8 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.visual.ready': 'Du bist bereit für deine erste visuelle Abfrage.',
     'tutorial.step.1.nav': 'Willkommen',
     'tutorial.step.1.eyebrow': 'WILLKOMMEN',
-    'tutorial.step.1.title': 'SQLite bauen, ohne SQLite aus den Augen zu verlieren',
+    'tutorial.step.1.title':
+        'SQLite bauen, ohne SQLite aus den Augen zu verlieren',
     'tutorial.step.1.body':
         'NodeQL verbindet visuelle Blöcke mit echter SQLite-Ausgabe. Du lernst Abfragestrukturen, experimentierst lokal und kannst jede erzeugte Anweisung prüfen.',
     'tutorial.step.2.nav': 'Die Oberfläche',
@@ -665,7 +666,8 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.intermediate.step.7.question':
         'Was prüfst du bei einer fehlerhaften Abfrage zuerst?',
     'tutorial.intermediate.step.7.answer.1': 'Nur die Farbe des Blocks',
-    'tutorial.intermediate.step.7.answer.2': 'Fehlermeldung und erzeugtes SQLite',
+    'tutorial.intermediate.step.7.answer.2':
+        'Fehlermeldung und erzeugtes SQLite',
     'tutorial.intermediate.step.7.answer.3': 'Die Größe der App',
     'tutorial.intermediate.step.8.nav': 'HAVING sicher nutzen',
     'tutorial.intermediate.step.8.eyebrow': 'GRUPPENFILTER',
@@ -724,7 +726,8 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.expert.step.3.answer.3': 'HAVING',
     'tutorial.expert.step.4.nav': 'Debugging',
     'tutorial.expert.step.4.eyebrow': 'DIAGNOSE',
-    'tutorial.expert.step.4.title': 'Nutze erzeugtes SQLite als Debugging-Vertrag',
+    'tutorial.expert.step.4.title':
+        'Nutze erzeugtes SQLite als Debugging-Vertrag',
     'tutorial.expert.step.4.body':
         'Wenn ein Ergebnis falsch wirkt, prüfe zuerst das SQLite. Die erzeugte Anweisung ist der gemeinsame Vertrag zwischen visueller Arbeitsfläche, Runtime und Datenbank.',
     'tutorial.expert.step.4.question':
