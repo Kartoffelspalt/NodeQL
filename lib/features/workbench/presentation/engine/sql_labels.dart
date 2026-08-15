@@ -24,6 +24,15 @@ String sqlLabelFor(
   Map<String, dynamic> inputs,
   String languageCode,
 ) {
+  if (type == BlockType.sqlText && inputs['literal_type'] != null) {
+    return switch ('${inputs['literal_type']}'.trim().toLowerCase()) {
+      'null' => 'NULL',
+      'integer' => 'INT {text}',
+      'real' => 'REAL {text}',
+      'blob' => 'BLOB {text}',
+      _ => 'TEXT {text}',
+    };
+  }
   final simpleLang = _simpleByLanguage(languageCode);
   final genericJoinUsesCondition =
       '${inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase() != 'CROSS' &&

@@ -5,7 +5,7 @@
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Local-first visual SQL learning and development.",
+    "description": "Local-first visual SQLite learning and development.",
     "orientation": "any",
     "prefer_related_applications": false,
     "icons": [

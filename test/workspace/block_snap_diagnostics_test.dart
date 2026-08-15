@@ -11,7 +11,7 @@ void main() {
     expect(report.blocked, greaterThan(0));
   });
 
-  test('marks SQL clause order combinations used by the UI', () {
+  test('marks SQLite clause order combinations used by the UI', () {
     expect(
       canSnapSequentially(BlockType.sqlGroupBy, BlockType.sqlHaving),
       isTrue,

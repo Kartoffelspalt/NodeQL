@@ -5,7 +5,7 @@ import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 
 void main() {
-  test('classifies SQL blocks by visual syntax role', () {
+  test('classifies SQLite blocks by visual syntax role', () {
     expect(
       blockVisualKindForType(BlockType.sqlSelect),
       BlockVisualKind.statement,
@@ -25,7 +25,7 @@ void main() {
     );
   });
 
-  test('enforces the SQL query clause order', () {
+  test('enforces the SQLite query clause order', () {
     expect(
       canFollowInSqlChain(BlockType.eventGreenFlag, BlockType.sqlSelect),
       isTrue,

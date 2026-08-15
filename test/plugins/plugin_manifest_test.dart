@@ -318,7 +318,7 @@ void main() {
     ]);
   });
 
-  test('compiler executes plugin SQL and warns on version changes', () {
+  test('compiler executes plugin SQLite and warns on version changes', () {
     final plugin = NodeQlPluginManifest.fromJson(manifestJson).blocks.single;
     final root = EventBlock(id: 'event', position: Offset.zero)
       ..next = OperatorBlock(

@@ -33,7 +33,7 @@ void main() {
     },
   );
 
-  testWidgets('native SQL block labels render without widget overflow', (
+  testWidgets('native SQLite block labels render without widget overflow', (
     tester,
   ) async {
     final types = BlockType.values.where(

@@ -43,8 +43,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.3.2] - 2026-07-05
 
-- Replaced the SQL wildcard `*` with localized, beginner-friendly wording such
-  as "Alles" in Simple Mode while preserving the generated SQL.
+- Replaced the SQLite wildcard `*` with localized, beginner-friendly wording such
+  as "Alles" in Simple Mode while preserving the generated SQLite.
 - Added an exclusive "Everything" option above the column list: selecting it
   disables individual columns in both Simple and Advanced Mode.
 - Persisted the selected Simple or Advanced editing mode across app restarts.
@@ -52,7 +52,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   contribution guidance for future app images.
 - Added a trademark policy that separates the MIT-licensed source code from
   the NodeQL name, logo, and project identity.
-- Added a persistent White Mode and updated the workbench, SQL output,
+- Added a persistent White Mode and updated the workbench, SQLite output,
   dropdowns, and interactive tutorial to use theme-aware surfaces and readable
   foreground colors.
 - Fixed inline table and JOIN dropdown positioning so menus open beneath their
@@ -76,14 +76,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added Plugin SDK v2 contracts for permission-declared HTTP data sources,
   persistent custom plugin repositories, SHA-256-verified installs, and
   repository management in the Plugin Dashboard.
-- Reworked the SQL command panel with a dedicated header, non-overlapping copy
+- Reworked the SQLite command panel with a dedicated header, non-overlapping copy
   action, and content-responsive height.
 - Restored complete `SELECT ... FROM ...` defaults while retaining support for
   separately docked FROM clauses.
 
 ### Added
 
-- Added SQL-aware block shapes for statement heads, clauses, joins, set
+- Added SQLite-aware block shapes for statement heads, clauses, joins, set
   operators, expressions, containers, and terminal statements.
 - Added dedicated plugin statement, value, and container silhouettes while
   preserving compatibility with existing plugin manifests and projects.
@@ -91,7 +91,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   visuals for CROSS, NATURAL, and SELF joins.
 - Added syntax-aware docking for valid SELECT, FROM, JOIN, WHERE, GROUP BY,
   HAVING, ORDER BY, and set-operator sequences.
-- Added a representative SQL query as the initial workspace instead of the
+- Added a representative SQLite query as the initial workspace instead of the
   legacy motion-block example.
 - Added local-first runtime translation packages with validation, SHA-256
   verification, offline caching, persisted language selection, and English
@@ -109,7 +109,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reloading, inspecting, and uninstalling plugins.
 - Added localized plugin labels, descriptions, custom colors, typed inputs,
   statement blocks, value blocks, and container blocks.
-- Added SQL template compilation with support for `identifier`, `number`,
+- Added SQLite template compilation with support for `identifier`, `number`,
   `string`, and raw `sql` inputs.
 - Added compatibility checks for schema versions, NodeQL versions,
   capabilities, duplicate IDs, invalid defaults, unknown fields, and malformed
@@ -127,7 +127,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - SQLite Power Pack
   - Text Tools
 - Added automated tests for manifest validation, compatibility handling,
-  example loading, SQL rendering, missing plugins, and version changes.
+  example loading, SQLite rendering, missing plugins, and version changes.
 
 ### Changed
 
@@ -138,7 +138,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   contribution and distribution workflow.
 - Standardized release artifacts and platform metadata on the NodeQL name.
 - Limited the first public release pipeline to supported desktop platforms.
-- Updated the SQL compiler to resolve and compile external plugin blocks.
+- Updated the SQLite compiler to resolve and compile external plugin blocks.
 - Updated the block palette and workspace drag-and-drop flow to retain plugin
   metadata and default input values.
 - Updated the workbench to render plugin-specific labels, editable slots,
@@ -154,5 +154,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   native libraries, scripts, or executables.
 - Plugin manifests are limited to 1 MiB and reject unsupported or unknown
   fields.
-- Typed SQL inputs validate identifiers and numbers and safely quote string
+- Typed SQLite inputs validate identifiers and numbers and safely quote string
   values.

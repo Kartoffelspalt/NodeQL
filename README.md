@@ -1,13 +1,27 @@
 # NodeQL
 
 NodeQL is a local-first desktop application for learning, designing, and
-running SQL with visual blocks. Projects, settings, plugins, and databases
+running SQLite with visual blocks. Projects, settings, plugins, and databases
 remain on the user's device.
 
 > **Release status:** public preview. Linux x64, macOS, and Windows x64 are the
 > supported release targets. Published binaries are currently unsigned; see
 > [Releasing](docs/RELEASING.md) before describing a build as generally
 > available.
+
+## Advertisement clip
+
+<video controls preload="metadata" poster="docs/screenshots/nodeql-advertisement-preview.jpg" width="100%">
+  <source src="assets/videos/NodeQL%20Advertisment.mp4" type="video/mp4">
+</video>
+
+<p align="center">
+  <a href="assets/videos/NodeQL%20Advertisment.mp4">
+    <img src="docs/screenshots/nodeql-advertisement-preview.jpg" alt="Play the NodeQL advertisement clip" width="100%">
+  </a>
+  <br>
+  <a href="assets/videos/NodeQL%20Advertisment.mp4">▶ Watch the NodeQL advertisement clip (59 seconds, MP4)</a>
+</p>
 
 ## App-Gallery
 
@@ -47,7 +61,7 @@ Additional screenshots and contribution guidance are available in
 
 ## Features
 
-- Visual SQL blocks with snapping, editing, compilation, and execution.
+- Visual SQLite blocks with snapping, editing, compilation, and execution.
 - Local SQLite database access without a separate system CLI.
 - Versioned JSON project files, recent projects, per-project autosave, and
   guided upgrades of supported legacy project files with automatic backups.

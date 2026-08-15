@@ -27,7 +27,7 @@ There are two text systems:
 Before adding text, find the existing call and its source. A new hard-coded
 user-facing string in `workbench_page.dart` is almost always the wrong choice.
 
-## 2. Add or change a native SQL block
+## 2. Add or change a native SQLite block
 
 Cover every affected layer:
 
@@ -39,7 +39,7 @@ Cover every affected layer:
    the standard behavior is not sufficient.
 4. Palette, color, or special rendering in `workbench_page.dart`.
 5. Labels, slots, and simple/advanced display in `sql_labels.dart`.
-6. SQL compilation in `sql_compiler.dart`.
+6. SQLite compilation in `sql_compiler.dart`.
 7. Update serialization, syntax/snap, and compiler tests.
 
 At minimum, run:

@@ -1,20 +1,20 @@
 # NodeQL Wiki
 
 This wiki explains how NodeQL works: from the visible workbench, through the
-internal block data model, to SQL execution against a local SQLite database.
+internal block data model, to SQLite execution against a local SQLite database.
 
 ## Summary
 
 NodeQL is a local-first desktop application for learning, designing, and running
-SQL with visual blocks. Instead of writing SQL directly in a text editor, users
-assemble SQL building blocks visually. NodeQL translates that block structure
-into SQL, shows the generated query, and can execute it against a local SQLite
+SQLite with visual blocks. Instead of writing SQLite directly in a text editor, users
+assemble SQLite building blocks visually. NodeQL translates that block structure
+into SQLite, shows the generated query, and can execute it against a local SQLite
 database.
 
 The main flow is:
 
 ```text
-Block palette -> Workspace -> Block tree -> SQL compiler -> SQL preview
+Block palette -> Workspace -> Block tree -> SQLite compiler -> SQLite preview
               -> SQLite runtime -> Result table / status message
 ```
 
@@ -27,14 +27,14 @@ The central interface is the workbench. It is made up of several areas:
 
 | Area | Purpose |
 | --- | --- |
-| Block palette | Built-in SQL, control, operator, and plugin blocks |
+| Block palette | Built-in SQLite, control, operator, and plugin blocks |
 | Workspace | Canvas where blocks are placed, connected, and edited |
-| SQL preview | Shows the SQL statement generated from the blocks |
+| SQLite preview | Shows the SQLite statement generated from the blocks |
 | Database area | Connects or creates local SQLite databases |
 | Result area | Shows execution messages and result rows |
 | Settings | Language, theme, plugins, repositories, and other app options |
 
-The workbench is designed as a visual SQL builder. Users do not only see the
+The workbench is designed as a visual SQLite builder. Users do not only see the
 final query; they also see the structure that produced it.
 
 ## The Block Model
@@ -61,27 +61,27 @@ EXECUTE QUERY
 
 The `eventGreenFlag` start block is the executable entry point. Blocks that are
 floating in the workspace and are not attached below such a start block are not
-treated as executable queries by the SQL compiler.
+treated as executable queries by the SQLite compiler.
 
-## How Blocks Become SQL
+## How Blocks Become SQLite
 
-SQL generation happens in the `SqlCompiler`. It receives the root blocks from
+SQLite generation happens in the `SqlCompiler`. It receives the root blocks from
 the workspace and walks through the executable block chains.
 
 Simplified, the compiler works like this:
 
 1. Find root blocks.
 2. Compile only chains below `EXECUTE QUERY`.
-3. Translate each block type into an SQL fragment.
+3. Translate each block type into an SQLite fragment.
 4. Append `next` blocks.
 5. Insert `children` from container or reporter blocks.
-6. Render plugin blocks through their SQL templates.
+6. Render plugin blocks through their SQLite templates.
 7. Collect warnings when something is not executable.
 8. Add a semicolon for each generated statement.
 
 Examples of built-in block translations:
 
-| Block type | SQL fragment |
+| Block type | SQLite fragment |
 | --- | --- |
 | `sqlSelect` | `SELECT ...` |
 | `sqlFrom` | `FROM table_name` |
@@ -94,8 +94,8 @@ Examples of built-in block translations:
 | `sqlUpdate` | `UPDATE ... SET ...` |
 | `sqlDelete` | `DELETE FROM ...` |
 
-The output is normal SQL syntax. NodeQL does not hide SQL; it makes the
-translation from visual structure to real SQL text visible.
+The output is normal SQLite syntax. NodeQL does not hide SQLite; it makes the
+translation from visual structure to real SQLite text visible.
 
 ## Why There Is an EXECUTE QUERY Start Block
 
@@ -106,9 +106,9 @@ This has three benefits:
 
 - Users can prepare blocks without executing them immediately.
 - Multiple query chains can exist in one project.
-- The compiler can clearly decide which chain should generate SQL.
+- The compiler can clearly decide which chain should generate SQLite.
 
-If an SQL block is floating freely in the workspace, NodeQL reports a warning
+If an SQLite block is floating freely in the workspace, NodeQL reports a warning
 instead of executing it silently.
 
 ## Slots, Inputs, and Reporters
@@ -124,7 +124,7 @@ WHERE [left] [operator] [right]
 
 Reporter blocks provide values for other blocks. For example, an aggregate block
 such as `COUNT(column)` can be inserted into a SELECT slot. This creates a
-structure that is closer to SQL expressions than plain text fields.
+structure that is closer to SQLite expressions than plain text fields.
 
 ## Workspace and Snapping
 
@@ -141,21 +141,21 @@ Two important relationships are created:
 Snapping is not only visual. It defines the actual data structure that the
 compiler reads later.
 
-## SQL Preview
+## SQLite Preview
 
-The SQL preview is a core part of NodeQL. It directly shows which SQL statement
+The SQLite preview is a core part of NodeQL. It directly shows which SQLite statement
 is produced by the current block structure.
 
 It serves three purposes:
 
-- Learning: users see which SQL syntax belongs to which block.
+- Learning: users see which SQLite syntax belongs to which block.
 - Checking: mistakes in order, column names, or predicates become visible
   faster.
 - Transparency: before execution, users can see exactly which query will be sent
   to SQLite.
 
-NodeQL is therefore not a replacement for understanding SQL. It is an interface
-that makes SQL structure visible and editable.
+NodeQL is therefore not a replacement for understanding SQLite. It is an interface
+that makes SQLite structure visible and editable.
 
 ## Local SQLite Runtime
 
@@ -168,11 +168,11 @@ The runtime flow is:
 2. NodeQL copies or opens the file through a controlled local path.
 3. The runtime reads the schema from `sqlite_schema`.
 4. For each table, columns are read with `PRAGMA table_info(...)`.
-5. On execution, the current SQL statement is sent to SQLite.
+5. On execution, the current SQLite statement is sent to SQLite.
 6. Result rows are capped for preview display.
 7. Status messages and rows are shown in the result area.
 
-Write statements receive additional protection. Before potentially mutating SQL
+Write statements receive additional protection. Before potentially mutating SQLite
 statements, NodeQL creates a snapshot. If execution fails, the database is
 restored from that snapshot.
 
@@ -196,7 +196,7 @@ Internal SQLite tables are hidden.
 ## Project Files
 
 A NodeQL project stores the visual workspace as JSON. The important part is that
-NodeQL does not only save the generated SQL text; it saves the block structure.
+NodeQL does not only save the generated SQLite text; it saves the block structure.
 
 Stored data includes:
 
@@ -231,18 +231,18 @@ A plugin block defines, among other things:
 - labels and descriptions
 - shape and color
 - inputs
-- SQL templates
+- SQLite templates
 - optional minimum NodeQL version
 
 During compilation, NodeQL detects whether a block comes from a plugin. If it
 does, the block is not handled by a fixed Dart switch case. Instead, the
-plugin's SQL template is rendered.
+plugin's SQLite template is rendered.
 
 The central distinction is:
 
 ```text
 Built-in block -> Dart switch/case in SqlCompiler
-Plugin block   -> Manifest + SQL template
+Plugin block   -> Manifest + SQLite template
 ```
 
 ## Plugin Repositories
@@ -325,12 +325,12 @@ The most important areas are:
 | `lib/engine/plugins` | Plugin manifests, loader, repository logic |
 | `lib/engine/runtime` | General runtime models and scheduler |
 | `lib/engine/workspace` | Workspace models and docking service |
-| `lib/features/workbench` | Visible workbench, SQL mode, compiler, runtime |
+| `lib/features/workbench` | Visible workbench, SQLite mode, compiler, runtime |
 | `lib/ui` | Shell and app entry |
 | `test` | Unit, widget, runtime, plugin, and workspace tests |
 
 State management is based on Riverpod. Routing uses `go_router`. The relevant
-logic for block structure, SQL compilation, plugin manifests, and SQLite
+logic for block structure, SQLite compilation, plugin manifests, and SQLite
 execution is testable separately from the UI.
 
 ## Security and Privacy
@@ -353,12 +353,12 @@ translations, is documented separately.
 
 ## Common Failure Cases
 
-### A Block Does Not Generate SQL
+### A Block Does Not Generate SQLite
 
 Usually it is not attached below an `EXECUTE QUERY` start block, or it is a
 reporter that is only intended to provide input to another block.
 
-### The SQL Looks Incomplete
+### The SQLite Looks Incomplete
 
 Check whether `SELECT`, `FROM`, `WHERE`, `JOIN`, and other clauses are connected
 in a meaningful chain. The visual order is the compilation order.

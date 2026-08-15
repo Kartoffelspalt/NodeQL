@@ -14,6 +14,8 @@ class BlockShape extends StatelessWidget {
     this.isHighlighted = false,
     this.isErrorHighlighted = false,
     this.isSelected = false,
+    this.selectedOutlineColor,
+    this.selectedOutlineHaloColor,
     this.showInnerHighlight = false,
     this.showLabel = true,
   });
@@ -27,6 +29,8 @@ class BlockShape extends StatelessWidget {
   final bool isHighlighted;
   final bool isErrorHighlighted;
   final bool isSelected;
+  final Color? selectedOutlineColor;
+  final Color? selectedOutlineHaloColor;
   final bool showInnerHighlight;
   final bool showLabel;
 
@@ -49,6 +53,8 @@ class BlockShape extends StatelessWidget {
         isHighlighted: isHighlighted,
         isErrorHighlighted: isErrorHighlighted,
         isSelected: isSelected,
+        selectedOutlineColor: selectedOutlineColor,
+        selectedOutlineHaloColor: selectedOutlineHaloColor,
         showInnerHighlight: showInnerHighlight,
         pluginShape: pluginShape,
       ),
@@ -108,6 +114,8 @@ class _ScratchBlockPainter extends CustomPainter {
     required this.isHighlighted,
     required this.isErrorHighlighted,
     required this.isSelected,
+    required this.selectedOutlineColor,
+    required this.selectedOutlineHaloColor,
     required this.showInnerHighlight,
     required this.pluginShape,
   });
@@ -117,6 +125,8 @@ class _ScratchBlockPainter extends CustomPainter {
   final bool isHighlighted;
   final bool isErrorHighlighted;
   final bool isSelected;
+  final Color? selectedOutlineColor;
+  final Color? selectedOutlineHaloColor;
   final bool showInnerHighlight;
   final String? pluginShape;
 
@@ -179,15 +189,34 @@ class _ScratchBlockPainter extends CustomPainter {
     }
 
     if (isHighlighted || isSelected || isErrorHighlighted) {
+      if (isSelected && selectedOutlineColor != null && !isErrorHighlighted) {
+        canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 10
+            ..strokeJoin = StrokeJoin.round
+            ..strokeCap = StrokeCap.round
+            ..color =
+                selectedOutlineHaloColor ??
+                selectedOutlineColor!.withValues(alpha: .35),
+        );
+      }
       canvas.drawPath(
         path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = isErrorHighlighted ? 4 : 3
+          ..strokeWidth = isErrorHighlighted
+              ? 4
+              : selectedOutlineColor != null
+              ? 5
+              : 3
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round
           ..color = isErrorHighlighted
               ? const Color(0xFFF87171)
               : isSelected
-              ? const Color(0xFFFFF176)
+              ? selectedOutlineColor ?? const Color(0xFFFFF176)
               : Colors.white.withValues(alpha: 0.65),
       );
     }
@@ -445,6 +474,8 @@ class _ScratchBlockPainter extends CustomPainter {
         oldDelegate.isHighlighted != isHighlighted ||
         oldDelegate.isErrorHighlighted != isErrorHighlighted ||
         oldDelegate.isSelected != isSelected ||
+        oldDelegate.selectedOutlineColor != selectedOutlineColor ||
+        oldDelegate.selectedOutlineHaloColor != selectedOutlineHaloColor ||
         oldDelegate.showInnerHighlight != showInnerHighlight ||
         oldDelegate.pluginShape != pluginShape ||
         oldDelegate.node.id != node.id;

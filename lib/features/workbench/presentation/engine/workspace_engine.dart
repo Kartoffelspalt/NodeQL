@@ -9,6 +9,15 @@ import 'package:nodeql/engine/block/block_syntax.dart';
 
 enum SnapZone { topOuter, bottomOuter, innerTop, innerBottom }
 
+const columnSourceNodeInput = r'$nodeqlColumnSource';
+
+class WorkspaceColumnLink {
+  const WorkspaceColumnLink({required this.source, required this.target});
+
+  final BlockNode source;
+  final BlockNode target;
+}
+
 class WorkspaceState {
   const WorkspaceState({
     required this.roots,
@@ -22,8 +31,13 @@ class WorkspaceState {
     this.rejectedTargetId,
     this.rejectedZone,
     this.lastPointerGlobal,
+    bool? columnLinkMode,
+    this.columnLinkSourceId,
+    this.columnLinkPointer,
+    this.columnLinkTargetId,
+    this.selectedColumnLinkTargetId,
     this.revision = 0,
-  });
+  }) : _columnLinkMode = columnLinkMode;
 
   final List<BlockNode> roots;
   final double scale;
@@ -36,6 +50,14 @@ class WorkspaceState {
   final String? rejectedTargetId;
   final SnapZone? rejectedZone;
   final Offset? lastPointerGlobal;
+  // Nullable backing keeps WorkspaceState compatible with instances that were
+  // created before this field existed and survive a Flutter hot reload.
+  final bool? _columnLinkMode;
+  bool get columnLinkMode => _columnLinkMode ?? false;
+  final String? columnLinkSourceId;
+  final Offset? columnLinkPointer;
+  final String? columnLinkTargetId;
+  final String? selectedColumnLinkTargetId;
   final int revision;
 
   WorkspaceState copyWith({
@@ -50,11 +72,19 @@ class WorkspaceState {
     String? rejectedTargetId,
     SnapZone? rejectedZone,
     Offset? lastPointerGlobal,
+    bool? columnLinkMode,
+    String? columnLinkSourceId,
+    Offset? columnLinkPointer,
+    String? columnLinkTargetId,
+    String? selectedColumnLinkTargetId,
     bool clearDrag = false,
     bool clearSelected = false,
     bool clearHighlight = false,
     bool clearRejected = false,
     bool clearPointer = false,
+    bool clearColumnLink = false,
+    bool clearColumnLinkTarget = false,
+    bool clearSelectedColumnLink = false,
     int? revision,
   }) {
     return WorkspaceState(
@@ -81,6 +111,19 @@ class WorkspaceState {
       lastPointerGlobal: clearPointer
           ? null
           : (lastPointerGlobal ?? this.lastPointerGlobal),
+      columnLinkMode: columnLinkMode ?? this.columnLinkMode,
+      columnLinkSourceId: clearColumnLink
+          ? null
+          : (columnLinkSourceId ?? this.columnLinkSourceId),
+      columnLinkPointer: clearColumnLink
+          ? null
+          : (columnLinkPointer ?? this.columnLinkPointer),
+      columnLinkTargetId: clearColumnLink || clearColumnLinkTarget
+          ? null
+          : (columnLinkTargetId ?? this.columnLinkTargetId),
+      selectedColumnLinkTargetId: clearSelectedColumnLink
+          ? null
+          : (selectedColumnLinkTargetId ?? this.selectedColumnLinkTargetId),
       revision: revision ?? this.revision,
     );
   }
@@ -252,7 +295,10 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         }
       }
     }
-    if (key == 'table' && value is String && value.trim().isNotEmpty) {
+    if (key == 'table' &&
+        value is String &&
+        value.trim().isNotEmpty &&
+        !isJoinType(node.type)) {
       _propagateTableSelection(node, value.trim());
     }
     _relayoutAll();
@@ -363,6 +409,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       draggingId: hit?.id,
       selectedBlockId: hit?.id,
+      clearSelectedColumnLink: true,
       clearHighlight: true,
       clearRejected: true,
       revision: state.revision + 1,
@@ -443,6 +490,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         state = state.copyWith(
           selectedBlockId: null,
           selectedBlockIds: <String>{},
+          clearSelectedColumnLink: true,
           revision: state.revision + 1,
         );
       }
@@ -463,6 +511,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       selectedBlockId: hit.id,
       selectedBlockIds: nextSet,
+      clearSelectedColumnLink: true,
       revision: state.revision + 1,
     );
   }
@@ -478,6 +527,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       selectedBlockId: next.isEmpty ? null : next.first,
       selectedBlockIds: next,
+      clearSelectedColumnLink: true,
       revision: state.revision + 1,
     );
   }
@@ -493,12 +543,21 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     for (final id in ids) {
       purgeSelectedNode(id);
     }
-    state = state.copyWith(clearSelected: true, revision: state.revision + 1);
+    state = state.copyWith(
+      clearSelected: true,
+      clearSelectedColumnLink: true,
+      revision: state.revision + 1,
+    );
   }
 
   void purgeSelectedNode(String targetId) {
     final target = findById(targetId);
     if (target == null) return;
+    for (final node in allBlocks()) {
+      if (node.inputs[columnSourceNodeInput] == targetId) {
+        node.inputs.remove(columnSourceNodeInput);
+      }
+    }
 
     for (var i = 0; i < state.roots.length; i++) {
       final root = state.roots[i];
@@ -542,7 +601,214 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     return null;
   }
 
+  void setColumnLinkMode(bool enabled) {
+    state = state.copyWith(
+      columnLinkMode: enabled,
+      clearColumnLink: true,
+      clearSelectedColumnLink: true,
+      revision: state.revision + 1,
+    );
+  }
+
+  bool beginColumnLink(Offset worldPosition) {
+    if (!state.columnLinkMode) return false;
+    final source = _hitTest(worldPosition);
+    if (source == null || !_providesColumnSource(source)) {
+      state = state.copyWith(
+        clearColumnLink: true,
+        revision: state.revision + 1,
+      );
+      return false;
+    }
+    state = state.copyWith(
+      columnLinkSourceId: source.id,
+      columnLinkPointer: worldPosition,
+      clearSelected: true,
+      revision: state.revision + 1,
+    );
+    return true;
+  }
+
+  void updateColumnLink(Offset worldPosition) {
+    final sourceId = state.columnLinkSourceId;
+    if (!state.columnLinkMode || sourceId == null) return;
+    final target = _hitTest(worldPosition);
+    final validTarget =
+        target != null && canConnectColumnSource(sourceId, target.id)
+        ? target.id
+        : null;
+    state = state.copyWith(
+      columnLinkPointer: worldPosition,
+      columnLinkTargetId: validTarget,
+      clearColumnLinkTarget: validTarget == null,
+      revision: state.revision + 1,
+    );
+  }
+
+  bool finishColumnLink(Offset worldPosition) {
+    final sourceId = state.columnLinkSourceId;
+    final target = _hitTest(worldPosition);
+    final connected =
+        sourceId != null &&
+        target != null &&
+        connectColumnSource(sourceId, target.id);
+    state = state.copyWith(clearColumnLink: true, revision: state.revision + 1);
+    return connected;
+  }
+
+  void cancelColumnLink() {
+    state = state.copyWith(clearColumnLink: true, revision: state.revision + 1);
+  }
+
+  bool canConnectColumnSource(String sourceId, String targetId) {
+    if (sourceId == targetId) return false;
+    final source = findById(sourceId);
+    final target = findById(targetId);
+    if (source == null || target == null) return false;
+    if (!_providesColumnSource(source) || !_acceptsColumnSource(target)) {
+      return false;
+    }
+    final seen = <String>{targetId};
+    BlockNode? cursor = source;
+    while (cursor != null && seen.add(cursor.id)) {
+      final parentId = cursor.inputs[columnSourceNodeInput] as String?;
+      cursor = parentId == null ? null : findById(parentId);
+    }
+    return cursor == null;
+  }
+
+  bool connectColumnSource(String sourceId, String targetId) {
+    if (!canConnectColumnSource(sourceId, targetId)) return false;
+    final source = findById(sourceId)!;
+    final target = findById(targetId)!;
+    _pushUndoSnapshot();
+    target.inputs[columnSourceNodeInput] = source.id;
+    final columns = outputColumnsForNode(source.id);
+    if (columns.isNotEmpty) {
+      _applyLinkedColumn(target, columns.first);
+    } else {
+      final qualifiedCurrent = _qualifiedCurrentColumn(source, target);
+      if (qualifiedCurrent != null) {
+        _applyLinkedColumn(target, qualifiedCurrent);
+      }
+    }
+    _relayoutAll();
+    _touch();
+    return true;
+  }
+
+  void disconnectColumnSource(String targetId) {
+    final target = findById(targetId);
+    if (target == null || !target.inputs.containsKey(columnSourceNodeInput)) {
+      return;
+    }
+    _pushUndoSnapshot();
+    target.inputs.remove(columnSourceNodeInput);
+    _touch();
+    if (state.selectedColumnLinkTargetId == targetId) {
+      state = state.copyWith(
+        clearSelectedColumnLink: true,
+        revision: state.revision + 1,
+      );
+    }
+  }
+
+  BlockNode? columnSourceForNode(String targetId) {
+    final target = findById(targetId);
+    final sourceId = target?.inputs[columnSourceNodeInput] as String?;
+    return sourceId == null ? null : findById(sourceId);
+  }
+
+  List<String> outputColumnsForNode(String nodeId) {
+    final node = findById(nodeId);
+    if (node == null) return const <String>[];
+    if (node.type == BlockType.sqlSelect) {
+      final columns = '${node.inputs['columns'] ?? '*'}'.trim();
+      if (columns.isEmpty || columns == '*') return const <String>[];
+      return _splitSqlList(columns)
+          .map((expression) => _projectionReference(node, expression))
+          .where((column) => column.isNotEmpty && column != '*')
+          .toSet()
+          .toList(growable: false);
+    }
+    final column = '${node.inputs['column'] ?? ''}'.trim();
+    return column.isEmpty || column == '*'
+        ? const <String>[]
+        : <String>[column];
+  }
+
+  List<WorkspaceColumnLink> columnLinks() {
+    final links = <WorkspaceColumnLink>[];
+    for (final target in allBlocks()) {
+      final source = columnSourceForNode(target.id);
+      if (source != null) {
+        links.add(WorkspaceColumnLink(source: source, target: target));
+      }
+    }
+    return links;
+  }
+
+  WorkspaceColumnLink? columnLinkAt(Offset worldPosition) {
+    final tolerance = 10 / state.scale;
+    final links = columnLinks();
+    for (final link in links.reversed) {
+      final start = _columnLinkSourcePoint(link.source);
+      final end = _columnLinkTargetPoint(link.target);
+      var previous = start;
+      for (var step = 1; step <= 36; step++) {
+        final current = _columnLinkPoint(start, end, step / 36);
+        if (_distanceToSegment(worldPosition, previous, current) <= tolerance) {
+          return link;
+        }
+        previous = current;
+      }
+    }
+    return null;
+  }
+
+  bool selectColumnLinkAt(Offset worldPosition) {
+    final link = columnLinkAt(worldPosition);
+    if (link == null) return false;
+    selectColumnLink(link.target.id);
+    return true;
+  }
+
+  bool selectColumnLink(String targetId) {
+    if (!columnLinks().any((link) => link.target.id == targetId)) return false;
+    state = state.copyWith(
+      selectedColumnLinkTargetId: targetId,
+      clearSelected: true,
+      revision: state.revision + 1,
+    );
+    return true;
+  }
+
+  WorkspaceColumnLink? selectedColumnLink() {
+    final targetId = state.selectedColumnLinkTargetId;
+    if (targetId == null) return null;
+    for (final link in columnLinks()) {
+      if (link.target.id == targetId) return link;
+    }
+    return null;
+  }
+
+  void clearColumnLinkSelection() {
+    if (state.selectedColumnLinkTargetId == null) return;
+    state = state.copyWith(
+      clearSelectedColumnLink: true,
+      revision: state.revision + 1,
+    );
+  }
+
+  void deleteSelectedColumnLink() {
+    final targetId = state.selectedColumnLinkTargetId;
+    if (targetId == null) return;
+    disconnectColumnSource(targetId);
+  }
+
   String? contextTableForNode(String nodeId) {
+    final linked = _contextTableFromColumnLink(nodeId, <String>{});
+    if (linked != null) return linked;
     for (final root in state.roots) {
       final table = _contextTableInChain(root, nodeId, null);
       if (table != null) return table;
@@ -551,6 +817,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   }
 
   String? contextTableBeforeNode(String nodeId) {
+    final linked = _contextTableFromColumnLink(nodeId, <String>{});
+    if (linked != null) return linked;
     for (final root in state.roots) {
       final table = _contextTableBeforeInChain(root, nodeId, null);
       if (table != null) return table;
@@ -671,6 +939,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       clearDrag: true,
       clearHighlight: true,
       clearSelected: true,
+      clearColumnLink: true,
+      clearSelectedColumnLink: true,
     );
     _relayoutAll();
     _touch();
@@ -1511,6 +1781,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   }
 
   void _propagateTableSelection(BlockNode node, String table) {
+    if (isJoinType(node.type)) return;
     BlockNode? current = node;
     final visited = <String>{};
     while (current != null && visited.add(current.id)) {
@@ -1527,6 +1798,174 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     }
   }
 
+  bool _providesColumnSource(BlockNode node) {
+    return node.type == BlockType.sqlSelect || node.type == BlockType.sqlFrom;
+  }
+
+  bool _acceptsColumnSource(BlockNode node) {
+    return node.type == BlockType.sqlWhere ||
+        node.type == BlockType.sqlOrderBy ||
+        node.type == BlockType.sqlGroupBy ||
+        node.type == BlockType.sqlHaving ||
+        isJoinType(node.type) ||
+        node.type == BlockType.sqlUpdate ||
+        node.type == BlockType.sqlDelete;
+  }
+
+  void _applyLinkedColumn(BlockNode target, String column) {
+    if (target.type == BlockType.sqlOrderBy) {
+      final currentExpression = '${target.inputs['expr'] ?? ''}'.trim();
+      final expressionParts = currentExpression.split(RegExp(r'\s+'));
+      final expressionOrder = expressionParts.isNotEmpty
+          ? expressionParts.last.toUpperCase()
+          : '';
+      final order = '${target.inputs['order'] ?? ''}'.trim().toUpperCase();
+      final normalizedOrder = order == 'ASC' || order == 'DESC'
+          ? order
+          : (expressionOrder == 'ASC' || expressionOrder == 'DESC'
+                ? expressionOrder
+                : 'ASC');
+      target.inputs['column'] = column;
+      target.inputs['order'] = normalizedOrder;
+      target.inputs['expr'] = '$column $normalizedOrder';
+      return;
+    }
+    if (target.type == BlockType.sqlGroupBy) {
+      target.inputs['column'] = column;
+      target.inputs['expr'] = column;
+      return;
+    }
+    if (target.type == BlockType.sqlWhere ||
+        target.type == BlockType.sqlHaving) {
+      target.inputs['column'] = column;
+      return;
+    }
+    if (isJoinType(target.type)) {
+      target.inputs['left_column'] = column;
+      return;
+    }
+    if (target.type == BlockType.sqlUpdate ||
+        target.type == BlockType.sqlDelete) {
+      target.inputs['where_column'] = column;
+    }
+  }
+
+  List<String> _splitSqlList(String source) {
+    final result = <String>[];
+    var start = 0;
+    var depth = 0;
+    String? quote;
+    for (var index = 0; index < source.length; index++) {
+      final char = source[index];
+      if (quote != null) {
+        if (char == quote) {
+          if (index + 1 < source.length && source[index + 1] == quote) {
+            index++;
+          } else {
+            quote = null;
+          }
+        }
+        continue;
+      }
+      if (char == "'" || char == '"' || char == '`') {
+        quote = char;
+      } else if (char == '(') {
+        depth++;
+      } else if (char == ')' && depth > 0) {
+        depth--;
+      } else if (char == ',' && depth == 0) {
+        result.add(source.substring(start, index).trim());
+        start = index + 1;
+      }
+    }
+    result.add(source.substring(start).trim());
+    return result;
+  }
+
+  String _projectionReference(BlockNode source, String expression) {
+    final match = RegExp(
+      r'\s+AS\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(expression);
+    final reference = (match?.group(1) ?? expression).trim();
+    final unquoted = _unquotedIdentifier(reference);
+    if (match != null) return unquoted;
+    if (RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(unquoted)) {
+      final qualifier = _columnQualifierForSource(source);
+      if (qualifier != null) return '$qualifier.$unquoted';
+    }
+    return unquoted;
+  }
+
+  String _unquotedIdentifier(String reference) {
+    if (reference.length >= 2) {
+      final first = reference[0];
+      final last = reference[reference.length - 1];
+      if ((first == '"' && last == '"') ||
+          (first == '`' && last == '`') ||
+          (first == '[' && last == ']')) {
+        return reference.substring(1, reference.length - 1);
+      }
+    }
+    return reference;
+  }
+
+  String? _qualifiedCurrentColumn(BlockNode source, BlockNode target) {
+    var current = switch (target.type) {
+      BlockType.sqlOrderBy =>
+        '${target.inputs['column'] ?? target.inputs['expr'] ?? ''}',
+      BlockType.sqlGroupBy =>
+        '${target.inputs['column'] ?? target.inputs['expr'] ?? ''}',
+      BlockType.sqlWhere ||
+      BlockType.sqlHaving => '${target.inputs['column'] ?? ''}',
+      BlockType.sqlJoin ||
+      BlockType.sqlInnerJoin ||
+      BlockType.sqlLeftJoin ||
+      BlockType.sqlRightJoin ||
+      BlockType.sqlFullJoin ||
+      BlockType.sqlCrossJoin ||
+      BlockType.sqlSelfJoin ||
+      BlockType.sqlNaturalJoin => '${target.inputs['left_column'] ?? ''}',
+      BlockType.sqlUpdate ||
+      BlockType.sqlDelete => '${target.inputs['where_column'] ?? ''}',
+      _ => '',
+    };
+    current = current.trim().replaceFirst(
+      RegExp(r'\s+(ASC|DESC)$', caseSensitive: false),
+      '',
+    );
+    if (current.isEmpty || current == '*' || current.contains('.')) return null;
+    if (!RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(current)) return null;
+    final qualifier = _columnQualifierForSource(source);
+    return qualifier == null ? null : '$qualifier.$current';
+  }
+
+  String? _columnQualifierForSource(BlockNode source) {
+    final table = _tableFromNode(source) ?? contextTableForNode(source.id);
+    if (table == null || table.trim().isEmpty) return null;
+    final parts = table.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[parts.length - 2].toUpperCase() == 'AS') {
+      return _unquotedIdentifier(parts.last);
+    }
+    if (parts.length >= 2) return _unquotedIdentifier(parts.last);
+    return _unquotedIdentifier(parts.first);
+  }
+
+  String? _contextTableFromColumnLink(String targetId, Set<String> seen) {
+    if (!seen.add(targetId)) return null;
+    final source = columnSourceForNode(targetId);
+    if (source == null) return null;
+    final ownTable = _tableFromNode(source);
+    if (ownTable != null) return ownTable;
+    final inherited = _contextTableFromColumnLink(source.id, seen);
+    if (inherited != null) return inherited;
+    for (final root in state.roots) {
+      final table = _contextTableInChain(root, source.id, null);
+      if (table != null) return table;
+    }
+    return null;
+  }
+
   String? _contextTableInChain(
     BlockNode current,
     String targetId,
@@ -1534,11 +1973,13 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     Set<String>? visited,
   ]) {
     final seen = visited ?? <String>{};
-    String? activeTable = _tableFromNode(current) ?? lastTable;
+    String? activeTable = lastTable;
     BlockNode? cursor = current;
     while (cursor != null && seen.add(cursor.id)) {
-      activeTable = _tableFromNode(cursor) ?? activeTable;
+      final ownTable = _tableFromNode(cursor);
       if (cursor.id == targetId) {
+        if (isJoinType(cursor.type) && ownTable != null) return ownTable;
+        if (ownTable != null && !isJoinType(cursor.type)) return ownTable;
         if (activeTable != null) return activeTable;
         BlockNode? lookahead = cursor.next;
         final lookaheadSeen = <String>{...seen};
@@ -1547,6 +1988,9 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           if (ahead != null) return ahead;
           lookahead = lookahead.next;
         }
+      }
+      if (!isJoinType(cursor.type)) {
+        activeTable = ownTable ?? activeTable;
       }
       for (final child in cursor.children) {
         final childResult = _contextTableInChain(
@@ -1573,7 +2017,9 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     BlockNode? cursor = current;
     while (cursor != null && seen.add(cursor.id)) {
       if (cursor.id == targetId) return activeTable;
-      activeTable = _tableFromNode(cursor) ?? activeTable;
+      if (!isJoinType(cursor.type)) {
+        activeTable = _tableFromNode(cursor) ?? activeTable;
+      }
       for (final child in cursor.children) {
         final childResult = _contextTableBeforeInChain(
           child,
@@ -1673,6 +2119,42 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
   void _touch() {
     state = state.copyWith(revision: state.revision + 1);
+  }
+
+  Offset _columnLinkSourcePoint(BlockNode node) => Offset(
+    node.position.dx + nodeWidth(node),
+    node.position.dy + blockHeight(node) / 2,
+  );
+
+  Offset _columnLinkTargetPoint(BlockNode node) =>
+      Offset(node.position.dx, node.position.dy + blockHeight(node) / 2);
+
+  Offset _columnLinkPoint(Offset start, Offset end, double t) {
+    final horizontal = max(56.0, (end.dx - start.dx).abs() * .45);
+    final control1 = Offset(start.dx + horizontal, start.dy);
+    final control2 = Offset(end.dx - horizontal, end.dy);
+    final inverse = 1 - t;
+    return Offset(
+      inverse * inverse * inverse * start.dx +
+          3 * inverse * inverse * t * control1.dx +
+          3 * inverse * t * t * control2.dx +
+          t * t * t * end.dx,
+      inverse * inverse * inverse * start.dy +
+          3 * inverse * inverse * t * control1.dy +
+          3 * inverse * t * t * control2.dy +
+          t * t * t * end.dy,
+    );
+  }
+
+  double _distanceToSegment(Offset point, Offset start, Offset end) {
+    final segment = end - start;
+    final lengthSquared = segment.distanceSquared;
+    if (lengthSquared == 0) return (point - start).distance;
+    final projection =
+        ((point - start).dx * segment.dx + (point - start).dy * segment.dy) /
+        lengthSquared;
+    final nearest = start + segment * projection.clamp(0.0, 1.0);
+    return (point - nearest).distance;
   }
 
   String toJsonString() {

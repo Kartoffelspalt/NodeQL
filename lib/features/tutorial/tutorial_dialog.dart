@@ -782,19 +782,29 @@ class _TutorialFooter extends StatelessWidget {
                     ),
                   ),
           ),
-          FilledButton.icon(
-            key: const ValueKey('tutorial-next'),
-            onPressed: canContinue ? onNext : null,
-            icon: Icon(
-              step == stepCount - 1 && finishesOnLastStep
-                  ? Icons.rocket_launch
-                  : Icons.arrow_forward,
-            ),
-            label: Text(
-              catalog.text(
+          ClipRRect(
+            borderRadius: BorderRadius.circular(NodeQlDesign.radiusMedium),
+            child: FilledButton.icon(
+              key: const ValueKey('tutorial-next'),
+              onPressed: canContinue ? onNext : null,
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    NodeQlDesign.radiusMedium,
+                  ),
+                ),
+              ),
+              icon: Icon(
                 step == stepCount - 1 && finishesOnLastStep
-                    ? 'tutorial.finish'
-                    : 'tutorial.next',
+                    ? Icons.rocket_launch
+                    : Icons.arrow_forward,
+              ),
+              label: Text(
+                catalog.text(
+                  step == stepCount - 1 && finishesOnLastStep
+                      ? 'tutorial.finish'
+                      : 'tutorial.next',
+                ),
               ),
             ),
           ),
