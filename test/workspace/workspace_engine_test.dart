@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
@@ -252,6 +254,37 @@ void main() {
     expect(controller.columnLinks(), isEmpty);
   });
 
+  test('selects and deletes a column rope by clicking its curve', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
+    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 234));
+    final select = controller.state.roots.first.next!;
+    final order = select.next!;
+
+    expect(controller.connectColumnSource(select.id, order.id), isTrue);
+    final start = Offset(
+      select.position.dx + controller.nodeWidth(select),
+      select.position.dy + controller.blockHeight(select) / 2,
+    );
+    final end = Offset(
+      order.position.dx,
+      order.position.dy + controller.blockHeight(order) / 2,
+    );
+    final clickPoint = _columnRopePoint(start, end, .5);
+
+    expect(controller.columnLinkAt(clickPoint)?.target.id, order.id);
+    expect(controller.selectColumnLinkAt(clickPoint), isTrue);
+    expect(controller.state.selectedColumnLinkTargetId, order.id);
+    expect(controller.selectedColumnLink()?.source.id, select.id);
+
+    controller.deleteSelectedColumnLink();
+    expect(controller.columnLinks(), isEmpty);
+    expect(controller.state.selectedColumnLinkTargetId, isNull);
+
+    controller.undo();
+    expect(controller.columnLinks(), hasLength(1));
+  });
+
   test('inserts two INNER JOIN blocks into the starter query chain', () {
     final controller = WorkspaceController();
     controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 352));
@@ -417,4 +450,21 @@ void main() {
     expect(select.inputs['separate_from'], isFalse);
     expect(select.inputs['table'], 'table_name');
   });
+}
+
+Offset _columnRopePoint(Offset start, Offset end, double t) {
+  final horizontal = max(56.0, (end.dx - start.dx).abs() * .45);
+  final control1 = Offset(start.dx + horizontal, start.dy);
+  final control2 = Offset(end.dx - horizontal, end.dy);
+  final inverse = 1 - t;
+  return Offset(
+    inverse * inverse * inverse * start.dx +
+        3 * inverse * inverse * t * control1.dx +
+        3 * inverse * t * t * control2.dx +
+        t * t * t * end.dx,
+    inverse * inverse * inverse * start.dy +
+        3 * inverse * inverse * t * control1.dy +
+        3 * inverse * t * t * control2.dy +
+        t * t * t * end.dy,
+  );
 }

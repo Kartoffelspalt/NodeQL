@@ -60,6 +60,42 @@ void main() {
     expect(result.sql, 'SELECT * FROM customers;');
   });
 
+  test('compiles all SQLite storage-class literal nodes', () {
+    const cases = <(String, String, String)>[
+      ('null', '', 'NULL'),
+      ('integer', '42', '42'),
+      ('real', '3.5', '3.5'),
+      ('text', "O'Reilly", "'O''Reilly'"),
+      ('blob', 'CA FE', "X'CAFE'"),
+    ];
+
+    for (final entry in cases) {
+      final root = EventBlock(id: 'run_${entry.$1}', position: Offset.zero);
+      final select = OperatorBlock(
+        id: 'select_${entry.$1}',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSelect,
+        inputs: {'columns': '*', 'table': '', 'omit_from': true},
+      );
+      setReporterForInput(
+        select,
+        'columns',
+        OperatorBlock(
+          id: 'literal_${entry.$1}',
+          position: Offset.zero,
+          operatorType: BlockType.sqlText,
+          inputs: {'literal_type': entry.$1, 'text': entry.$2},
+        ),
+      );
+      root.next = select;
+
+      final result = const SqlCompiler().compileWorkspace([root]);
+
+      expect(result.sql, 'SELECT ${entry.$3};');
+      expect(result.warnings, isEmpty);
+    }
+  });
+
   test('compiles SQLite expressions that do not read from a table', () {
     final root = EventBlock(id: 'run', position: Offset.zero)
       ..next = OperatorBlock(

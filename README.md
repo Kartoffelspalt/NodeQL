@@ -9,6 +9,20 @@ remain on the user's device.
 > [Releasing](docs/RELEASING.md) before describing a build as generally
 > available.
 
+## Advertisement clip
+
+<video controls preload="metadata" poster="docs/screenshots/nodeql-advertisement-preview.jpg" width="100%">
+  <source src="assets/videos/NodeQL%20Advertisment.mp4" type="video/mp4">
+</video>
+
+<p align="center">
+  <a href="assets/videos/NodeQL%20Advertisment.mp4">
+    <img src="docs/screenshots/nodeql-advertisement-preview.jpg" alt="Play the NodeQL advertisement clip" width="100%">
+  </a>
+  <br>
+  <a href="assets/videos/NodeQL%20Advertisment.mp4">▶ Watch the NodeQL advertisement clip (59 seconds, MP4)</a>
+</p>
+
 ## App-Gallery
 
 <table>

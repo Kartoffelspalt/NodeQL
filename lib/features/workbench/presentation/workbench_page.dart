@@ -18,6 +18,7 @@ import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
@@ -36,6 +37,7 @@ import 'package:path/path.dart' as p;
 import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
+const String _appIconAsset = 'assets/appicon/iconv4dark.png';
 const double _inlineLineHeight = 28;
 const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
@@ -59,6 +61,38 @@ class _SimpleNodeDiagnostic {
 
 class _SaveProjectIntent extends Intent {
   const _SaveProjectIntent();
+}
+
+enum _SettingsAction { plugins, languages, tutorial, about }
+
+class _RopeHighlightColors {
+  const _RopeHighlightColors({
+    required this.source,
+    required this.target,
+    required this.halo,
+  });
+
+  final Color source;
+  final Color target;
+  final Color halo;
+
+  factory _RopeHighlightColors.of(BuildContext context) {
+    final workspace = NodeQlWorkbenchColors.of(context).workspace;
+    final dark =
+        Theme.of(context).brightness == Brightness.dark ||
+        workspace.computeLuminance() < .28;
+    return dark
+        ? const _RopeHighlightColors(
+            source: Color(0xFF8ADFFF),
+            target: Color(0xFFFFC078),
+            halo: Color(0xD9FFFFFF),
+          )
+        : const _RopeHighlightColors(
+            source: Color(0xFF38BDF8),
+            target: Color(0xFFF97316),
+            halo: Color(0xB8000000),
+          );
+  }
 }
 
 Map<String, _SimpleNodeDiagnostic> _simpleNodeDiagnostics({
@@ -428,7 +462,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlCompiler _compiler = const SqlCompiler();
-  SqlPaletteCategory _activeCategory = SqlPaletteCategory.dql;
+  SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
   String? _activeProjectPath;
   String? _activeProjectBookmark;
   String _activeProjectId = 'default';
@@ -576,6 +610,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final workspaceRevision = ref.watch(
       workspaceProvider.select((s) => s.revision),
     );
+    final tabsRevision = ref.watch(
+      workspaceTabsProvider.select((state) => state.revision),
+    );
     final workspaceRoots = ref.read(workspaceProvider).roots;
     final runtime = ref.watch(sqlRuntimeProvider);
     final mode = ref.watch(sqlModeProvider);
@@ -583,8 +620,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       workspaceProvider.select((state) => state.columnLinkMode),
     );
     final pluginState = ref.watch(pluginPaletteProvider);
+    final executionRoots = ref
+        .read(workspaceTabsProvider.notifier)
+        .executionRoots();
     final compileResult = _compiler.compileWorkspace(
-      workspaceRoots,
+      executionRoots,
       pluginBlocks: pluginState.blocksByQualifiedId,
     );
     final sql = compileResult.sql;
@@ -594,7 +634,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       runtime: runtime,
       compileResult: compileResult,
     );
-    _maybeAutosave(workspaceRevision);
+    _maybeAutosave(Object.hash(workspaceRevision, tabsRevision));
 
     return Shortcuts(
       shortcuts: const <ShortcutActivator, Intent>{
@@ -738,12 +778,19 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             ),
                           ),
                           Expanded(
-                            child: _WorkspaceCanvas(
-                              focusNode: _workspaceFocus,
-                              transform: _transform,
-                              paletteWidth: 72.0 + paletteWidth,
-                              diagnostics: nodeDiagnostics,
-                              onSaveProject: () => _saveProject(context),
+                            child: Column(
+                              children: [
+                                _WorkspaceTabsBar(catalog: catalog),
+                                Expanded(
+                                  child: _WorkspaceCanvas(
+                                    focusNode: _workspaceFocus,
+                                    transform: _transform,
+                                    paletteWidth: 72.0 + paletteWidth,
+                                    diagnostics: nodeDiagnostics,
+                                    onSaveProject: () => _saveProject(context),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           _SqlRuntimePane(
@@ -926,6 +973,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         rawProjectName,
       );
       ref.read(workspaceProvider.notifier).resetWithRoot();
+      ref
+          .read(workspaceTabsProvider.notifier)
+          .resetToCurrentWorkspace(
+            name: catalog.text('tabs.defaultName', {'number': '1'}),
+          );
       if (createDb.value) {
         try {
           await ref
@@ -1136,14 +1188,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _openSettings(BuildContext context) async {
     final catalog = ref.read(translationControllerProvider).catalog;
-    await showDialog<void>(
+    final action = await showDialog<_SettingsAction>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(catalog.text('settings.title')),
         content: Consumer(
           builder: (context, ref, _) {
             final current = ref.watch(nodeQlThemeProvider);
-            final surfaceStyle = NodeQlSurfaceStyle.of(context);
             const accentColors = <Color>[
               Color(0xFF2563EB),
               Color(0xFF7C3AED),
@@ -1240,47 +1291,66 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    child: FilledButton.tonal(
-                      onPressed: () => _openPluginManager(context),
-                      style: surfaceStyle.isBrutalist
-                          ? null
-                          : FilledButton.styleFrom(
-                              shape: const StadiumBorder(),
-                            ),
-                      child: Text(catalog.text('settings.plugins')),
+                    radius: 999,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: FilledButton.tonal(
+                        key: const ValueKey<String>('settings-manage-plugins'),
+                        onPressed: () => Navigator.of(
+                          dialogContext,
+                        ).pop(_SettingsAction.plugins),
+                        style: const ButtonStyle(
+                          shape: WidgetStatePropertyAll<OutlinedBorder>(
+                            StadiumBorder(),
+                          ),
+                        ),
+                        child: Text(catalog.text('settings.plugins')),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    child: FilledButton.tonal(
-                      onPressed: () => _openLanguageManager(context),
-                      style: surfaceStyle.isBrutalist
-                          ? null
-                          : FilledButton.styleFrom(
-                              shape: const StadiumBorder(),
-                            ),
-                      child: Text(catalog.text('settings.languages')),
+                    radius: 999,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: FilledButton.tonal(
+                        key: const ValueKey<String>('settings-languages'),
+                        onPressed: () => Navigator.of(
+                          dialogContext,
+                        ).pop(_SettingsAction.languages),
+                        style: const ButtonStyle(
+                          shape: WidgetStatePropertyAll<OutlinedBorder>(
+                            StadiumBorder(),
+                          ),
+                        ),
+                        child: Text(catalog.text('settings.languages')),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    child: FilledButton.tonalIcon(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        _openTutorial(this.context);
-                      },
-                      style: surfaceStyle.isBrutalist
-                          ? null
-                          : FilledButton.styleFrom(
-                              shape: const StadiumBorder(),
-                            ),
-                      icon: const Icon(Icons.school_outlined),
-                      label: Text(catalog.text('settings.tutorial')),
+                    radius: 999,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: FilledButton.tonalIcon(
+                        key: const ValueKey<String>('settings-tutorial'),
+                        onPressed: () => Navigator.of(
+                          dialogContext,
+                        ).pop(_SettingsAction.tutorial),
+                        style: const ButtonStyle(
+                          shape: WidgetStatePropertyAll<OutlinedBorder>(
+                            StadiumBorder(),
+                          ),
+                        ),
+                        icon: const Icon(Icons.school_outlined),
+                        label: Text(catalog.text('settings.tutorial')),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   TextButton.icon(
-                    onPressed: () => _openAbout(context),
+                    onPressed: () =>
+                        Navigator.of(dialogContext).pop(_SettingsAction.about),
                     icon: const Icon(Icons.info_outline),
                     label: Text(catalog.text('settings.about')),
                   ),
@@ -1291,6 +1361,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         ),
       ),
     );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _SettingsAction.plugins:
+        await _openPluginManager(this.context);
+      case _SettingsAction.languages:
+        await _openLanguageManager(this.context);
+      case _SettingsAction.tutorial:
+        await _openTutorial(this.context);
+      case _SettingsAction.about:
+        await _openAbout(this.context);
+    }
   }
 
   Future<void> _openBlockDiagnostics(BuildContext context) async {
@@ -1462,13 +1543,21 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       applicationName: 'NodeQL',
       applicationVersion: '${package.version}+${package.buildNumber}',
       applicationLegalese: 'Copyright © 2026 NodeQL contributors\nMIT License',
-      applicationIcon: const Icon(Icons.account_tree_outlined, size: 48),
+      applicationIcon: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          _appIconAsset,
+          width: 64,
+          height: 64,
+          fit: BoxFit.cover,
+        ),
+      ),
     );
   }
 
   Future<void> _openPluginManager(BuildContext context) async {
     final catalog = ref.read(translationControllerProvider).catalog;
-    await ref.read(pluginPaletteProvider.notifier).reload();
+    unawaited(ref.read(pluginPaletteProvider.notifier).reload());
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
@@ -1789,6 +1878,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       'format': 'nodeql_project_v2',
       'version': 2,
       'workspace': workspace,
+      'tabs': ref.read(workspaceTabsProvider.notifier).toProjectJson(),
       'runtime': runtimePayload,
       'ui': <String, dynamic>{
         'mode': mode.name,
@@ -1818,6 +1908,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (decoded == null || !_isProjectEnvelopeFormat(decoded['format'])) {
       _autosaveEnabledForProject = true;
       ref.read(workspaceProvider.notifier).loadFromJsonString(source);
+      ref.read(workspaceTabsProvider.notifier).resetToCurrentWorkspace();
       return;
     }
 
@@ -1826,9 +1917,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
     final workspace =
         (decoded['workspace'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-    ref
-        .read(workspaceProvider.notifier)
-        .loadFromJsonString(jsonEncode(workspace));
+    final loadedTabs = ref
+        .read(workspaceTabsProvider.notifier)
+        .loadFromProjectJson(decoded['tabs']);
+    if (!loadedTabs) {
+      ref
+          .read(workspaceProvider.notifier)
+          .loadFromJsonString(jsonEncode(workspace));
+      ref.read(workspaceTabsProvider.notifier).resetToCurrentWorkspace();
+    }
 
     final runtime = decoded['runtime'] as Map<String, dynamic>? ?? {};
     final dbPath = _resolveProjectDbPath(
@@ -2080,27 +2177,15 @@ class _TopBar extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(
-                        surfaceStyle.radiusSmall,
-                      ),
-                      border: surfaceStyle.isBrutalist
-                          ? Border.all(
-                              color: workbenchColors.border,
-                              width: surfaceStyle.borderWidth,
-                            )
-                          : null,
-                      boxShadow: surfaceStyle.hardShadow,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      surfaceStyle.radiusSmall,
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.account_tree_rounded,
-                      color: Colors.white,
-                      size: 20,
+                    child: Image.asset(
+                      _appIconAsset,
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.cover,
                     ),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
@@ -2457,7 +2542,7 @@ class _PluginRepositoriesView extends StatelessWidget {
   }
 }
 
-enum SqlPaletteCategory { dql, dml, ddl, txn, plugins }
+enum SqlPaletteCategory { queryLanguage, dataTypes, dml, ddl, txn, plugins }
 
 class _PaletteItem {
   const _PaletteItem({
@@ -2501,7 +2586,8 @@ class _CategoryRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final entries = <(SqlPaletteCategory, IconData, Color)>[
-      (SqlPaletteCategory.dql, Icons.search, ScratchPalette.motion),
+      (SqlPaletteCategory.queryLanguage, Icons.code, ScratchPalette.motion),
+      (SqlPaletteCategory.dataTypes, Icons.data_object, ScratchPalette.sensing),
       (SqlPaletteCategory.dml, Icons.edit_note, ScratchPalette.control),
       (SqlPaletteCategory.ddl, Icons.schema, ScratchPalette.operators),
       (SqlPaletteCategory.txn, Icons.account_tree, ScratchPalette.variables),
@@ -2721,48 +2807,73 @@ class _PaletteState extends State<_Palette> {
       description: _commandHelp(type, widget.localeCode),
       color: _colorForType(type),
     );
+    _PaletteItem dataType(
+      String storageClass,
+      String defaultValue,
+      String descriptionDe,
+      String descriptionEn,
+    ) {
+      final defaults = <String, dynamic>{
+        'literal_type': storageClass,
+        'text': defaultValue,
+      };
+      return _PaletteItem(
+        key: 'sqlite.datatype.$storageClass',
+        type: BlockType.sqlText,
+        label: sqlLabelFor(
+          BlockType.sqlText,
+          widget.mode,
+          defaults,
+          widget.localeCode,
+        ),
+        description: widget.localeCode == 'de' ? descriptionDe : descriptionEn,
+        color: _colorForType(BlockType.sqlText),
+        defaults: defaults,
+      );
+    }
+
     return switch (category) {
-      SqlPaletteCategory.dql => <_PaletteItem>[
+      SqlPaletteCategory.queryLanguage => <_PaletteItem>[
         native(BlockType.eventGreenFlag),
         native(BlockType.sqlSelect),
-        native(BlockType.sqlColumn),
-        native(BlockType.sqlText),
         native(BlockType.sqlWhere),
         native(BlockType.sqlJoin),
         native(BlockType.sqlGroupBy),
         native(BlockType.sqlHaving),
         native(BlockType.sqlOrderBy),
-        native(BlockType.sqlSubqueryIn),
-        native(BlockType.sqlSubqueryAny),
-        native(BlockType.sqlCount),
-        native(BlockType.sqlSum),
-        native(BlockType.sqlAvg),
-        native(BlockType.sqlMin),
-        native(BlockType.sqlMax),
-        native(BlockType.sqlConcat),
-        native(BlockType.sqlSubstring),
-        native(BlockType.sqlLength),
-        native(BlockType.sqlUpper),
-        native(BlockType.sqlLower),
-        native(BlockType.sqlTrim),
-        native(BlockType.sqlLeft),
-        native(BlockType.sqlRight),
-        native(BlockType.sqlReplace),
-        native(BlockType.sqlCurrentDate),
-        native(BlockType.sqlCurrentTime),
-        native(BlockType.sqlCurrentTimestamp),
-        native(BlockType.sqlDatePart),
-        native(BlockType.sqlDateAdd),
-        native(BlockType.sqlDateSub),
-        native(BlockType.sqlExtract),
-        native(BlockType.sqlToChar),
-        native(BlockType.sqlTimestampDiff),
-        native(BlockType.sqlDateDiff),
-        native(BlockType.sqlCase),
-        native(BlockType.sqlIf),
-        native(BlockType.sqlCoalesce),
-        native(BlockType.sqlNullIf),
         native(BlockType.sqlFrom),
+      ],
+      SqlPaletteCategory.dataTypes => <_PaletteItem>[
+        dataType(
+          'null',
+          '',
+          'Der SQLite-NULL-Wert: kein Wert beziehungsweise unbekannt.',
+          'The SQLite NULL value: no value or an unknown value.',
+        ),
+        dataType(
+          'integer',
+          '1',
+          'Eine ganze Zahl ohne Nachkommastellen.',
+          'A whole number without decimal places.',
+        ),
+        dataType(
+          'real',
+          '1.0',
+          'Eine Flie\u00dfkommazahl mit Nachkommastellen.',
+          'A floating-point number with decimal places.',
+        ),
+        dataType(
+          'text',
+          'Text',
+          'Eine SQLite-Zeichenkette. Anf\u00fchrungszeichen werden beim Kompilieren sicher gesetzt.',
+          'A SQLite string. Quotes are added safely during compilation.',
+        ),
+        dataType(
+          'blob',
+          '00',
+          'Bin\u00e4rdaten als gerade Folge hexadezimaler Zeichen.',
+          'Binary data as an even-length sequence of hexadecimal characters.',
+        ),
       ],
       SqlPaletteCategory.dml => <_PaletteItem>[
         native(BlockType.sqlInsert),
@@ -3136,7 +3247,12 @@ class _PaletteState extends State<_Palette> {
 
   String _categoryTitle(SqlPaletteCategory category, String localeCode) {
     return switch (category) {
-      SqlPaletteCategory.dql => widget.catalog.text('palette.category.dql'),
+      SqlPaletteCategory.queryLanguage => widget.catalog.text(
+        'palette.category.queryLanguage',
+      ),
+      SqlPaletteCategory.dataTypes => widget.catalog.text(
+        'palette.category.dataTypes',
+      ),
       SqlPaletteCategory.dml => widget.catalog.text('palette.category.dml'),
       SqlPaletteCategory.ddl => widget.catalog.text('palette.category.ddl'),
       SqlPaletteCategory.txn => widget.catalog.text('palette.category.txn'),
@@ -3351,6 +3467,258 @@ class _PaletteCard extends StatelessWidget {
   }
 }
 
+class _WorkspaceTabsBar extends ConsumerWidget {
+  const _WorkspaceTabsBar({required this.catalog});
+
+  final TranslationCatalog catalog;
+
+  Future<void> _renameTab(
+    BuildContext context,
+    WorkspaceTab tab,
+    WorkspaceTabsController controller,
+  ) async {
+    final renamed = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _RenameWorkspaceTabDialog(catalog: catalog, initialName: tab.name),
+    );
+    if (renamed != null) controller.renameTab(tab.id, renamed);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tabsState = ref.watch(workspaceTabsProvider);
+    final controller = ref.read(workspaceTabsProvider.notifier);
+    final colors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        border: Border(
+          bottom: BorderSide(
+            color: colors.border,
+            width: surfaceStyle.borderWidth,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Tooltip(
+            message: catalog.text('tabs.executionOrder'),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Icon(
+                Icons.low_priority_rounded,
+                size: 20,
+                color: colors.muted,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ReorderableListView.builder(
+              scrollDirection: Axis.horizontal,
+              buildDefaultDragHandles: false,
+              itemCount: tabsState.tabs.length,
+              onReorderItem: controller.reorderTabs,
+              proxyDecorator: (child, _, animation) => AnimatedBuilder(
+                animation: animation,
+                builder: (context, _) => Material(
+                  color: Colors.transparent,
+                  elevation: 6 * animation.value,
+                  child: child,
+                ),
+              ),
+              itemBuilder: (context, index) {
+                final tab = tabsState.tabs[index];
+                final selected = tab.id == tabsState.activeTabId;
+                return Padding(
+                  key: ValueKey<String>('workspace-tab-${tab.id}'),
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Material(
+                    color: selected
+                        ? Theme.of(context).colorScheme.primary
+                        : colors.panelElevated,
+                    borderRadius: BorderRadius.circular(
+                      surfaceStyle.radiusSmall,
+                    ),
+                    child: InkWell(
+                      onTap: () => controller.selectTab(tab.id),
+                      borderRadius: BorderRadius.circular(
+                        surfaceStyle.radiusSmall,
+                      ),
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 116),
+                        padding: const EdgeInsets.only(left: 10, right: 4),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(
+                            surfaceStyle.radiusSmall,
+                          ),
+                          border: Border.all(
+                            color: selected
+                                ? Theme.of(context).colorScheme.primary
+                                : colors.border,
+                            width: surfaceStyle.borderWidth,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 20,
+                              height: 20,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? Colors.white.withValues(alpha: .2)
+                                    : colors.workspace,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  color: selected ? Colors.white : colors.muted,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 160),
+                              child: Text(
+                                tab.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: selected
+                                      ? Colors.white
+                                      : Theme.of(context).colorScheme.onSurface,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            Tooltip(
+                              message: catalog.text('tabs.rename'),
+                              child: IconButton(
+                                key: ValueKey<String>(
+                                  'workspace-tab-rename-${tab.id}',
+                                ),
+                                onPressed: () => unawaited(
+                                  _renameTab(context, tab, controller),
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                iconSize: 15,
+                                color: selected ? Colors.white70 : colors.muted,
+                                icon: const Icon(Icons.edit_rounded),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: catalog.text('tabs.dragToReorder'),
+                              child: ReorderableDragStartListener(
+                                index: index,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(7),
+                                  child: Icon(
+                                    Icons.drag_indicator_rounded,
+                                    size: 17,
+                                    color: selected
+                                        ? Colors.white70
+                                        : colors.muted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          IconButton(
+            key: const ValueKey<String>('workspace-tab-add'),
+            onPressed: () => controller.addTab(
+              name: catalog.text('tabs.defaultName', {
+                'number': '${tabsState.tabs.length + 1}',
+              }),
+            ),
+            tooltip: catalog.text('tabs.add'),
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RenameWorkspaceTabDialog extends StatefulWidget {
+  const _RenameWorkspaceTabDialog({
+    required this.catalog,
+    required this.initialName,
+  });
+
+  final TranslationCatalog catalog;
+  final String initialName;
+
+  @override
+  State<_RenameWorkspaceTabDialog> createState() =>
+      _RenameWorkspaceTabDialogState();
+}
+
+class _RenameWorkspaceTabDialogState extends State<_RenameWorkspaceTabDialog> {
+  late final TextEditingController _controller;
+  late String _draft;
+
+  @override
+  void initState() {
+    super.initState();
+    _draft = widget.initialName;
+    _controller = TextEditingController(text: _draft);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit(String value) {
+    if (value.trim().isNotEmpty) Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.catalog.text('tabs.renameTitle')),
+    content: TextField(
+      key: const ValueKey<String>('workspace-tab-rename-field'),
+      controller: _controller,
+      autofocus: true,
+      maxLength: 80,
+      textInputAction: TextInputAction.done,
+      decoration: InputDecoration(labelText: widget.catalog.text('tabs.name')),
+      onChanged: (value) => setState(() => _draft = value),
+      onSubmitted: _submit,
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: Text(widget.catalog.text('common.cancel')),
+      ),
+      FilledButton(
+        key: const ValueKey<String>('workspace-tab-rename-submit'),
+        onPressed: _draft.trim().isEmpty ? null : () => _submit(_draft),
+        child: Text(widget.catalog.text('tabs.rename')),
+      ),
+    ],
+  );
+}
+
 class _WorkspaceCanvas extends ConsumerWidget {
   const _WorkspaceCanvas({
     required this.focusNode,
@@ -3370,6 +3738,8 @@ class _WorkspaceCanvas extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final workspace = ref.watch(workspaceProvider);
     final controller = ref.read(workspaceProvider.notifier);
+    final selectedColumnLink = controller.selectedColumnLink();
+    final ropeColors = _RopeHighlightColors.of(context);
     transform.value = Matrix4.identity()
       ..translateByDouble(workspace.pan.dx, workspace.pan.dy, 0, 1)
       ..scaleByDouble(workspace.scale, workspace.scale, workspace.scale, 1);
@@ -3414,76 +3784,120 @@ class _WorkspaceCanvas extends ConsumerWidget {
             ref.read(workspaceProvider.notifier).setColumnLinkMode(false);
             return KeyEventResult.handled;
           }
+          if (event.logicalKey == LogicalKeyboardKey.escape &&
+              ref.read(workspaceProvider).selectedColumnLinkTargetId != null) {
+            ref.read(workspaceProvider.notifier).clearColumnLinkSelection();
+            return KeyEventResult.handled;
+          }
           if (event.logicalKey == LogicalKeyboardKey.delete ||
               event.logicalKey == LogicalKeyboardKey.backspace) {
+            if (ref.read(workspaceProvider).selectedColumnLinkTargetId !=
+                null) {
+              ref.read(workspaceProvider.notifier).deleteSelectedColumnLink();
+              return KeyEventResult.handled;
+            }
             _handleDeleteWithRootConfirmation(context, ref);
             return KeyEventResult.handled;
           }
           return KeyEventResult.ignored;
         },
-        child: _PointerWorkspaceLayer(
-          workspace: workspace,
-          transform: transform,
-          paletteWidth: paletteWidth,
-          focusNode: focusNode,
-          child: Container(
-            color: NodeQlWorkbenchColors.of(context).workspace,
-            child: ClipRect(
-              child: RepaintBoundary(
-                child: Transform(
-                  transform: transform.value,
-                  alignment: Alignment.topLeft,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      CustomPaint(
-                        size: const Size(4000, 4000),
-                        painter: _ColumnLinksPainter(
-                          links: controller.columnLinks(),
-                          source: workspace.columnLinkSourceId == null
-                              ? null
-                              : controller.findById(
-                                  workspace.columnLinkSourceId!,
-                                ),
-                          pointer: workspace.columnLinkPointer,
-                          validTarget: workspace.columnLinkTargetId != null,
-                          nodeWidth: controller.nodeWidth,
-                          nodeHeight: controller.blockHeight,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      for (final block in controller.allBlocks())
-                        Positioned(
-                          left: block.position.dx,
-                          top: block.position.dy,
-                          child: RepaintBoundary(
-                            child: _NodeView(
-                              node: block,
-                              diagnostic: diagnostics[block.id],
-                              highlighted:
-                                  workspace.highlightTargetId == block.id,
-                              rejected: workspace.rejectedTargetId == block.id,
-                              innerHighlighted:
-                                  workspace.highlightTargetId == block.id &&
-                                  (workspace.highlightZone ==
-                                          SnapZone.innerTop ||
-                                      workspace.highlightZone ==
-                                          SnapZone.innerBottom),
-                              selected:
-                                  workspace.selectedBlockIds.contains(
-                                    block.id,
-                                  ) ||
-                                  workspace.columnLinkSourceId == block.id ||
-                                  workspace.columnLinkTargetId == block.id,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _PointerWorkspaceLayer(
+              workspace: workspace,
+              transform: transform,
+              paletteWidth: paletteWidth,
+              focusNode: focusNode,
+              child: Container(
+                color: NodeQlWorkbenchColors.of(context).workspace,
+                child: ClipRect(
+                  child: RepaintBoundary(
+                    child: Transform(
+                      transform: transform.value,
+                      alignment: Alignment.topLeft,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          CustomPaint(
+                            size: const Size(4000, 4000),
+                            painter: _ColumnLinksPainter(
+                              links: controller.columnLinks(),
+                              source: workspace.columnLinkSourceId == null
+                                  ? null
+                                  : controller.findById(
+                                      workspace.columnLinkSourceId!,
+                                    ),
+                              pointer: workspace.columnLinkPointer,
+                              validTarget: workspace.columnLinkTargetId != null,
+                              selectedTargetId:
+                                  workspace.selectedColumnLinkTargetId,
+                              nodeWidth: controller.nodeWidth,
+                              nodeHeight: controller.blockHeight,
+                              color: Theme.of(context).colorScheme.primary,
+                              sourceColor: ropeColors.source,
+                              targetColor: ropeColors.target,
+                              haloColor: ropeColors.halo,
                             ),
                           ),
-                        ),
-                    ],
+                          for (final block in controller.allBlocks())
+                            Positioned(
+                              left: block.position.dx,
+                              top: block.position.dy,
+                              child: RepaintBoundary(
+                                child: _NodeView(
+                                  node: block,
+                                  diagnostic: diagnostics[block.id],
+                                  highlighted:
+                                      workspace.highlightTargetId == block.id,
+                                  rejected:
+                                      workspace.rejectedTargetId == block.id,
+                                  innerHighlighted:
+                                      workspace.highlightTargetId == block.id &&
+                                      (workspace.highlightZone ==
+                                              SnapZone.innerTop ||
+                                          workspace.highlightZone ==
+                                              SnapZone.innerBottom),
+                                  selected:
+                                      workspace.selectedBlockIds.contains(
+                                        block.id,
+                                      ) ||
+                                      workspace.columnLinkSourceId ==
+                                          block.id ||
+                                      workspace.columnLinkTargetId == block.id,
+                                  columnLinkEndpointColor:
+                                      selectedColumnLink?.source.id == block.id
+                                      ? ropeColors.source
+                                      : selectedColumnLink?.target.id ==
+                                            block.id
+                                      ? ropeColors.target
+                                      : null,
+                                  columnLinkEndpointHaloColor: ropeColors.halo,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+            if (selectedColumnLink case final selectedLink?)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: _ColumnLinkManagerCard(
+                  link: selectedLink,
+                  catalog: ref.watch(translationControllerProvider).catalog,
+                  mode: ref.watch(sqlModeProvider),
+                  sourceColor: ropeColors.source,
+                  targetColor: ropeColors.target,
+                  onClose: controller.clearColumnLinkSelection,
+                  onDelete: controller.deleteSelectedColumnLink,
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -3495,33 +3909,183 @@ class _WorkspaceCanvas extends ConsumerWidget {
   }
 }
 
+class _ColumnLinkManagerCard extends StatelessWidget {
+  const _ColumnLinkManagerCard({
+    required this.link,
+    required this.catalog,
+    required this.mode,
+    required this.sourceColor,
+    required this.targetColor,
+    required this.onClose,
+    required this.onDelete,
+  });
+
+  final WorkspaceColumnLink link;
+  final TranslationCatalog catalog;
+  final SqlAbstractionMode mode;
+  final Color sourceColor;
+  final Color targetColor;
+  final VoidCallback onClose;
+  final VoidCallback onDelete;
+
+  String _label(BlockNode node) => sqlLabelFor(
+    node.type,
+    mode,
+    node.inputs,
+    catalog.locale,
+  ).replaceAll('\n', ' ');
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    return Material(
+      key: const ValueKey<String>('column-link-manager'),
+      color: Colors.transparent,
+      child: Container(
+        width: 310,
+        padding: const EdgeInsets.all(12),
+        decoration: surfaceStyle.surfaceDecoration(
+          color: colors.panelElevated,
+          borderColor: colors.border,
+          radius: surfaceStyle.radiusMedium,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.cable_rounded,
+                  size: 19,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    catalog.text('workspace.rope.title'),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey<String>('column-link-manager-close'),
+                  onPressed: onClose,
+                  tooltip: catalog.text('common.close'),
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            _ColumnLinkEndpointLabel(
+              color: sourceColor,
+              label: catalog.text('workspace.rope.source'),
+            ),
+            Text(
+              _label(link.source),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            _ColumnLinkEndpointLabel(
+              color: targetColor,
+              label: catalog.text('workspace.rope.target'),
+            ),
+            Text(
+              _label(link.target),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const ValueKey<String>('column-link-delete'),
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline_rounded),
+              label: Text(catalog.text('workspace.rope.delete')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColumnLinkEndpointLabel extends StatelessWidget {
+  const _ColumnLinkEndpointLabel({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 9,
+        height: 9,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: 6),
+      Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ],
+  );
+}
+
 class _ColumnLinksPainter extends CustomPainter {
   const _ColumnLinksPainter({
     required this.links,
     required this.source,
     required this.pointer,
     required this.validTarget,
+    required this.selectedTargetId,
     required this.nodeWidth,
     required this.nodeHeight,
     required this.color,
+    required this.sourceColor,
+    required this.targetColor,
+    required this.haloColor,
   });
 
   final List<WorkspaceColumnLink> links;
   final BlockNode? source;
   final Offset? pointer;
   final bool validTarget;
+  final String? selectedTargetId;
   final double Function(BlockNode) nodeWidth;
   final double Function(BlockNode) nodeHeight;
   final Color color;
+  final Color sourceColor;
+  final Color targetColor;
+  final Color haloColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final link in links) {
+      final selected = link.target.id == selectedTargetId;
+      if (selected) {
+        _drawConnection(
+          canvas,
+          _sourcePoint(link.source),
+          _targetPoint(link.target),
+          haloColor,
+          strokeWidth: 11,
+        );
+      }
       _drawConnection(
         canvas,
         _sourcePoint(link.source),
         _targetPoint(link.target),
-        color.withValues(alpha: .72),
+        selected ? sourceColor : color.withValues(alpha: .72),
+        strokeWidth: selected ? 5 : 3,
+        gradientColors: selected ? <Color>[sourceColor, targetColor] : null,
       );
     }
     final activeSource = source;
@@ -3548,8 +4112,10 @@ class _ColumnLinksPainter extends CustomPainter {
     Canvas canvas,
     Offset start,
     Offset end,
-    Color paintColor,
-  ) {
+    Color paintColor, {
+    double strokeWidth = 3,
+    List<Color>? gradientColors,
+  }) {
     final horizontal = math.max(56.0, (end.dx - start.dx).abs() * .45);
     final path = Path()
       ..moveTo(start.dx, start.dy)
@@ -3563,12 +4129,28 @@ class _ColumnLinksPainter extends CustomPainter {
       );
     final paint = Paint()
       ..color = paintColor
-      ..strokeWidth = 3
+      ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
+    if (gradientColors != null) {
+      final shaderColors = start.dx <= end.dx
+          ? gradientColors
+          : gradientColors.reversed.toList(growable: false);
+      paint.shader = LinearGradient(
+        colors: shaderColors,
+      ).createShader(Rect.fromPoints(start, end).inflate(1));
+    }
     canvas.drawPath(path, paint);
-    canvas.drawCircle(start, 4.5, Paint()..color = paintColor);
-    canvas.drawCircle(end, 4.5, Paint()..color = paintColor);
+    canvas.drawCircle(
+      start,
+      4.5,
+      Paint()..color = gradientColors?.first ?? paintColor,
+    );
+    canvas.drawCircle(
+      end,
+      4.5,
+      Paint()..color = gradientColors?.last ?? paintColor,
+    );
   }
 
   @override
@@ -3681,6 +4263,7 @@ class _PointerWorkspaceLayerState
   bool _leftDraggingBlock = false;
   bool _leftMoved = false;
   bool _primaryPending = false;
+  bool _primaryDownOnColumnLink = false;
   Offset? _primaryDownWorld;
   Offset? _primaryDownLocal;
   Offset? _secondaryDownWorld;
@@ -3726,6 +4309,7 @@ class _PointerWorkspaceLayerState
         if (workspace.columnLinkMode &&
             (event.buttons & kPrimaryMouseButton) != 0) {
           _primaryPending = false;
+          _primaryDownOnColumnLink = false;
           _leftDraggingBlock = false;
           _marqueeSelecting = false;
           engine.beginColumnLink(world);
@@ -3737,6 +4321,7 @@ class _PointerWorkspaceLayerState
           _secondaryDownWorld = world;
           _rightPanning = false;
           _primaryPending = false;
+          _primaryDownOnColumnLink = false;
           return;
         }
 
@@ -3745,6 +4330,7 @@ class _PointerWorkspaceLayerState
           _rightPanning = true;
           _secondaryPending = false;
           _primaryPending = false;
+          _primaryDownOnColumnLink = false;
           return;
         }
 
@@ -3753,6 +4339,7 @@ class _PointerWorkspaceLayerState
           _primaryPending = true;
           _primaryDownWorld = world;
           _primaryDownLocal = event.localPosition;
+          _primaryDownOnColumnLink = engine.columnLinkAt(world) != null;
           _leftDraggingBlock = false;
           _leftMoved = false;
         }
@@ -3775,6 +4362,7 @@ class _PointerWorkspaceLayerState
         }
         if (_primaryPending &&
             !_leftDraggingBlock &&
+            !_primaryDownOnColumnLink &&
             event.delta.distanceSquared > 9) {
           final downWorld = _primaryDownWorld ?? _toWorld(event.localPosition);
           final hitAtStart = engine.hitNodeAt(downWorld);
@@ -3808,6 +4396,7 @@ class _PointerWorkspaceLayerState
             engine.cancelColumnLink();
           }
           _primaryPending = false;
+          _primaryDownOnColumnLink = false;
           _leftDraggingBlock = false;
           _marqueeSelecting = false;
           return;
@@ -3820,6 +4409,14 @@ class _PointerWorkspaceLayerState
         }
         if (_secondaryPending) {
           final world = _secondaryDownWorld ?? _toWorld(event.localPosition);
+          final link = engine.columnLinkAt(world);
+          if (link != null) {
+            engine.selectColumnLink(link.target.id);
+            unawaited(_showColumnLinkContextMenu(event.position));
+            _secondaryPending = false;
+            _secondaryDownWorld = null;
+            return;
+          }
           final node = engine.hitNodeAt(world);
           if (node != null) {
             engine.selectAtWithMode(world);
@@ -3838,6 +4435,7 @@ class _PointerWorkspaceLayerState
           }
           _leftMoved = false;
           _primaryPending = false;
+          _primaryDownOnColumnLink = false;
           _primaryDownWorld = null;
           _primaryDownLocal = null;
           return;
@@ -3856,17 +4454,19 @@ class _PointerWorkspaceLayerState
             _marqueeRectLocal = null;
           });
           _primaryPending = false;
+          _primaryDownOnColumnLink = false;
           _primaryDownWorld = null;
           _primaryDownLocal = null;
           return;
         }
         if (_primaryPending) {
           final append = HardwareKeyboard.instance.isShiftPressed;
-          engine.selectAtWithMode(
-            _toWorld(event.localPosition),
-            append: append,
-          );
+          final world = _toWorld(event.localPosition);
+          if (!engine.selectColumnLinkAt(world)) {
+            engine.selectAtWithMode(world, append: append);
+          }
           _primaryPending = false;
+          _primaryDownOnColumnLink = false;
           _primaryDownWorld = null;
           _primaryDownLocal = null;
         }
@@ -3963,6 +4563,36 @@ class _PointerWorkspaceLayerState
     await _handleDeleteWithRootConfirmation(context, ref);
   }
 
+  Future<void> _showColumnLinkContextMenu(Offset globalPosition) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    final position = RelativeRect.fromRect(
+      Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
+      Offset.zero & overlay.size,
+    );
+    final action = await showMenu<String>(
+      context: context,
+      position: position,
+      color: NodeQlWorkbenchColors.of(context).panelElevated,
+      items: [
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: Row(
+            children: [
+              const Icon(Icons.delete_outline_rounded, size: 18),
+              const SizedBox(width: 8),
+              Text(catalog.text('workspace.rope.delete')),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!mounted || action != 'delete') return;
+    ref.read(workspaceProvider.notifier).deleteSelectedColumnLink();
+  }
+
   Offset _toWorld(Offset local) {
     final matrix = widget.transform.value.clone()..invert();
     return MatrixUtils.transformPoint(matrix, local);
@@ -3977,6 +4607,8 @@ class _NodeView extends ConsumerWidget {
     required this.rejected,
     required this.innerHighlighted,
     required this.selected,
+    required this.columnLinkEndpointColor,
+    required this.columnLinkEndpointHaloColor,
   });
 
   final BlockNode node;
@@ -3985,6 +4617,8 @@ class _NodeView extends ConsumerWidget {
   final bool rejected;
   final bool innerHighlighted;
   final bool selected;
+  final Color? columnLinkEndpointColor;
+  final Color columnLinkEndpointHaloColor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -4002,6 +4636,7 @@ class _NodeView extends ConsumerWidget {
     final color = pluginBlock == null
         ? _colorForNodeType(node.type)
         : Color(pluginBlock.colorValue);
+    final endpointColor = columnLinkEndpointColor;
 
     final pluginShape = pluginBlock?.shape.name;
     final visualKind = blockVisualKind(node, pluginShape: pluginShape);
@@ -4093,7 +4728,11 @@ class _NodeView extends ConsumerWidget {
                   pluginShape: pluginShape,
                   isHighlighted: highlighted,
                   isErrorHighlighted: effectiveDiagnostic != null,
-                  isSelected: selected,
+                  isSelected: selected || endpointColor != null,
+                  selectedOutlineColor: endpointColor,
+                  selectedOutlineHaloColor: endpointColor == null
+                      ? null
+                      : columnLinkEndpointHaloColor,
                   showInnerHighlight: innerHighlighted,
                   showLabel: !usesInlineOverlay,
                 ),
@@ -4274,7 +4913,9 @@ class _NodeView extends ConsumerWidget {
     );
 
     final animatedBlockContent = AnimatedScale(
-      scale: highlighted || rejected || selected ? 1.012 : 1,
+      scale: highlighted || rejected || selected || endpointColor != null
+          ? 1.012
+          : 1,
       duration: const Duration(milliseconds: 90),
       curve: Curves.easeOutCubic,
       child: blockContent,
@@ -4329,7 +4970,14 @@ class _NodeView extends ConsumerWidget {
       return column;
     }
     if (reporter.type == BlockType.sqlText) {
-      return '"${reporter.inputs['text'] ?? ''}"';
+      final value = '${reporter.inputs['text'] ?? ''}';
+      return switch ('${reporter.inputs['literal_type'] ?? 'text'}') {
+        'null' => 'NULL',
+        'integer' => value,
+        'real' => value,
+        'blob' => "X'$value'",
+        _ => '"$value"',
+      };
     }
     final nested = reporterForInput(reporter, 'expr');
     final value = nested == null
@@ -4527,7 +5175,12 @@ class _NodeView extends ConsumerWidget {
       final text = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(catalog.text('editor.textValue')),
+          title: Text(
+            textReporter.inputs['literal_type'] == null ||
+                    textReporter.inputs['literal_type'] == 'text'
+                ? catalog.text('editor.textValue')
+                : catalog.text('editor.value'),
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,

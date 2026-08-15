@@ -221,8 +221,45 @@ class SqliteDialectRenderer {
       case BlockType.sqlColumn:
         return _withAlias(node.inputs['column'] as String? ?? '*', node);
       case BlockType.sqlText:
-        final text = '${node.inputs['text'] ?? ''}'.replaceAll("'", "''");
-        return "'$text'";
+        final literalType = '${node.inputs['literal_type'] ?? 'text'}'
+            .trim()
+            .toLowerCase();
+        final rawValue = '${node.inputs['text'] ?? ''}'.trim();
+        switch (literalType) {
+          case 'null':
+            return 'NULL';
+          case 'integer':
+            final value = int.tryParse(rawValue);
+            if (value == null) {
+              warnings.add(
+                '"$rawValue" is not a valid SQLite integer; using 0.',
+              );
+              return '0';
+            }
+            return '$value';
+          case 'real':
+            final value = double.tryParse(rawValue);
+            if (value == null || !value.isFinite) {
+              warnings.add(
+                '"$rawValue" is not a valid SQLite real; using 0.0.',
+              );
+              return '0.0';
+            }
+            final compiled = '$value';
+            return compiled.contains('.') ? compiled : '$compiled.0';
+          case 'blob':
+            final hex = rawValue.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+            if (hex.length.isOdd || !RegExp(r'^[0-9A-F]*$').hasMatch(hex)) {
+              warnings.add(
+                '"$rawValue" is not valid SQLite BLOB hex; using an empty BLOB.',
+              );
+              return "X''";
+            }
+            return "X'$hex'";
+          default:
+            final text = '${node.inputs['text'] ?? ''}'.replaceAll("'", "''");
+            return "'$text'";
+        }
       case BlockType.sqlFrom:
         return 'FROM ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlWhere:

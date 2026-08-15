@@ -35,6 +35,7 @@ class WorkspaceState {
     this.columnLinkSourceId,
     this.columnLinkPointer,
     this.columnLinkTargetId,
+    this.selectedColumnLinkTargetId,
     this.revision = 0,
   }) : _columnLinkMode = columnLinkMode;
 
@@ -56,6 +57,7 @@ class WorkspaceState {
   final String? columnLinkSourceId;
   final Offset? columnLinkPointer;
   final String? columnLinkTargetId;
+  final String? selectedColumnLinkTargetId;
   final int revision;
 
   WorkspaceState copyWith({
@@ -74,6 +76,7 @@ class WorkspaceState {
     String? columnLinkSourceId,
     Offset? columnLinkPointer,
     String? columnLinkTargetId,
+    String? selectedColumnLinkTargetId,
     bool clearDrag = false,
     bool clearSelected = false,
     bool clearHighlight = false,
@@ -81,6 +84,7 @@ class WorkspaceState {
     bool clearPointer = false,
     bool clearColumnLink = false,
     bool clearColumnLinkTarget = false,
+    bool clearSelectedColumnLink = false,
     int? revision,
   }) {
     return WorkspaceState(
@@ -117,6 +121,9 @@ class WorkspaceState {
       columnLinkTargetId: clearColumnLink || clearColumnLinkTarget
           ? null
           : (columnLinkTargetId ?? this.columnLinkTargetId),
+      selectedColumnLinkTargetId: clearSelectedColumnLink
+          ? null
+          : (selectedColumnLinkTargetId ?? this.selectedColumnLinkTargetId),
       revision: revision ?? this.revision,
     );
   }
@@ -402,6 +409,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       draggingId: hit?.id,
       selectedBlockId: hit?.id,
+      clearSelectedColumnLink: true,
       clearHighlight: true,
       clearRejected: true,
       revision: state.revision + 1,
@@ -482,6 +490,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
         state = state.copyWith(
           selectedBlockId: null,
           selectedBlockIds: <String>{},
+          clearSelectedColumnLink: true,
           revision: state.revision + 1,
         );
       }
@@ -502,6 +511,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       selectedBlockId: hit.id,
       selectedBlockIds: nextSet,
+      clearSelectedColumnLink: true,
       revision: state.revision + 1,
     );
   }
@@ -517,6 +527,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       selectedBlockId: next.isEmpty ? null : next.first,
       selectedBlockIds: next,
+      clearSelectedColumnLink: true,
       revision: state.revision + 1,
     );
   }
@@ -532,7 +543,11 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     for (final id in ids) {
       purgeSelectedNode(id);
     }
-    state = state.copyWith(clearSelected: true, revision: state.revision + 1);
+    state = state.copyWith(
+      clearSelected: true,
+      clearSelectedColumnLink: true,
+      revision: state.revision + 1,
+    );
   }
 
   void purgeSelectedNode(String targetId) {
@@ -590,6 +605,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     state = state.copyWith(
       columnLinkMode: enabled,
       clearColumnLink: true,
+      clearSelectedColumnLink: true,
       revision: state.revision + 1,
     );
   }
@@ -689,6 +705,12 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _pushUndoSnapshot();
     target.inputs.remove(columnSourceNodeInput);
     _touch();
+    if (state.selectedColumnLinkTargetId == targetId) {
+      state = state.copyWith(
+        clearSelectedColumnLink: true,
+        revision: state.revision + 1,
+      );
+    }
   }
 
   BlockNode? columnSourceForNode(String targetId) {
@@ -724,6 +746,64 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       }
     }
     return links;
+  }
+
+  WorkspaceColumnLink? columnLinkAt(Offset worldPosition) {
+    final tolerance = 10 / state.scale;
+    final links = columnLinks();
+    for (final link in links.reversed) {
+      final start = _columnLinkSourcePoint(link.source);
+      final end = _columnLinkTargetPoint(link.target);
+      var previous = start;
+      for (var step = 1; step <= 36; step++) {
+        final current = _columnLinkPoint(start, end, step / 36);
+        if (_distanceToSegment(worldPosition, previous, current) <= tolerance) {
+          return link;
+        }
+        previous = current;
+      }
+    }
+    return null;
+  }
+
+  bool selectColumnLinkAt(Offset worldPosition) {
+    final link = columnLinkAt(worldPosition);
+    if (link == null) return false;
+    selectColumnLink(link.target.id);
+    return true;
+  }
+
+  bool selectColumnLink(String targetId) {
+    if (!columnLinks().any((link) => link.target.id == targetId)) return false;
+    state = state.copyWith(
+      selectedColumnLinkTargetId: targetId,
+      clearSelected: true,
+      revision: state.revision + 1,
+    );
+    return true;
+  }
+
+  WorkspaceColumnLink? selectedColumnLink() {
+    final targetId = state.selectedColumnLinkTargetId;
+    if (targetId == null) return null;
+    for (final link in columnLinks()) {
+      if (link.target.id == targetId) return link;
+    }
+    return null;
+  }
+
+  void clearColumnLinkSelection() {
+    if (state.selectedColumnLinkTargetId == null) return;
+    state = state.copyWith(
+      clearSelectedColumnLink: true,
+      revision: state.revision + 1,
+    );
+  }
+
+  void deleteSelectedColumnLink() {
+    final targetId = state.selectedColumnLinkTargetId;
+    if (targetId == null) return;
+    disconnectColumnSource(targetId);
   }
 
   String? contextTableForNode(String nodeId) {
@@ -860,6 +940,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       clearHighlight: true,
       clearSelected: true,
       clearColumnLink: true,
+      clearSelectedColumnLink: true,
     );
     _relayoutAll();
     _touch();
@@ -2038,6 +2119,42 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
   void _touch() {
     state = state.copyWith(revision: state.revision + 1);
+  }
+
+  Offset _columnLinkSourcePoint(BlockNode node) => Offset(
+    node.position.dx + nodeWidth(node),
+    node.position.dy + blockHeight(node) / 2,
+  );
+
+  Offset _columnLinkTargetPoint(BlockNode node) =>
+      Offset(node.position.dx, node.position.dy + blockHeight(node) / 2);
+
+  Offset _columnLinkPoint(Offset start, Offset end, double t) {
+    final horizontal = max(56.0, (end.dx - start.dx).abs() * .45);
+    final control1 = Offset(start.dx + horizontal, start.dy);
+    final control2 = Offset(end.dx - horizontal, end.dy);
+    final inverse = 1 - t;
+    return Offset(
+      inverse * inverse * inverse * start.dx +
+          3 * inverse * inverse * t * control1.dx +
+          3 * inverse * t * t * control2.dx +
+          t * t * t * end.dx,
+      inverse * inverse * inverse * start.dy +
+          3 * inverse * inverse * t * control1.dy +
+          3 * inverse * t * t * control2.dy +
+          t * t * t * end.dy,
+    );
+  }
+
+  double _distanceToSegment(Offset point, Offset start, Offset end) {
+    final segment = end - start;
+    final lengthSquared = segment.distanceSquared;
+    if (lengthSquared == 0) return (point - start).distance;
+    final projection =
+        ((point - start).dx * segment.dx + (point - start).dy * segment.dy) /
+        lengthSquared;
+    final nearest = start + segment * projection.clamp(0.0, 1.0);
+    return (point - nearest).distance;
   }
 
   String toJsonString() {
