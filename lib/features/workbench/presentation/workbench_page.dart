@@ -2836,6 +2836,7 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.queryLanguage => <_PaletteItem>[
         native(BlockType.eventGreenFlag),
         native(BlockType.sqlSelect),
+        native(BlockType.sqlAlias),
         native(BlockType.sqlWhere),
         native(BlockType.sqlJoin),
         native(BlockType.sqlGroupBy),
@@ -2970,6 +2971,10 @@ class _PaletteState extends State<_Palette> {
         return de
             ? 'Erzeugt einen Textwert, der in runde Eingabefelder eingesetzt werden kann.'
             : 'Creates a text value that can be inserted into rounded input slots.';
+      case BlockType.sqlAlias:
+        return de
+            ? 'Gibt einer Spalte, einem Aggregat oder einem anderen Ergebnisausdruck mit AS einen lesbaren Namen.'
+            : 'Gives a column, aggregate, or other result expression a readable name using AS.';
       case BlockType.sqlFrom:
         return de
             ? 'Legt fest, aus welcher Tabelle gelesen wird.'
@@ -3269,6 +3274,7 @@ class _PaletteState extends State<_Palette> {
           ..inputs.addAll(<String, dynamic>{
             'columns': '*',
             'table': 'table_name',
+            'table_alias': '',
             'separate_from': false,
           }),
       BlockType.eventGreenFlag => EventBlock(
@@ -3286,6 +3292,12 @@ class _PaletteState extends State<_Palette> {
         position: Offset.zero,
         operatorType: type,
         inputs: <String, dynamic>{'text': 'Text'},
+      ),
+      BlockType.sqlAlias => OperatorBlock(
+        id: 'tpl_alias',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'value': 'id', 'alias': 'alias'},
       ),
       BlockType.sqlCount => OperatorBlock(
         id: 'tpl_count',
@@ -3602,17 +3614,46 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                             ),
                             Tooltip(
                               message: catalog.text('tabs.rename'),
-                              child: IconButton(
-                                key: ValueKey<String>(
-                                  'workspace-tab-rename-${tab.id}',
+                              child: NodeQlBrutalPressable(
+                                radius: surfaceStyle.radiusSmall,
+                                child: IconButton(
+                                  key: ValueKey<String>(
+                                    'workspace-tab-rename-${tab.id}',
+                                  ),
+                                  onPressed: () => unawaited(
+                                    _renameTab(context, tab, controller),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 15,
+                                  color: surfaceStyle.isBrutalist
+                                      ? null
+                                      : selected
+                                      ? Colors.white70
+                                      : colors.muted,
+                                  style: surfaceStyle.isBrutalist
+                                      ? IconButton.styleFrom(
+                                          fixedSize: const Size.square(32),
+                                          minimumSize: const Size.square(32),
+                                          maximumSize: const Size.square(32),
+                                          padding: EdgeInsets.zero,
+                                          foregroundColor:
+                                              NodeQlNeoBrutalism.ink,
+                                          backgroundColor: selected
+                                              ? NodeQlNeoBrutalism.yellow
+                                              : NodeQlNeoBrutalism.mint,
+                                          side: BorderSide(
+                                            color: NodeQlNeoBrutalism.ink,
+                                            width: surfaceStyle.borderWidth,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              surfaceStyle.radiusSmall,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                  icon: const Icon(Icons.edit_rounded),
                                 ),
-                                onPressed: () => unawaited(
-                                  _renameTab(context, tab, controller),
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                iconSize: 15,
-                                color: selected ? Colors.white70 : colors.muted,
-                                icon: const Icon(Icons.edit_rounded),
                               ),
                             ),
                             const SizedBox(width: 4),
@@ -4979,11 +5020,15 @@ class _NodeView extends ConsumerWidget {
         _ => '"$value"',
       };
     }
-    final nested = reporterForInput(reporter, 'expr');
+    final nestedKey = primaryReporterInputKey(reporter.type);
+    final nested = nestedKey == null
+        ? null
+        : reporterForInput(reporter, nestedKey);
     final value = nested == null
-        ? '${reporter.inputs['expr'] ?? reporter.inputs['column'] ?? '*'}'
+        ? '${reporter.inputs[nestedKey] ?? reporter.inputs['expr'] ?? reporter.inputs['column'] ?? '*'}'
         : _reporterLabel(nested, localeCode, mode);
     return switch (reporter.type) {
+      BlockType.sqlAlias => '$value AS ${reporter.inputs['alias'] ?? 'alias'}',
       BlockType.sqlCount => 'COUNT($value)',
       BlockType.sqlSum => 'SUM($value)',
       BlockType.sqlAvg => 'AVG($value)',
@@ -5036,6 +5081,81 @@ class _NodeView extends ConsumerWidget {
     final nestedReporter = nestedKey == null
         ? null
         : reporterForInput(reporter, nestedKey);
+
+    if (reporter.type == BlockType.sqlAlias) {
+      final expressionController = TextEditingController(
+        text: nestedReporter == null
+            ? '${reporter.inputs['value'] ?? 'id'}'
+            : _reporterLabel(
+                nestedReporter,
+                localeCode,
+                SqlAbstractionMode.advanced,
+              ),
+      );
+      final aliasController = TextEditingController(
+        text: '${reporter.inputs['alias'] ?? 'alias'}',
+      );
+      final result = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(localeCode == 'de' ? 'Alias bearbeiten' : 'Edit alias'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: expressionController,
+                enabled: nestedReporter == null,
+                decoration: InputDecoration(
+                  labelText: catalog.text('editor.value'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: aliasController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Alias'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).pop(<String, String>{'remove': 'true'}),
+              icon: const Icon(Icons.remove_circle_outline),
+              label: Text(catalog.text('editor.removeReporter')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(catalog.text('common.cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(<String, String>{
+                'value': expressionController.text,
+                'alias': aliasController.text,
+              }),
+              child: Text(catalog.text('common.ok')),
+            ),
+          ],
+        ),
+      );
+      if (result?['remove'] == 'true') {
+        engine.removeReporterInput(node, slot.inputKey);
+        return;
+      }
+      if (result != null) {
+        if (nestedReporter == null) {
+          reporter.inputs['value'] = result['value']?.trim() ?? '';
+        }
+        engine.updateReporterInput(
+          node,
+          slot.inputKey,
+          reporter,
+          'alias',
+          result['alias']?.trim() ?? '',
+        );
+      }
+      return;
+    }
 
     if (reporter.type == BlockType.sqlColumn ||
         nestedReporter?.type == BlockType.sqlColumn) {
@@ -5504,7 +5624,9 @@ class _NodeView extends ConsumerWidget {
     final text = '${value ?? ''}'.trim();
     final rawLower = rawKey.toLowerCase();
     final normalized = text.toLowerCase();
-    if (text.isEmpty) return '';
+    if (text.isEmpty) {
+      return _slotInputKey(rawKey) == 'table_alias' ? 'No Alias' : '';
+    }
     if (normalized == rawLower) return '';
     if (normalized == 'table_name' ||
         normalized == 'column' ||
@@ -5553,6 +5675,9 @@ class _NodeView extends ConsumerWidget {
       case 'columns':
       case 'Spalten':
         return '*';
+      case 'alias':
+      case 'Alias':
+        return 'alias';
       case 'column':
       case 'Spalte':
       case 'column_name':
@@ -5828,6 +5953,8 @@ class _NodeView extends ConsumerWidget {
         return 'right_column';
       case 'Bedingungs_Spalte':
         return 'condition_column';
+      case 'Alias':
+        return 'alias';
       case 'JOIN_TYPE':
         return 'join_type';
       case 'ASC|DESC':

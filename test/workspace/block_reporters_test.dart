@@ -33,6 +33,7 @@ void main() {
     expect(isReporterType(BlockType.sqlColumn), isTrue);
     expect(isReporterType(BlockType.sqlText), isTrue);
     expect(isReporterType(BlockType.sqlAvg), isTrue);
+    expect(isReporterType(BlockType.sqlAlias), isTrue);
     expect(isReporterType(BlockType.sqlFrom), isFalse);
   });
 
@@ -49,5 +50,10 @@ void main() {
       slotAcceptsReporterType('value', 'value', BlockType.sqlColumn),
       isTrue,
     );
+  });
+
+  test('alias reporters accept another expression as their value', () {
+    expect(primaryReporterInputKey(BlockType.sqlAlias), 'value');
+    expect(slotAcceptsReporterType('value', 'value', BlockType.sqlAvg), isTrue);
   });
 }

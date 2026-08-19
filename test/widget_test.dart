@@ -10,6 +10,7 @@ import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 import 'package:nodeql/features/workbench/presentation/workbench_page.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
@@ -184,6 +185,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(container.read(nodeQlThemeProvider).theme, NodeQlTheme.neoBrutalism);
+
+    final activeTabId = container.read(workspaceTabsProvider).activeTabId;
+    final brutalRenameButton = tester.widget<IconButton>(
+      find.byKey(ValueKey<String>('workspace-tab-rename-$activeTabId')),
+    );
+    expect(
+      brutalRenameButton.style?.fixedSize?.resolve(<WidgetState>{}),
+      const Size.square(32),
+    );
+    expect(
+      brutalRenameButton.style?.foregroundColor?.resolve(<WidgetState>{}),
+      NodeQlNeoBrutalism.ink,
+    );
+    expect(
+      brutalRenameButton.style?.backgroundColor?.resolve(<WidgetState>{}),
+      NodeQlNeoBrutalism.yellow,
+    );
+    expect(
+      brutalRenameButton.style?.side?.resolve(<WidgetState>{})?.width,
+      NodeQlNeoBrutalism.borderWidth,
+    );
 
     expect(
       workspaceController.connectColumnSource(select.id, order.id),

@@ -16,13 +16,17 @@ void main() {
       id: 'from',
       position: Offset.zero,
       operatorType: BlockType.sqlFrom,
-      inputs: {'table': 'customers c'},
+      inputs: {'table': 'customers', 'table_alias': 'c'},
     );
     final join = OperatorBlock(
       id: 'join',
       position: Offset.zero,
       operatorType: BlockType.sqlLeftJoin,
-      inputs: {'table': 'orders o', 'on': 'o.customer_id = c.id'},
+      inputs: {
+        'table': 'orders',
+        'table_alias': 'o',
+        'on': 'o.customer_id = c.id',
+      },
     );
     final where = MotionBlock(
       id: 'where',
@@ -40,9 +44,28 @@ void main() {
 
     expect(
       result.sql,
-      'SELECT c.id, o.total FROM customers c '
-      'LEFT JOIN orders o ON o.customer_id = c.id '
+      'SELECT c.id, o.total FROM customers AS c '
+      'LEFT JOIN orders AS o ON o.customer_id = c.id '
       'WHERE o.total > 100;',
+    );
+  });
+
+  test('compiles an integrated SELECT table alias safely', () {
+    final root = EventBlock(id: 'run-alias-source', position: Offset.zero);
+    root.next = OperatorBlock(
+      id: 'select-alias-source',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: {
+        'columns': '"customer records".id',
+        'table': 'customers',
+        'table_alias': 'customer records',
+      },
+    );
+
+    expect(
+      const SqlCompiler().compileWorkspace([root]).sql,
+      'SELECT "customer records".id FROM customers AS "customer records";',
     );
   });
 
@@ -574,6 +597,36 @@ void main() {
     expect(
       const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
       'SELECT COUNT(DISTINCT county) AS "county count" FROM executions;',
+    );
+  });
+
+  test('aliases arbitrary reporter expressions and quotes unsafe names', () {
+    final root = EventBlock(id: 'run-alias', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select-alias',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{'columns': '*', 'table': 'orders'},
+    );
+    final alias = OperatorBlock(
+      id: 'alias',
+      position: Offset.zero,
+      operatorType: BlockType.sqlAlias,
+      inputs: <String, dynamic>{'value': 'total', 'alias': 'average total'},
+    );
+    final average = OperatorBlock(
+      id: 'average',
+      position: Offset.zero,
+      operatorType: BlockType.sqlAvg,
+      inputs: <String, dynamic>{'column': 'total'},
+    );
+    setReporterForInput(alias, 'value', average);
+    setReporterForInput(select, 'columns', alias);
+    root.next = select;
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
+      'SELECT AVG(total) AS "average total" FROM orders;',
     );
   });
 

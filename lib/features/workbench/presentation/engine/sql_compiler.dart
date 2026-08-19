@@ -217,7 +217,7 @@ class SqliteDialectRenderer {
           return '$selectKeyword $cols';
         }
         final from = configuredFrom ?? 'table_name';
-        return '$selectKeyword $cols FROM $from';
+        return '$selectKeyword $cols FROM ${_withTableAlias(from, node)}';
       case BlockType.sqlColumn:
         return _withAlias(node.inputs['column'] as String? ?? '*', node);
       case BlockType.sqlText:
@@ -260,38 +260,53 @@ class SqliteDialectRenderer {
             final text = '${node.inputs['text'] ?? ''}'.replaceAll("'", "''");
             return "'$text'";
         }
+      case BlockType.sqlAlias:
+        final expression = _compileReporterInputAny(
+          node,
+          const <String>['value', 'expr'],
+          '${node.inputs['value'] ?? node.inputs['expr'] ?? 'id'}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        return _withAlias(expression, node);
       case BlockType.sqlFrom:
-        return 'FROM ${node.inputs['table'] as String? ?? 'table_name'}';
+        return 'FROM ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlWhere:
         return 'WHERE ${_predicateFromInputs(node, fallback: '1 = 1')}';
       case BlockType.sqlJoin:
         final joinType = _normalizedJoinType(node.inputs['join_type']);
         final table = node.inputs['table'] as String? ?? 'table_name';
+        final source = _withTableAlias(
+          table,
+          node,
+          fallbackAlias: joinType == 'SELF' ? 't2' : null,
+        );
         final condition = _joinConditionFromInputs(node);
         return switch (joinType) {
-          'CROSS' => 'CROSS JOIN $table',
-          'NATURAL' => 'NATURAL JOIN $table',
-          'SELF' => 'JOIN $table AS t2 ON $condition',
+          'CROSS' => 'CROSS JOIN $source',
+          'NATURAL' => 'NATURAL JOIN $source',
+          'SELF' => 'JOIN $source ON $condition',
           'INNER' ||
           'LEFT' ||
           'RIGHT' ||
-          'FULL' => '$joinType JOIN $table ON $condition',
-          _ => 'JOIN $table ON $condition',
+          'FULL' => '$joinType JOIN $source ON $condition',
+          _ => 'JOIN $source ON $condition',
         };
       case BlockType.sqlInnerJoin:
-        return 'INNER JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
+        return 'INNER JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlLeftJoin:
-        return 'LEFT JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
+        return 'LEFT JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlRightJoin:
-        return 'RIGHT JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
+        return 'RIGHT JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlFullJoin:
-        return 'FULL JOIN ${node.inputs['table'] as String? ?? 'table_name'} ON ${_joinConditionFromInputs(node)}';
+        return 'FULL JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
       case BlockType.sqlCrossJoin:
-        return 'CROSS JOIN ${node.inputs['table'] as String? ?? 'table_name'}';
+        return 'CROSS JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlSelfJoin:
-        return 'JOIN ${node.inputs['table'] as String? ?? 'table_name'} AS t2 ON ${_joinConditionFromInputs(node, fallback: 't1.id = t2.id')}';
+        return 'JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node, fallbackAlias: 't2')} ON ${_joinConditionFromInputs(node, fallback: 't1.id = t2.id')}';
       case BlockType.sqlNaturalJoin:
-        return 'NATURAL JOIN ${node.inputs['table'] as String? ?? 'table_name'}';
+        return 'NATURAL JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlGroupBy:
         return 'GROUP BY ${node.inputs['column'] as String? ?? node.inputs['expr'] as String? ?? 'id'}';
       case BlockType.sqlHaving:
@@ -327,13 +342,25 @@ class SqliteDialectRenderer {
             : expression;
         return _withAlias('COUNT($argument)', node);
       case BlockType.sqlSum:
-        return 'SUM(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return _withAlias(
+          'SUM(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})',
+          node,
+        );
       case BlockType.sqlAvg:
-        return 'AVG(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return _withAlias(
+          'AVG(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})',
+          node,
+        );
       case BlockType.sqlMin:
-        return 'MIN(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return _withAlias(
+          'MIN(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})',
+          node,
+        );
       case BlockType.sqlMax:
-        return 'MAX(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
+        return _withAlias(
+          'MAX(${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'amount'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})',
+          node,
+        );
       case BlockType.sqlConcat:
         return '(${_compileReporterInput(node, 'a', '${node.inputs['a'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)} || ${_compileReporterInput(node, 'b', '${node.inputs['b'] ?? "''"}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)})';
       case BlockType.sqlSubstring:
@@ -722,7 +749,23 @@ class SqliteDialectRenderer {
   }
 
   String _withAlias(String expression, BlockNode node) {
-    final alias = '${node.inputs['alias'] ?? ''}'.trim();
+    return _withIdentifierAlias(expression, node.inputs['alias']);
+  }
+
+  String _withTableAlias(
+    String table,
+    BlockNode node, {
+    String? fallbackAlias,
+  }) {
+    final configuredAlias = '${node.inputs['table_alias'] ?? ''}'.trim();
+    return _withIdentifierAlias(
+      table,
+      configuredAlias.isEmpty ? fallbackAlias : configuredAlias,
+    );
+  }
+
+  String _withIdentifierAlias(String expression, dynamic rawAlias) {
+    final alias = '${rawAlias ?? ''}'.trim();
     if (alias.isEmpty) return expression;
     final simpleIdentifier = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
     if (simpleIdentifier.hasMatch(alias)) return '$expression AS $alias';
