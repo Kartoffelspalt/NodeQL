@@ -116,6 +116,31 @@ class WorkspaceTabsController extends StateNotifier<WorkspaceTabsState> {
     );
   }
 
+  bool deleteTab(String id) {
+    if (state.tabs.length <= 1) return false;
+    final index = state.tabs.indexWhere((tab) => tab.id == id);
+    if (index == -1) return false;
+
+    final deletingActiveTab = id == state.activeTabId;
+    final tabs = _withCurrentWorkspace()..removeAt(index);
+    var activeTabId = state.activeTabId;
+    if (deletingActiveTab) {
+      final fallbackIndex = index < tabs.length ? index : tabs.length - 1;
+      activeTabId = tabs[fallbackIndex].id;
+    }
+    state = WorkspaceTabsState(
+      tabs: tabs,
+      activeTabId: activeTabId,
+      revision: state.revision + 1,
+    );
+    if (deletingActiveTab) {
+      _workspace.loadFromJsonString(
+        tabs.firstWhere((tab) => tab.id == activeTabId).workspaceJson,
+      );
+    }
+    return true;
+  }
+
   void reorderTabs(int oldIndex, int newIndex) {
     if (oldIndex < 0 || oldIndex >= state.tabs.length) return;
     final tabs = _withCurrentWorkspace();

@@ -21,6 +21,7 @@ import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.d
 import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
+import 'package:nodeql/features/workbench/presentation/widgets/database_browser_dialog.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
@@ -41,6 +42,16 @@ const String _appIconAsset = 'assets/appicon/iconv4dark.png';
 const double _inlineLineHeight = 28;
 const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
+
+ButtonStyle _nodeQlFilledButtonCornerStyle(BuildContext context) {
+  return ButtonStyle(
+    shape: WidgetStatePropertyAll<OutlinedBorder>(
+      RoundedRectangleBorder(
+        borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
+      ),
+    ),
+  );
+}
 
 double _measureSingleLineText(String text, TextStyle style) {
   if (text.isEmpty) return 0;
@@ -673,6 +684,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       .setLocaleTag(code),
                   onPickDb: () =>
                       ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
+                  hasDatabase: runtime.dbPath != null,
+                  onBrowseDb: runtime.dbPath == null
+                      ? null
+                      : () => showDialog<void>(
+                          context: context,
+                          builder: (_) => DatabaseBrowserDialog(
+                            databasePath: runtime.dbPath!,
+                            catalog: catalog,
+                            initialMode: mode,
+                            onModeChanged: (next) => unawaited(
+                              ref.read(sqlModeProvider.notifier).setMode(next),
+                            ),
+                          ),
+                        ),
                   onExecuteGuarded: () {
                     if (compileResult.sql.trim().isEmpty) {
                       ref
@@ -1291,60 +1316,39 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    radius: 999,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: FilledButton.tonal(
-                        key: const ValueKey<String>('settings-manage-plugins'),
-                        onPressed: () => Navigator.of(
-                          dialogContext,
-                        ).pop(_SettingsAction.plugins),
-                        style: const ButtonStyle(
-                          shape: WidgetStatePropertyAll<OutlinedBorder>(
-                            StadiumBorder(),
-                          ),
-                        ),
-                        child: Text(catalog.text('settings.plugins')),
-                      ),
+                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
+                    child: FilledButton.tonal(
+                      key: const ValueKey<String>('settings-manage-plugins'),
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_SettingsAction.plugins),
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      child: Text(catalog.text('settings.plugins')),
                     ),
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    radius: 999,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: FilledButton.tonal(
-                        key: const ValueKey<String>('settings-languages'),
-                        onPressed: () => Navigator.of(
-                          dialogContext,
-                        ).pop(_SettingsAction.languages),
-                        style: const ButtonStyle(
-                          shape: WidgetStatePropertyAll<OutlinedBorder>(
-                            StadiumBorder(),
-                          ),
-                        ),
-                        child: Text(catalog.text('settings.languages')),
-                      ),
+                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
+                    child: FilledButton.tonal(
+                      key: const ValueKey<String>('settings-languages'),
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_SettingsAction.languages),
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      child: Text(catalog.text('settings.languages')),
                     ),
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    radius: 999,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: FilledButton.tonalIcon(
-                        key: const ValueKey<String>('settings-tutorial'),
-                        onPressed: () => Navigator.of(
-                          dialogContext,
-                        ).pop(_SettingsAction.tutorial),
-                        style: const ButtonStyle(
-                          shape: WidgetStatePropertyAll<OutlinedBorder>(
-                            StadiumBorder(),
-                          ),
-                        ),
-                        icon: const Icon(Icons.school_outlined),
-                        label: Text(catalog.text('settings.tutorial')),
-                      ),
+                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
+                    child: FilledButton.tonalIcon(
+                      key: const ValueKey<String>('settings-tutorial'),
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_SettingsAction.tutorial),
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      icon: const Icon(Icons.school_outlined),
+                      label: Text(catalog.text('settings.tutorial')),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1620,7 +1624,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
               label: Text(catalog.text('plugins.reload')),
             ),
             FilledButton.icon(
+              key: const ValueKey<String>('install-plugin-manifest'),
               onPressed: () => _installPluginManifest(dialogContext),
+              style: _nodeQlFilledButtonCornerStyle(dialogContext),
               icon: const Icon(Icons.add),
               label: Text(catalog.text('plugins.install')),
             ),
@@ -2128,6 +2134,8 @@ class _TopBar extends StatelessWidget {
     required this.localeCode,
     required this.onLocale,
     required this.onPickDb,
+    required this.hasDatabase,
+    required this.onBrowseDb,
     required this.onExecuteGuarded,
     required this.columnLinkMode,
     required this.onColumnLinkModeChanged,
@@ -2143,6 +2151,8 @@ class _TopBar extends StatelessWidget {
   final String localeCode;
   final ValueChanged<String> onLocale;
   final VoidCallback onPickDb;
+  final bool hasDatabase;
+  final VoidCallback? onBrowseDb;
   final VoidCallback onExecuteGuarded;
   final bool columnLinkMode;
   final VoidCallback onColumnLinkModeChanged;
@@ -2213,8 +2223,35 @@ class _TopBar extends StatelessWidget {
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
                   NodeQlBrutalPressable(
+                    enabled: hasDatabase,
+                    radius: surfaceStyle.radiusSmall,
+                    child: IconButton(
+                      key: const ValueKey<String>('open-database-browser'),
+                      onPressed: onBrowseDb,
+                      tooltip: catalog.text('toolbar.browseDatabase'),
+                      color: workbenchColors.topBarForeground,
+                      disabledColor: workbenchColors.topBarForeground
+                          .withValues(alpha: .38),
+                      style: IconButton.styleFrom(
+                        foregroundColor: workbenchColors.topBarForeground,
+                        disabledForegroundColor: workbenchColors
+                            .topBarForeground
+                            .withValues(alpha: .38),
+                        side: BorderSide(
+                          color: workbenchColors.border,
+                          width: surfaceStyle.borderWidth,
+                        ),
+                      ),
+                      icon: const Icon(Icons.table_view_outlined, size: 19),
+                    ),
+                  ),
+                  const SizedBox(width: NodeQlDesign.space2),
+                  NodeQlBrutalPressable(
+                    radius: surfaceStyle.radiusMedium,
                     child: FilledButton.icon(
+                      key: const ValueKey<String>('run-sqlite'),
                       onPressed: onExecuteGuarded,
+                      style: _nodeQlFilledButtonCornerStyle(context),
                       icon: const Icon(Icons.play_arrow_rounded, size: 19),
                       label: Text(catalog.text('toolbar.runSql')),
                     ),
@@ -3497,6 +3534,40 @@ class _WorkspaceTabsBar extends ConsumerWidget {
     if (renamed != null) controller.renameTab(tab.id, renamed);
   }
 
+  Future<void> _deleteTab(
+    BuildContext context,
+    WorkspaceTab tab,
+    WorkspaceTabsController controller,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(catalog.text('tabs.deleteTitle')),
+        content: Text(
+          catalog.text('tabs.deleteMessage', <String, Object?>{
+            'name': tab.name,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(catalog.text('common.cancel')),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('workspace-tab-delete-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: Text(catalog.text('common.delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) controller.deleteTab(tab.id);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tabsState = ref.watch(workspaceTabsProvider);
@@ -3545,6 +3616,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final tab = tabsState.tabs[index];
                 final selected = tab.id == tabsState.activeTabId;
+                final canDelete = tabsState.tabs.length > 1;
                 return Padding(
                   key: ValueKey<String>('workspace-tab-${tab.id}'),
                   padding: const EdgeInsets.only(right: 6),
@@ -3653,6 +3725,63 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                                         )
                                       : null,
                                   icon: const Icon(Icons.edit_rounded),
+                                ),
+                              ),
+                            ),
+                            Tooltip(
+                              message: catalog.text(
+                                canDelete
+                                    ? 'tabs.delete'
+                                    : 'tabs.deleteLastDisabled',
+                              ),
+                              child: NodeQlBrutalPressable(
+                                enabled: canDelete,
+                                radius: surfaceStyle.radiusSmall,
+                                child: IconButton(
+                                  key: ValueKey<String>(
+                                    'workspace-tab-delete-${tab.id}',
+                                  ),
+                                  onPressed: canDelete
+                                      ? () => unawaited(
+                                          _deleteTab(context, tab, controller),
+                                        )
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 15,
+                                  color: surfaceStyle.isBrutalist
+                                      ? null
+                                      : selected
+                                      ? Colors.white70
+                                      : colors.muted,
+                                  style: surfaceStyle.isBrutalist
+                                      ? IconButton.styleFrom(
+                                          fixedSize: const Size.square(32),
+                                          minimumSize: const Size.square(32),
+                                          maximumSize: const Size.square(32),
+                                          padding: EdgeInsets.zero,
+                                          foregroundColor:
+                                              NodeQlNeoBrutalism.ink,
+                                          backgroundColor:
+                                              NodeQlNeoBrutalism.pink,
+                                          disabledForegroundColor:
+                                              NodeQlNeoBrutalism.mutedInk
+                                                  .withValues(alpha: 0.55),
+                                          disabledBackgroundColor:
+                                              NodeQlNeoBrutalism.paper,
+                                          side: BorderSide(
+                                            color: NodeQlNeoBrutalism.ink,
+                                            width: surfaceStyle.borderWidth,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              surfaceStyle.radiusSmall,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                  ),
                                 ),
                               ),
                             ),
@@ -5129,10 +5258,12 @@ class _NodeView extends ConsumerWidget {
               child: Text(catalog.text('common.cancel')),
             ),
             FilledButton(
+              key: const ValueKey<String>('alias-reporter-submit'),
               onPressed: () => Navigator.of(context).pop(<String, String>{
                 'value': expressionController.text,
                 'alias': aliasController.text,
               }),
+              style: _nodeQlFilledButtonCornerStyle(context),
               child: Text(catalog.text('common.ok')),
             ),
           ],
@@ -5763,13 +5894,11 @@ class _NodeView extends ConsumerWidget {
             onPressed: () => Navigator.pop(context),
             child: Text(catalog.text('common.cancel')),
           ),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              style: FilledButton.styleFrom(shape: const StadiumBorder()),
-              child: Text(catalog.text('common.ok')),
-            ),
+          FilledButton(
+            key: const ValueKey<String>('block-input-submit'),
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: _nodeQlFilledButtonCornerStyle(context),
+            child: Text(catalog.text('common.ok')),
           ),
         ],
       ),
@@ -5860,7 +5989,11 @@ class _NodeView extends ConsumerWidget {
             child: Text(catalog.text('common.cancel')),
           ),
           FilledButton(
+            key: mappedKey == 'table_alias'
+                ? const ValueKey<String>('table-alias-submit')
+                : null,
             onPressed: () => Navigator.pop(context, controller.text),
+            style: _nodeQlFilledButtonCornerStyle(context),
             child: Text(catalog.text('common.ok')),
           ),
         ],
