@@ -96,60 +96,142 @@ void main() {
     },
   );
 
-  testWidgets('switching to neo brutalism animates without theme exceptions', (
-    tester,
-  ) async {
-    var selectedTheme = NodeQlTheme.dark;
-    late StateSetter updateTheme;
+  test('nested corner radii follow outer radius minus gap', () {
+    const style = NodeQlSurfaceStyle.standard;
 
-    await tester.pumpWidget(
-      StatefulBuilder(
-        builder: (context, setState) {
-          updateTheme = setState;
-          return MaterialApp(
-            theme: themeFor(selectedTheme),
-            home: Scaffold(
-              body: Column(
-                children: [
-                  RadioGroup<NodeQlTheme>(
-                    groupValue: selectedTheme,
-                    onChanged: (_) {},
-                    child: const RadioListTile<NodeQlTheme>(
-                      value: NodeQlTheme.neoBrutalism,
-                      title: Text('Neo Brutalism'),
+    expect(
+      NodeQlDesign.radiusMedium,
+      NodeQlDesign.radiusLarge - NodeQlDesign.radiusLargeToMediumGap,
+    );
+    expect(
+      NodeQlDesign.radiusSmall,
+      NodeQlDesign.radiusMedium - NodeQlDesign.radiusMediumToSmallGap,
+    );
+    expect(style.innerRadius(outerRadius: 50, gap: 20), 30);
+    expect(
+      style.innerBorderRadius(outerRadius: 12, gap: 20),
+      BorderRadius.zero,
+    );
+  });
+
+  test('every theme defines rounded shapes for every button family', () {
+    for (final variant in NodeQlTheme.values) {
+      final theme = themeFor(variant);
+      final surfaceStyle = theme.extension<NodeQlSurfaceStyle>()!;
+      final expectedRadius = BorderRadius.circular(surfaceStyle.radiusMedium);
+      final buttonStyles = <String, ButtonStyle>{
+        'filled': theme.filledButtonTheme.style!,
+        'outlined': theme.outlinedButtonTheme.style!,
+        'elevated': theme.elevatedButtonTheme.style!,
+        'text': theme.textButtonTheme.style!,
+        'icon': theme.iconButtonTheme.style!,
+        'segmented': theme.segmentedButtonTheme.style!,
+      };
+
+      for (final entry in buttonStyles.entries) {
+        expect(
+          entry.value.shape?.resolve(<WidgetState>{}),
+          isA<RoundedRectangleBorder>().having(
+            (shape) => shape.borderRadius,
+            '${variant.name} ${entry.key} borderRadius',
+            expectedRadius,
+          ),
+        );
+      }
+    }
+  });
+
+  testWidgets(
+    'switching from neo brutalism keeps every button family rounded',
+    (tester) async {
+      var selectedTheme = NodeQlTheme.neoBrutalism;
+      late StateSetter updateTheme;
+
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) {
+            updateTheme = setState;
+            return MaterialApp(
+              theme: themeFor(selectedTheme),
+              home: Scaffold(
+                body: Column(
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {},
+                      child: const Text('Mount database'),
                     ),
-                  ),
-                  OutlinedButton(
-                    onPressed: () {},
-                    child: const Text('Mount database'),
-                  ),
-                  FilledButton(
-                    onPressed: () {},
-                    child: const Text('Run query'),
-                  ),
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(value: false, label: Text('Simple')),
-                      ButtonSegment(value: true, label: Text('Advanced')),
-                    ],
-                    selected: const {false},
-                    onSelectionChanged: (_) {},
-                  ),
-                ],
+                    FilledButton(
+                      onPressed: () {},
+                      child: const Text('Run query'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {},
+                      child: const Text('Elevated action'),
+                    ),
+                    TextButton(
+                      onPressed: () {},
+                      child: const Text('Text action'),
+                    ),
+                    IconButton(
+                      onPressed: () {},
+                      icon: const Icon(Icons.settings),
+                    ),
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(value: false, label: Text('Simple')),
+                        ButtonSegment(value: true, label: Text('Advanced')),
+                      ],
+                      selected: const {false},
+                      onSelectionChanged: (_) {},
+                    ),
+                  ],
+                ),
               ),
+            );
+          },
+        ),
+      );
+
+      for (final targetTheme in const [
+        NodeQlTheme.light,
+        NodeQlTheme.dark,
+        NodeQlTheme.midnight,
+        NodeQlTheme.matrix,
+      ]) {
+        updateTheme(() => selectedTheme = targetTheme);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pumpAndSettle();
+
+        final theme = Theme.of(tester.element(find.byType(Scaffold)));
+        final expectedRadius = BorderRadius.circular(
+          NodeQlSurfaceStyle.standard.radiusMedium,
+        );
+        for (final style in <ButtonStyle>[
+          theme.filledButtonTheme.style!,
+          theme.outlinedButtonTheme.style!,
+          theme.elevatedButtonTheme.style!,
+          theme.textButtonTheme.style!,
+          theme.iconButtonTheme.style!,
+          theme.segmentedButtonTheme.style!,
+        ]) {
+          expect(
+            style.shape?.resolve(<WidgetState>{}),
+            isA<RoundedRectangleBorder>().having(
+              (shape) => shape.borderRadius,
+              'borderRadius after switching to ${targetTheme.name}',
+              expectedRadius,
             ),
           );
-        },
-      ),
-    );
+        }
 
-    updateTheme(() => selectedTheme = NodeQlTheme.neoBrutalism);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.pumpAndSettle();
+        updateTheme(() => selectedTheme = NodeQlTheme.neoBrutalism);
+        await tester.pumpAndSettle();
+      }
 
-    expect(tester.takeException(), isNull);
-  });
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('brutal pressable lifts on hover and collapses on press', (
     tester,
@@ -198,5 +280,36 @@ void main() {
 
     await mouse.up();
     await mouse.removePointer();
+  });
+
+  testWidgets('standard pressable clips custom fills to its rounded shape', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeFor(NodeQlTheme.dark),
+        home: const Scaffold(
+          body: NodeQlBrutalPressable(
+            child: ColoredBox(
+              key: ValueKey('standard-pressable-child'),
+              color: Colors.cyan,
+              child: SizedBox(width: 160, height: 48),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final clip = tester.widget<ClipRRect>(
+      find.descendant(
+        of: find.byType(NodeQlBrutalPressable),
+        matching: find.byType(ClipRRect),
+      ),
+    );
+    expect(
+      clip.borderRadius,
+      BorderRadius.circular(NodeQlSurfaceStyle.standard.radiusMedium),
+    );
+    expect(clip.clipBehavior, Clip.antiAlias);
   });
 }

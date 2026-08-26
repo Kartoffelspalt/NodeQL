@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/features/workbench/presentation/engine/database_browser.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/database_browser_dialog.dart';
@@ -252,6 +253,50 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('database-browser-dialog')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-header-icon-clip')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-refresh-clip')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-close-clip')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('database-object-authors-clip')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey<String>('database-object-authors')),
+          )
+          .borderRadius,
+      NodeQlSurfaceStyle.standard.mediumBorderRadius,
+    );
+    expect(
+      tester.widget<TabBar>(find.byType(TabBar)).splashBorderRadius,
+      NodeQlSurfaceStyle.standard.innerBorderRadius(
+        outerRadius: NodeQlSurfaceStyle.standard.radiusMedium,
+        gap: 4,
+      ),
+    );
+    expect(
+      tester
+          .widget<ClipRRect>(
+            find.byKey(
+              const ValueKey<String>('database-browser-header-icon-clip'),
+            ),
+          )
+          .borderRadius,
+      NodeQlSurfaceStyle.standard.innerBorderRadius(
+        outerRadius: NodeQlSurfaceStyle.standard.radiusLarge,
+        gap: 14,
+      ),
     );
     expect(find.text('Ada'), findsOneWidget);
     expect(find.text('1 row(s)'), findsOneWidget);

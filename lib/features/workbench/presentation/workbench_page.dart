@@ -469,6 +469,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     LogicalKeyboardKey.keyE,
     LogicalKeyboardKey.keyO,
   ];
+  static const _databaseBrowserKeys = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.keyD,
+    LogicalKeyboardKey.keyB,
+    LogicalKeyboardKey.keyB,
+  ];
   static const _neoCheatTimeout = Duration(seconds: 2);
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
@@ -491,6 +496,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   bool _startupHintShown = false;
   int _neoCheatIndex = 0;
   DateTime? _neoCheatLastKeyAt;
+  int _databaseBrowserKeyIndex = 0;
+  DateTime? _databaseBrowserLastKeyAt;
+  bool _databaseBrowserOpen = false;
   static const bool _showStartupHint = false;
 
   static const String _startupHintText =
@@ -571,10 +579,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         keyboard.isControlPressed ||
         keyboard.isAltPressed) {
       _resetNeoCheat();
+      _resetDatabaseBrowserKeys();
       return false;
     }
 
     final now = DateTime.now();
+    if (_advanceDatabaseBrowserKeys(event.logicalKey, now)) {
+      unawaited(_openDatabaseBrowser());
+      return true;
+    }
     final lastKeyAt = _neoCheatLastKeyAt;
     if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
       _resetNeoCheat();
@@ -611,6 +624,56 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   void _resetNeoCheat() {
     _neoCheatIndex = 0;
     _neoCheatLastKeyAt = null;
+  }
+
+  bool _advanceDatabaseBrowserKeys(LogicalKeyboardKey key, DateTime now) {
+    final lastKeyAt = _databaseBrowserLastKeyAt;
+    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
+      _resetDatabaseBrowserKeys();
+    }
+
+    final expectedKey = _databaseBrowserKeys[_databaseBrowserKeyIndex];
+    if (key == expectedKey) {
+      _databaseBrowserKeyIndex++;
+      _databaseBrowserLastKeyAt = now;
+      if (_databaseBrowserKeyIndex == _databaseBrowserKeys.length) {
+        _resetDatabaseBrowserKeys();
+        return true;
+      }
+      return false;
+    }
+
+    _databaseBrowserKeyIndex = key == _databaseBrowserKeys.first ? 1 : 0;
+    _databaseBrowserLastKeyAt = _databaseBrowserKeyIndex == 0 ? null : now;
+    return false;
+  }
+
+  void _resetDatabaseBrowserKeys() {
+    _databaseBrowserKeyIndex = 0;
+    _databaseBrowserLastKeyAt = null;
+  }
+
+  Future<void> _openDatabaseBrowser() async {
+    if (_databaseBrowserOpen || !mounted) return;
+    final databasePath = ref.read(sqlRuntimeProvider).dbPath;
+    if (databasePath == null) return;
+    _databaseBrowserOpen = true;
+    try {
+      final catalog = ref.read(translationControllerProvider).catalog;
+      final mode = ref.read(sqlModeProvider);
+      await showDialog<void>(
+        context: context,
+        builder: (_) => DatabaseBrowserDialog(
+          databasePath: databasePath,
+          catalog: catalog,
+          initialMode: mode,
+          onModeChanged: (next) =>
+              unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
+        ),
+      );
+    } finally {
+      _databaseBrowserOpen = false;
+    }
   }
 
   @override
@@ -684,20 +747,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       .setLocaleTag(code),
                   onPickDb: () =>
                       ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
-                  hasDatabase: runtime.dbPath != null,
-                  onBrowseDb: runtime.dbPath == null
-                      ? null
-                      : () => showDialog<void>(
-                          context: context,
-                          builder: (_) => DatabaseBrowserDialog(
-                            databasePath: runtime.dbPath!,
-                            catalog: catalog,
-                            initialMode: mode,
-                            onModeChanged: (next) => unawaited(
-                              ref.read(sqlModeProvider.notifier).setMode(next),
-                            ),
-                          ),
-                        ),
                   onExecuteGuarded: () {
                     if (compileResult.sql.trim().isEmpty) {
                       ref
@@ -1215,9 +1264,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final catalog = ref.read(translationControllerProvider).catalog;
     final action = await showDialog<_SettingsAction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(catalog.text('settings.title')),
-        content: Consumer(
+      builder: (dialogContext) {
+        final surfaceStyle = NodeQlSurfaceStyle.of(dialogContext);
+        final settingsContent = Consumer(
           builder: (context, ref, _) {
             final current = ref.watch(nodeQlThemeProvider);
             const accentColors = <Color>[
@@ -1319,6 +1368,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     radius: NodeQlSurfaceStyle.of(context).radiusMedium,
                     child: FilledButton.tonal(
                       key: const ValueKey<String>('settings-manage-plugins'),
+                      clipBehavior: Clip.antiAlias,
                       onPressed: () => Navigator.of(
                         dialogContext,
                       ).pop(_SettingsAction.plugins),
@@ -1331,6 +1381,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     radius: NodeQlSurfaceStyle.of(context).radiusMedium,
                     child: FilledButton.tonal(
                       key: const ValueKey<String>('settings-languages'),
+                      clipBehavior: Clip.antiAlias,
                       onPressed: () => Navigator.of(
                         dialogContext,
                       ).pop(_SettingsAction.languages),
@@ -1343,6 +1394,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     radius: NodeQlSurfaceStyle.of(context).radiusMedium,
                     child: FilledButton.tonalIcon(
                       key: const ValueKey<String>('settings-tutorial'),
+                      clipBehavior: Clip.antiAlias,
                       onPressed: () => Navigator.of(
                         dialogContext,
                       ).pop(_SettingsAction.tutorial),
@@ -1362,8 +1414,49 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
               ),
             );
           },
-        ),
-      ),
+        );
+        if (surfaceStyle.isBrutalist) {
+          return AlertDialog(
+            title: Text(catalog.text('settings.title')),
+            content: settingsContent,
+          );
+        }
+
+        final theme = Theme.of(dialogContext);
+        return Dialog(
+          key: const ValueKey<String>('settings-dialog'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
+            child: ClipRRect(
+              key: const ValueKey<String>('settings-dialog-surface-clip'),
+              borderRadius: surfaceStyle.largeBorderRadius,
+              clipBehavior: Clip.antiAlias,
+              child: Material(
+                color:
+                    theme.dialogTheme.backgroundColor ??
+                    theme.colorScheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        catalog.text('settings.title'),
+                        style: theme.dialogTheme.titleTextStyle,
+                      ),
+                      const SizedBox(height: 16),
+                      settingsContent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -2134,8 +2227,6 @@ class _TopBar extends StatelessWidget {
     required this.localeCode,
     required this.onLocale,
     required this.onPickDb,
-    required this.hasDatabase,
-    required this.onBrowseDb,
     required this.onExecuteGuarded,
     required this.columnLinkMode,
     required this.onColumnLinkModeChanged,
@@ -2151,8 +2242,6 @@ class _TopBar extends StatelessWidget {
   final String localeCode;
   final ValueChanged<String> onLocale;
   final VoidCallback onPickDb;
-  final bool hasDatabase;
-  final VoidCallback? onBrowseDb;
   final VoidCallback onExecuteGuarded;
   final bool columnLinkMode;
   final VoidCallback onColumnLinkModeChanged;
@@ -2219,30 +2308,6 @@ class _TopBar extends StatelessWidget {
                       ),
                       icon: const Icon(Icons.storage_outlined, size: 18),
                       label: Text(catalog.text('toolbar.mountDatabase')),
-                    ),
-                  ),
-                  const SizedBox(width: NodeQlDesign.space2),
-                  NodeQlBrutalPressable(
-                    enabled: hasDatabase,
-                    radius: surfaceStyle.radiusSmall,
-                    child: IconButton(
-                      key: const ValueKey<String>('open-database-browser'),
-                      onPressed: onBrowseDb,
-                      tooltip: catalog.text('toolbar.browseDatabase'),
-                      color: workbenchColors.topBarForeground,
-                      disabledColor: workbenchColors.topBarForeground
-                          .withValues(alpha: .38),
-                      style: IconButton.styleFrom(
-                        foregroundColor: workbenchColors.topBarForeground,
-                        disabledForegroundColor: workbenchColors
-                            .topBarForeground
-                            .withValues(alpha: .38),
-                        side: BorderSide(
-                          color: workbenchColors.border,
-                          width: surfaceStyle.borderWidth,
-                        ),
-                      ),
-                      icon: const Icon(Icons.table_view_outlined, size: 19),
                     ),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
@@ -3574,6 +3639,10 @@ class _WorkspaceTabsBar extends ConsumerWidget {
     final controller = ref.read(workspaceTabsProvider.notifier);
     final colors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    final tabActionRadius = surfaceStyle.innerRadius(
+      outerRadius: surfaceStyle.radiusSmall,
+      gap: 4,
+    );
     return Container(
       height: 52,
       padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
@@ -3687,7 +3756,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                             Tooltip(
                               message: catalog.text('tabs.rename'),
                               child: NodeQlBrutalPressable(
-                                radius: surfaceStyle.radiusSmall,
+                                radius: tabActionRadius,
                                 child: IconButton(
                                   key: ValueKey<String>(
                                     'workspace-tab-rename-${tab.id}',
@@ -3719,7 +3788,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                                           ),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(
-                                              surfaceStyle.radiusSmall,
+                                              tabActionRadius,
                                             ),
                                           ),
                                         )
@@ -3736,7 +3805,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                               ),
                               child: NodeQlBrutalPressable(
                                 enabled: canDelete,
-                                radius: surfaceStyle.radiusSmall,
+                                radius: tabActionRadius,
                                 child: IconButton(
                                   key: ValueKey<String>(
                                     'workspace-tab-delete-${tab.id}',
@@ -3774,7 +3843,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                                           ),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(
-                                              surfaceStyle.radiusSmall,
+                                              tabActionRadius,
                                             ),
                                           ),
                                         )

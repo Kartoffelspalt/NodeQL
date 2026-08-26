@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +11,7 @@ import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 import 'package:nodeql/features/workbench/presentation/workbench_page.dart';
@@ -17,6 +20,7 @@ import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:nodeql/localization/translation_models.dart';
 import 'package:nodeql/localization/translation_repository.dart';
 import 'package:nodeql/localization/translation_controller.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
   testWidgets('renders localized workspace shell', (tester) async {
@@ -103,6 +107,74 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(WorkbenchPage)),
     );
+    expect(
+      find.byKey(const ValueKey<String>('open-database-browser')),
+      findsNothing,
+    );
+    final browserDirectory = Directory.systemTemp.createTempSync(
+      'nodeql_dbb_shortcut',
+    );
+    addTearDown(() => browserDirectory.deleteSync(recursive: true));
+    final browserDatabasePath =
+        '${browserDirectory.path}${Platform.pathSeparator}shortcut.db';
+    final browserDatabase = sqlite3.open(browserDatabasePath);
+    browserDatabase.execute('''
+      CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);
+      INSERT INTO notes (body) VALUES ('Shortcut works');
+    ''');
+    browserDatabase.close();
+    await tester.runAsync(
+      () => container
+          .read(sqlRuntimeProvider.notifier)
+          .attachDatabasePath(browserDatabasePath),
+    );
+    await tester.pump();
+
+    await tester.tap(paletteSearch);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
+      findsNothing,
+    );
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
+      findsOneWidget,
+    );
+    final databaseBrowserClip = tester.widget<ClipRRect>(
+      find.byKey(const ValueKey<String>('database-browser-surface-clip')),
+    );
+    expect(
+      databaseBrowserClip.borderRadius,
+      NodeQlSurfaceStyle.standard.largeBorderRadius,
+    );
+    final databaseBrowserDialog = tester.widget<Dialog>(find.byType(Dialog));
+    expect(databaseBrowserDialog.backgroundColor, Colors.transparent);
+    expect(databaseBrowserDialog.elevation, 0);
+    expect(databaseBrowserDialog.shadowColor, Colors.transparent);
+    final databaseBrowserBackground = tester.widget<Material>(
+      find.byKey(const ValueKey<String>('database-browser-surface-background')),
+    );
+    final databaseBrowserBackgroundColor = databaseBrowserBackground.color;
+    expect(databaseBrowserBackgroundColor, isNotNull);
+    expect(databaseBrowserBackgroundColor!.a, 1);
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
+      findsNothing,
+    );
+
     final workspaceController = container.read(workspaceProvider.notifier);
     workspaceController.addTemplate(
       BlockType.sqlSelect,
@@ -158,6 +230,19 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
+    final settingsClip = tester.widget<ClipRRect>(
+      find.byKey(const ValueKey<String>('settings-dialog-surface-clip')),
+    );
+    expect(
+      settingsClip.borderRadius,
+      NodeQlSurfaceStyle.standard.largeBorderRadius,
+    );
+    final settingsSurface = find.byKey(
+      const ValueKey<String>('settings-dialog-surface-clip'),
+    );
+    expect(tester.getSize(settingsSurface).width, lessThanOrEqualTo(380));
+    expect(tester.getCenter(settingsSurface).dx, closeTo(800, 1));
+    expect(tester.getTopLeft(settingsSurface).dx, greaterThan(40));
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -205,6 +290,19 @@ void main() {
     expect(
       brutalRenameButton.style?.side?.resolve(<WidgetState>{})?.width,
       NodeQlNeoBrutalism.borderWidth,
+    );
+    expect(
+      brutalRenameButton.style?.shape?.resolve(<WidgetState>{}),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'nested workspace tab action radius',
+        BorderRadius.circular(
+          NodeQlSurfaceStyle.neoBrutalism.innerRadius(
+            outerRadius: NodeQlSurfaceStyle.neoBrutalism.radiusSmall,
+            gap: 4,
+          ),
+        ),
+      ),
     );
 
     expect(
