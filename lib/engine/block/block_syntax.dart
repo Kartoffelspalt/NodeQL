@@ -62,6 +62,7 @@ BlockVisualKind blockVisualKindForType(BlockType type) {
     BlockType.sqlExcept => BlockVisualKind.setOperator,
     BlockType.sqlColumn ||
     BlockType.sqlText ||
+    BlockType.sqlAlias ||
     BlockType.sqlSubqueryIn ||
     BlockType.sqlSubqueryAny ||
     BlockType.sqlSubqueryAll ||

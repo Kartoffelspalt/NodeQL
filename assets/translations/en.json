@@ -5,6 +5,7 @@
   "messages": {
     "app.name": "NodeQL",
     "toolbar.mountDatabase": "Mount .db",
+    "toolbar.browseDatabase": "Table browser",
     "toolbar.runSql": "Run SQLite",
     "toolbar.connectColumns": "Connect column sources",
     "toolbar.simple": "Simple",
@@ -23,6 +24,10 @@
     "tabs.rename": "Rename tab",
     "tabs.renameTitle": "Rename query tab",
     "tabs.name": "Tab name",
+    "tabs.delete": "Delete workspace",
+    "tabs.deleteTitle": "Delete workspace?",
+    "tabs.deleteMessage": "The workspace \"{name}\" and all of its contents will be permanently deleted.",
+    "tabs.deleteLastDisabled": "The last workspace cannot be deleted.",
     "project.untitled": "Untitled",
     "project.new.title": "New Project",
     "project.new.reset": "Reset current canvas?",

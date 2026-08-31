@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,13 +11,16 @@ import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 import 'package:nodeql/features/workbench/presentation/workbench_page.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:nodeql/localization/translation_models.dart';
 import 'package:nodeql/localization/translation_repository.dart';
 import 'package:nodeql/localization/translation_controller.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
   testWidgets('renders localized workspace shell', (tester) async {
@@ -242,6 +247,19 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
+    final settingsClip = tester.widget<ClipRRect>(
+      find.byKey(const ValueKey<String>('settings-dialog-surface-clip')),
+    );
+    expect(
+      settingsClip.borderRadius,
+      NodeQlSurfaceStyle.standard.largeBorderRadius,
+    );
+    final settingsSurface = find.byKey(
+      const ValueKey<String>('settings-dialog-surface-clip'),
+    );
+    expect(tester.getSize(settingsSurface).width, lessThanOrEqualTo(380));
+    expect(tester.getCenter(settingsSurface).dx, closeTo(800, 1));
+    expect(tester.getTopLeft(settingsSurface).dx, greaterThan(40));
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -270,6 +288,40 @@ void main() {
 
     expect(container.read(nodeQlThemeProvider).theme, NodeQlTheme.neoBrutalism);
 
+    final activeTabId = container.read(workspaceTabsProvider).activeTabId;
+    final brutalRenameButton = tester.widget<IconButton>(
+      find.byKey(ValueKey<String>('workspace-tab-rename-$activeTabId')),
+    );
+    expect(
+      brutalRenameButton.style?.fixedSize?.resolve(<WidgetState>{}),
+      const Size.square(32),
+    );
+    expect(
+      brutalRenameButton.style?.foregroundColor?.resolve(<WidgetState>{}),
+      NodeQlNeoBrutalism.ink,
+    );
+    expect(
+      brutalRenameButton.style?.backgroundColor?.resolve(<WidgetState>{}),
+      NodeQlNeoBrutalism.yellow,
+    );
+    expect(
+      brutalRenameButton.style?.side?.resolve(<WidgetState>{})?.width,
+      NodeQlNeoBrutalism.borderWidth,
+    );
+    expect(
+      brutalRenameButton.style?.shape?.resolve(<WidgetState>{}),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'nested workspace tab action radius',
+        BorderRadius.circular(
+          NodeQlSurfaceStyle.neoBrutalism.innerRadius(
+            outerRadius: NodeQlSurfaceStyle.neoBrutalism.radiusSmall,
+            gap: 4,
+          ),
+        ),
+      ),
+    );
+
     expect(
       workspaceController.connectColumnSource(select.id, order.id),
       isTrue,
@@ -289,6 +341,41 @@ void main() {
     workspaceController.deleteSelectedColumnLink();
     await tester.pump();
 
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('run-sqlite')),
+          )
+          .style
+          ?.shape
+          ?.resolve(<WidgetState>{}),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'borderRadius',
+        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
+      ),
+    );
+
+    expect(find.text('No Alias'), findsOneWidget);
+    await tester.tap(find.text('No Alias'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('table-alias-submit')),
+          )
+          .style
+          ?.shape
+          ?.resolve(<WidgetState>{}),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'borderRadius',
+        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
+      ),
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
     expect(
@@ -299,18 +386,18 @@ void main() {
           .style
           ?.shape
           ?.resolve(<WidgetState>{}),
-      isA<StadiumBorder>(),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'borderRadius',
+        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
+      ),
     );
     expect(
-      tester
-          .widget<ClipRRect>(
-            find.ancestor(
-              of: find.byKey(const ValueKey<String>('settings-manage-plugins')),
-              matching: find.byType(ClipRRect),
-            ),
-          )
-          .borderRadius,
-      BorderRadius.circular(999),
+      find.ancestor(
+        of: find.byKey(const ValueKey<String>('settings-manage-plugins')),
+        matching: find.byType(ClipRRect),
+      ),
+      findsNothing,
     );
     expect(
       tester
@@ -320,23 +407,37 @@ void main() {
           .style
           ?.shape
           ?.resolve(<WidgetState>{}),
-      isA<StadiumBorder>(),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'borderRadius',
+        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
+      ),
     );
     expect(
-      tester
-          .widget<ClipRRect>(
-            find.ancestor(
-              of: find.byKey(const ValueKey<String>('settings-languages')),
-              matching: find.byType(ClipRRect),
-            ),
-          )
-          .borderRadius,
-      BorderRadius.circular(999),
+      find.ancestor(
+        of: find.byKey(const ValueKey<String>('settings-languages')),
+        matching: find.byType(ClipRRect),
+      ),
+      findsNothing,
     );
     await tester.tap(find.text('Manage Plugins'));
     await tester.pumpAndSettle();
     expect(find.text('Plugins'), findsOneWidget);
     expect(find.byType(TabBar), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('install-plugin-manifest')),
+          )
+          .style
+          ?.shape
+          ?.resolve(<WidgetState>{}),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'borderRadius',
+        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
+      ),
+    );
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
 
@@ -367,22 +468,93 @@ void main() {
           .style
           ?.shape
           ?.resolve(<WidgetState>{}),
-      isA<StadiumBorder>(),
+      isA<RoundedRectangleBorder>().having(
+        (shape) => shape.borderRadius,
+        'borderRadius',
+        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
+      ),
     );
     expect(
-      tester
-          .widget<ClipRRect>(
-            find.ancestor(
-              of: find.byKey(const ValueKey<String>('settings-tutorial')),
-              matching: find.byType(ClipRRect),
-            ),
-          )
-          .borderRadius,
-      BorderRadius.circular(999),
+      find.ancestor(
+        of: find.byKey(const ValueKey<String>('settings-tutorial')),
+        matching: find.byType(ClipRRect),
+      ),
+      findsNothing,
     );
     await tester.tap(find.text('Start interactive tutorial'));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(TutorialDialog), findsOneWidget);
+  });
+
+  testWidgets('deletes a workspace tab after confirmation', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _ReadyTranslationController(),
+          ),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+        ],
+        child: const NodeQlApp(),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(WorkbenchPage)),
+    );
+    final tabs = container.read(workspaceTabsProvider.notifier);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey<String>('workspace-tab-delete-query_1')),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('workspace-tab-add')));
+    await tester.pumpAndSettle();
+    final disposableId = tabs.state.activeTabId;
+    expect(tabs.state.tabs, hasLength(2));
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(ValueKey<String>('workspace-tab-delete-$disposableId')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    final deleteButton = find.byKey(
+      ValueKey<String>('workspace-tab-delete-$disposableId'),
+    );
+    await tester.ensureVisible(deleteButton);
+    await tester.pumpAndSettle();
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete workspace?'), findsOneWidget);
+    expect(
+      find.text(
+        'The workspace "Query 2" and all of its contents will be permanently deleted.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('workspace-tab-delete-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tabs.state.tabs, hasLength(1));
+    expect(tabs.state.activeTabId, 'query_1');
+    expect(
+      find.byKey(ValueKey<String>('workspace-tab-$disposableId')),
+      findsNothing,
+    );
   });
 }
 
@@ -432,6 +604,13 @@ class _ReadyTranslationController extends TranslationController {
       'tabs.rename': 'Rename tab',
       'tabs.renameTitle': 'Rename query tab',
       'tabs.name': 'Tab name',
+      'tabs.delete': 'Delete workspace',
+      'tabs.deleteTitle': 'Delete workspace?',
+      'tabs.deleteMessage':
+          'The workspace "{name}" and all of its contents will be permanently deleted.',
+      'tabs.deleteLastDisabled': 'The last workspace cannot be deleted.',
+      'common.cancel': 'Cancel',
+      'common.delete': 'Delete',
       'palette.search': 'Search command',
       'palette.category.dql': 'Query data',
       'palette.category.queryLanguage': 'Query Language',

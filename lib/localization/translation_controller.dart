@@ -269,6 +269,7 @@ const builtInMessages = <String, Map<String, String>>{
   'de': {
     'app.name': 'NodeQL',
     'toolbar.mountDatabase': 'DB laden',
+    'toolbar.browseDatabase': 'Tabellenbrowser',
     'toolbar.runSql': 'SQLite ausführen',
     'toolbar.connectColumns': 'Spaltenquellen verbinden',
     'toolbar.simple': 'Einfach',
@@ -286,6 +287,12 @@ const builtInMessages = <String, Map<String, String>>{
     'tabs.rename': 'Tab umbenennen',
     'tabs.renameTitle': 'Abfrage-Tab umbenennen',
     'tabs.name': 'Tab-Name',
+    'tabs.delete': 'Workspace löschen',
+    'tabs.deleteTitle': 'Workspace löschen?',
+    'tabs.deleteMessage':
+        'Der Workspace „{name}“ und sein gesamter Inhalt werden dauerhaft gelöscht.',
+    'tabs.deleteLastDisabled':
+        'Der letzte Workspace kann nicht gelöscht werden.',
     'settings.title': 'Einstellungen',
     'settings.languages': 'Sprachen verwalten',
     'settings.tutorial': 'Interaktives Tutorial starten',

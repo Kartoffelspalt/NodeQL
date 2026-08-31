@@ -5,8 +5,8 @@ import 'package:nodeql/core/theme/theme_controller.dart';
 /// express: a crisp zero-blur shadow grows on hover and collapses as the
 /// control moves into it on press.
 ///
-/// The wrapper is visually inert for non-brutalist themes, so it can be used
-/// around high-value desktop actions without branching at every call site.
+/// In non-brutalist themes the wrapper only clips the child to the configured
+/// radius. This keeps custom button fills inside the rounded Material shape.
 class NodeQlBrutalPressable extends StatefulWidget {
   const NodeQlBrutalPressable({
     super.key,
@@ -43,7 +43,14 @@ class _NodeQlBrutalPressableState extends State<NodeQlBrutalPressable> {
   @override
   Widget build(BuildContext context) {
     final style = NodeQlSurfaceStyle.of(context);
-    if (!style.isBrutalist) return widget.child;
+    final radius = widget.radius ?? style.radiusMedium;
+    if (!style.isBrutalist) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        clipBehavior: Clip.antiAlias,
+        child: widget.child,
+      );
+    }
 
     final translation = style.translationFor(
       hovered: _hovered,
@@ -75,9 +82,7 @@ class _NodeQlBrutalPressableState extends State<NodeQlBrutalPressable> {
             ),
             transformAlignment: Alignment.center,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(
-                widget.radius ?? style.radiusMedium,
-              ),
+              borderRadius: BorderRadius.circular(radius),
               boxShadow: style.hardShadowFor(
                 hovered: _hovered,
                 pressed: _pressed,
