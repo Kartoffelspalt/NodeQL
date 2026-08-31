@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/features/workbench/presentation/engine/database_browser.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:path/path.dart' as p;
 
@@ -18,6 +19,29 @@ typedef DatabaseObjectLoader =
       int limit,
       int offset,
     );
+typedef DatabaseSqlExecutor = Future<SqlExecutionResult> Function(String sql);
+
+class _SimpleColumnDraft {
+  _SimpleColumnDraft({
+    String name = '',
+    this.type = 'TEXT',
+    this.primaryKey = false,
+  }) : nameController = TextEditingController(text: name);
+
+  final TextEditingController nameController;
+  String type;
+  bool primaryKey;
+  bool notNull = false;
+  bool unique = false;
+
+  void dispose() => nameController.dispose();
+}
+
+class _SimpleCreateValidation implements Exception {
+  const _SimpleCreateValidation(this.message);
+
+  final String message;
+}
 
 Widget _clipDatabaseSurface({
   required BuildContext context,
@@ -73,6 +97,7 @@ class DatabaseBrowserDialog extends StatefulWidget {
     this.onModeChanged,
     this.overviewLoader,
     this.objectLoader,
+    this.sqlExecutor,
     super.key,
   });
 
@@ -82,6 +107,7 @@ class DatabaseBrowserDialog extends StatefulWidget {
   final ValueChanged<SqlAbstractionMode>? onModeChanged;
   final DatabaseOverviewLoader? overviewLoader;
   final DatabaseObjectLoader? objectLoader;
+  final DatabaseSqlExecutor? sqlExecutor;
 
   @override
   State<DatabaseBrowserDialog> createState() => _DatabaseBrowserDialogState();
@@ -91,6 +117,12 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   static const _pageSize = 100;
 
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _sqlController = TextEditingController();
+  final TextEditingController _simpleTableNameController =
+      TextEditingController();
+  List<_SimpleColumnDraft> _simpleColumns = <_SimpleColumnDraft>[
+    _SimpleColumnDraft(name: 'id', type: 'INTEGER', primaryKey: true),
+  ];
   DatabaseOverview? _overview;
   DatabaseObjectSnapshot? _snapshot;
   String? _selectedName;
@@ -99,6 +131,10 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   bool _loadingObject = false;
   int _requestNumber = 0;
   String _searchQuery = '';
+  bool _showCreateTableEditor = false;
+  bool _executingSql = false;
+  SqlExecutionResult? _sqlResult;
+  String? _simpleCreateError;
   late SqlAbstractionMode _mode;
 
   @override
@@ -111,6 +147,11 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   @override
   void dispose() {
     _searchController.dispose();
+    _sqlController.dispose();
+    _simpleTableNameController.dispose();
+    for (final column in _simpleColumns) {
+      column.dispose();
+    }
     super.dispose();
   }
 
@@ -179,6 +220,126 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
       });
     }
   }
+
+  void _openCreateTableEditor() {
+    if (_mode == SqlAbstractionMode.simple) {
+      _resetSimpleTableDraft();
+    }
+    setState(() {
+      _showCreateTableEditor = true;
+      _sqlResult = null;
+      _simpleCreateError = null;
+      if (_mode == SqlAbstractionMode.advanced) {
+        _sqlController.text = '''CREATE TABLE table_name (
+  id INTEGER PRIMARY KEY
+);''';
+        _sqlController.selection = TextSelection(
+          baseOffset: 'CREATE TABLE '.length,
+          extentOffset: 'CREATE TABLE table_name'.length,
+        );
+      }
+    });
+  }
+
+  void _resetSimpleTableDraft() {
+    for (final column in _simpleColumns) {
+      column.dispose();
+    }
+    _simpleTableNameController.clear();
+    _simpleColumns = <_SimpleColumnDraft>[
+      _SimpleColumnDraft(name: 'id', type: 'INTEGER', primaryKey: true),
+    ];
+  }
+
+  Future<void> _executeSql([String? submittedSql]) async {
+    final executor = widget.sqlExecutor;
+    final sql = (submittedSql ?? _sqlController.text).trim();
+    if (executor == null || sql.isEmpty || _executingSql) return;
+    setState(() {
+      _executingSql = true;
+      _sqlResult = null;
+    });
+    SqlExecutionResult result;
+    try {
+      result = await executor(sql);
+    } on Object catch (error) {
+      result = SqlExecutionResult(success: false, message: '$error');
+    }
+    if (!mounted) return;
+    setState(() {
+      _executingSql = false;
+      _sqlResult = result;
+    });
+    if (result.success && result.changedDatabase) {
+      await _loadOverview(preferredName: _selectedName);
+    }
+  }
+
+  Future<void> _executeSimpleCreateTable() async {
+    String sql;
+    try {
+      sql = _buildSimpleCreateSql();
+    } on _SimpleCreateValidation catch (error) {
+      setState(() => _simpleCreateError = error.message);
+      return;
+    }
+    setState(() => _simpleCreateError = null);
+    await _executeSql(sql);
+  }
+
+  String _buildSimpleCreateSql() {
+    final tableName = _simpleTableNameController.text.trim();
+    if (tableName.isEmpty) {
+      throw _SimpleCreateValidation(
+        widget.catalog.text('databaseBrowser.simple.tableNameRequired'),
+      );
+    }
+    if (_simpleColumns.isEmpty) {
+      throw _SimpleCreateValidation(
+        widget.catalog.text('databaseBrowser.simple.columnRequired'),
+      );
+    }
+    final names = <String>{};
+    final definitions = <String>[];
+    for (final column in _simpleColumns) {
+      final name = column.nameController.text.trim();
+      if (name.isEmpty) {
+        throw _SimpleCreateValidation(
+          widget.catalog.text('databaseBrowser.simple.columnRequired'),
+        );
+      }
+      if (!names.add(name.toLowerCase())) {
+        throw _SimpleCreateValidation(
+          widget.catalog.text('databaseBrowser.simple.duplicateColumn', {
+            'name': name,
+          }),
+        );
+      }
+      final constraints = <String>[
+        if (column.primaryKey) 'PRIMARY KEY',
+        if (column.notNull) 'NOT NULL',
+        if (column.unique && !column.primaryKey) 'UNIQUE',
+      ];
+      definitions.add(
+        '  ${_quoteSqlIdentifier(name)} ${column.type}'
+        '${constraints.isEmpty ? '' : ' ${constraints.join(' ')}'}',
+      );
+    }
+    return 'CREATE TABLE ${_quoteSqlIdentifier(tableName)} (\n'
+        '${definitions.join(',\n')}\n'
+        ');';
+  }
+
+  String get _simpleCreatePreview {
+    try {
+      return _buildSimpleCreateSql();
+    } on _SimpleCreateValidation {
+      return '—';
+    }
+  }
+
+  static String _quoteSqlIdentifier(String identifier) =>
+      '"${identifier.replaceAll('"', '""')}"';
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +428,12 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
       selected: <SqlAbstractionMode>{_mode},
       onSelectionChanged: (selection) {
         final next = selection.first;
-        setState(() => _mode = next);
+        setState(() {
+          _mode = next;
+          _showCreateTableEditor = false;
+          _simpleCreateError = null;
+          _sqlResult = null;
+        });
         widget.onModeChanged?.call(next);
       },
     );
@@ -473,6 +639,26 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
             ),
           ),
         ),
+        if (widget.sqlExecutor != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FilledButton.icon(
+                  key: const ValueKey<String>('database-browser-new-table'),
+                  onPressed: _openCreateTableEditor,
+                  icon: const Icon(Icons.add_rounded, size: 19),
+                  label: Text(
+                    _modeText(
+                      'databaseBrowser.newTable',
+                      'databaseBrowser.simple.newTable',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Expanded(
           child: ListView(
             children: [
@@ -555,7 +741,10 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
           child: InkWell(
             key: ValueKey<String>('database-object-${object.name}'),
             borderRadius: tileRadius,
-            onTap: () => _loadObject(object.name, offset: 0),
+            onTap: () {
+              setState(() => _showCreateTableEditor = false);
+              _loadObject(object.name, offset: 0);
+            },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
               child: Row(
@@ -664,54 +853,61 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
       color: colors.surface,
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: colors.primaryContainer,
-              borderRadius: surfaceStyle.mediumBorderRadius,
-            ),
-            child: Icon(
-              isTable ? Icons.table_chart_outlined : Icons.visibility_outlined,
-              color: colors.onPrimaryContainer,
-              size: 23,
-            ),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  snapshot.object.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final identity = Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: surfaceStyle.mediumBorderRadius,
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  _modeText(
-                    isTable ? 'databaseBrowser.table' : 'databaseBrowser.view',
-                    isTable
-                        ? 'databaseBrowser.simple.table'
-                        : 'databaseBrowser.simple.view',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Icon(
+                  isTable
+                      ? Icons.table_chart_outlined
+                      : Icons.visibility_outlined,
+                  color: colors.onPrimaryContainer,
+                  size: 23,
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Wrap(
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      snapshot.object.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      _modeText(
+                        isTable
+                            ? 'databaseBrowser.table'
+                            : 'databaseBrowser.view',
+                        isTable
+                            ? 'databaseBrowser.simple.table'
+                            : 'databaseBrowser.simple.view',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final metadata = Wrap(
             spacing: 8,
             runSpacing: 6,
             children: [
@@ -732,13 +928,30 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                 ),
               ),
             ],
-          ),
-        ],
+          );
+
+          if (constraints.maxWidth < 620) {
+            return Column(
+              key: const ValueKey<String>('database-object-summary-stacked'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [identity, const SizedBox(height: 12), metadata],
+            );
+          }
+          return Row(
+            key: const ValueKey<String>('database-object-summary-inline'),
+            children: [
+              Expanded(child: identity),
+              const SizedBox(width: 12),
+              metadata,
+            ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildObjectDetails(BuildContext context, DatabaseOverview overview) {
+    if (_showCreateTableEditor) return _buildCreateTableEditor(context);
     if (overview.objects.isEmpty) {
       return Center(
         child: Text(
@@ -844,6 +1057,463 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     );
   }
 
+  Widget _buildCreateTableEditor(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    final simple = _mode == SqlAbstractionMode.simple;
+
+    return Column(
+      key: const ValueKey<String>('database-browser-create-table-workspace'),
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          color: colors.surface,
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: surfaceStyle.mediumBorderRadius,
+                ),
+                child: Icon(
+                  Icons.table_chart_outlined,
+                  color: colors.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _modeText(
+                        'databaseBrowser.createTable',
+                        'databaseBrowser.simple.createTable',
+                      ),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _modeText(
+                        'databaseBrowser.createTableHelp',
+                        'databaseBrowser.simple.createTableHelp',
+                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_executingSql) const LinearProgressIndicator(minHeight: 2),
+        Expanded(
+          child: simple
+              ? _buildSimpleCreateTableForm(context)
+              : _buildAdvancedCreateTableForm(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdvancedCreateTableForm(BuildContext context) {
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      children: [
+        TextField(
+          key: const ValueKey<String>('database-browser-sql-input'),
+          controller: _sqlController,
+          enabled: !_executingSql,
+          onChanged: (_) => setState(() {}),
+          minLines: 9,
+          maxLines: 18,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          autocorrect: false,
+          enableSuggestions: false,
+          smartDashesType: SmartDashesType.disabled,
+          smartQuotesType: SmartQuotesType.disabled,
+          style: const TextStyle(fontFamily: 'monospace', height: 1.45),
+          decoration: InputDecoration(
+            alignLabelWithHint: true,
+            labelText: widget.catalog.text('databaseBrowser.createCommand'),
+            border: OutlineInputBorder(
+              borderRadius: surfaceStyle.mediumBorderRadius,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: FilledButton.icon(
+            key: const ValueKey<String>('database-browser-execute-sql'),
+            onPressed: _executingSql || _sqlController.text.trim().isEmpty
+                ? null
+                : _executeSql,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: Text(widget.catalog.text('databaseBrowser.executeSql')),
+          ),
+        ),
+        if (_sqlResult != null) ...[
+          const SizedBox(height: 16),
+          _buildSqlExecutionStatus(context, _sqlResult!),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSimpleCreateTableForm(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    return ListView(
+      key: const ValueKey<String>('database-browser-simple-create-form'),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      children: [
+        TextField(
+          key: const ValueKey<String>('database-browser-simple-table-name'),
+          controller: _simpleTableNameController,
+          enabled: !_executingSql,
+          onChanged: (_) => _simpleDraftChanged(),
+          decoration: InputDecoration(
+            labelText: widget.catalog.text('databaseBrowser.simple.tableName'),
+            prefixIcon: const Icon(Icons.table_chart_outlined),
+            border: OutlineInputBorder(
+              borderRadius: surfaceStyle.mediumBorderRadius,
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: _DatabaseSectionTitle(
+                icon: Icons.view_column_outlined,
+                label: widget.catalog.text(
+                  'databaseBrowser.simple.defineColumns',
+                ),
+              ),
+            ),
+            OutlinedButton.icon(
+              key: const ValueKey<String>('database-browser-simple-add-column'),
+              onPressed: _executingSql
+                  ? null
+                  : () {
+                      setState(() {
+                        _simpleColumns.add(_SimpleColumnDraft());
+                        _simpleCreateError = null;
+                        _sqlResult = null;
+                      });
+                    },
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(
+                widget.catalog.text('databaseBrowser.simple.addColumn'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (var index = 0; index < _simpleColumns.length; index++)
+          _buildSimpleColumnCard(context, index),
+        if (_simpleCreateError != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            key: const ValueKey<String>('database-browser-simple-create-error'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors.errorContainer,
+              borderRadius: surfaceStyle.mediumBorderRadius,
+              border: Border.all(color: colors.error),
+            ),
+            child: Text(
+              _simpleCreateError!,
+              style: TextStyle(color: colors.onErrorContainer),
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        _DatabaseSectionTitle(
+          icon: Icons.code_rounded,
+          label: widget.catalog.text('databaseBrowser.simple.preview'),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          key: const ValueKey<String>('database-browser-simple-create-preview'),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerLow,
+            borderRadius: surfaceStyle.mediumBorderRadius,
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: SelectableText(
+            _simpleCreatePreview,
+            style: const TextStyle(fontFamily: 'monospace', height: 1.4),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: FilledButton.icon(
+            key: const ValueKey<String>(
+              'database-browser-simple-create-submit',
+            ),
+            onPressed: _executingSql ? null : _executeSimpleCreateTable,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              widget.catalog.text('databaseBrowser.simple.createTableAction'),
+            ),
+          ),
+        ),
+        if (_sqlResult != null) ...[
+          const SizedBox(height: 16),
+          _buildSqlExecutionStatus(context, _sqlResult!),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSimpleColumnCard(BuildContext context, int index) {
+    final column = _simpleColumns[index];
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    final theme = Theme.of(context);
+    final nameField = TextField(
+      key: ValueKey<String>('database-browser-simple-column-name-$index'),
+      controller: column.nameController,
+      enabled: !_executingSql,
+      onChanged: (_) => _simpleDraftChanged(),
+      decoration: InputDecoration(
+        labelText: widget.catalog.text('databaseBrowser.simple.columnName'),
+        border: OutlineInputBorder(
+          borderRadius: surfaceStyle.mediumBorderRadius,
+        ),
+      ),
+    );
+    final typeField = DropdownButtonFormField<String>(
+      key: ValueKey<String>('database-browser-simple-column-type-$index'),
+      initialValue: column.type,
+      decoration: InputDecoration(
+        labelText: widget.catalog.text('databaseBrowser.simple.type'),
+        border: OutlineInputBorder(
+          borderRadius: surfaceStyle.mediumBorderRadius,
+        ),
+      ),
+      items: const <String>['INTEGER', 'TEXT', 'REAL', 'NUMERIC', 'BLOB']
+          .map(
+            (type) => DropdownMenuItem<String>(value: type, child: Text(type)),
+          )
+          .toList(growable: false),
+      onChanged: _executingSql
+          ? null
+          : (value) {
+              if (value == null) return;
+              setState(() {
+                column.type = value;
+                _simpleCreateError = null;
+                _sqlResult = null;
+              });
+            },
+    );
+
+    return Card(
+      key: ValueKey<String>('database-browser-simple-column-$index'),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.catalog.text('databaseBrowser.simple.columnNumber', {
+                      'number': index + 1,
+                    }),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: ValueKey<String>(
+                    'database-browser-simple-remove-column-$index',
+                  ),
+                  onPressed: _executingSql || _simpleColumns.length == 1
+                      ? null
+                      : () {
+                          final removed = _simpleColumns.removeAt(index);
+                          removed.dispose();
+                          setState(() {
+                            _simpleCreateError = null;
+                            _sqlResult = null;
+                          });
+                        },
+                  tooltip: widget.catalog.text(
+                    'databaseBrowser.simple.removeColumn',
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 480) {
+                  return Column(
+                    children: [
+                      nameField,
+                      const SizedBox(height: 10),
+                      typeField,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(flex: 3, child: nameField),
+                    const SizedBox(width: 10),
+                    Expanded(flex: 2, child: typeField),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                FilterChip(
+                  key: ValueKey<String>(
+                    'database-browser-simple-primary-key-$index',
+                  ),
+                  selected: column.primaryKey,
+                  onSelected: _executingSql
+                      ? null
+                      : (selected) => _setSimplePrimaryKey(index, selected),
+                  avatar: const Icon(Icons.key_rounded, size: 17),
+                  label: Text(
+                    widget.catalog.text(
+                      'databaseBrowser.simple.primaryKeyOption',
+                    ),
+                  ),
+                ),
+                FilterChip(
+                  key: ValueKey<String>(
+                    'database-browser-simple-not-null-$index',
+                  ),
+                  selected: column.notNull,
+                  onSelected: _executingSql
+                      ? null
+                      : (selected) {
+                          setState(() {
+                            column.notNull = selected;
+                            _simpleCreateError = null;
+                            _sqlResult = null;
+                          });
+                        },
+                  label: Text(
+                    widget.catalog.text('databaseBrowser.simple.notNullOption'),
+                  ),
+                ),
+                FilterChip(
+                  key: ValueKey<String>(
+                    'database-browser-simple-unique-$index',
+                  ),
+                  selected: column.unique,
+                  onSelected: _executingSql
+                      ? null
+                      : (selected) {
+                          setState(() {
+                            column.unique = selected;
+                            _simpleCreateError = null;
+                            _sqlResult = null;
+                          });
+                        },
+                  label: Text(
+                    widget.catalog.text('databaseBrowser.simple.uniqueOption'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _simpleDraftChanged() {
+    setState(() {
+      _simpleCreateError = null;
+      _sqlResult = null;
+    });
+  }
+
+  void _setSimplePrimaryKey(int index, bool selected) {
+    setState(() {
+      if (selected) {
+        for (final column in _simpleColumns) {
+          column.primaryKey = false;
+        }
+      }
+      _simpleColumns[index].primaryKey = selected;
+      _simpleCreateError = null;
+      _sqlResult = null;
+    });
+  }
+
+  Widget _buildSqlExecutionStatus(
+    BuildContext context,
+    SqlExecutionResult result,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    return Container(
+      key: const ValueKey<String>('database-browser-sql-status'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: result.success ? colors.primaryContainer : colors.errorContainer,
+        borderRadius: surfaceStyle.mediumBorderRadius,
+        border: Border.all(
+          color: result.success ? colors.primary : colors.error,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            result.success
+                ? Icons.check_circle_outline_rounded
+                : Icons.error_outline_rounded,
+            color: result.success
+                ? colors.onPrimaryContainer
+                : colors.onErrorContainer,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: SelectableText(
+              result.success && result.rows.isEmpty
+                  ? widget.catalog.text('databaseBrowser.sqlSuccess')
+                  : result.message,
+              style: TextStyle(
+                color: result.success
+                    ? colors.onPrimaryContainer
+                    : colors.onErrorContainer,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildContent(BuildContext context, DatabaseObjectSnapshot snapshot) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -867,6 +1537,69 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
               'count': snapshot.totalRowCount,
             },
           );
+    final pageControls = Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: paginationInnerRadius,
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            key: const ValueKey<String>('database-browser-previous-page'),
+            onPressed: snapshot.offset == 0 || _loadingObject
+                ? null
+                : () => _loadObject(
+                    snapshot.object.name,
+                    offset: (snapshot.offset - snapshot.limit).clamp(
+                      0,
+                      snapshot.totalRowCount,
+                    ),
+                  ),
+            tooltip: _modeText(
+              'databaseBrowser.previous',
+              'databaseBrowser.simple.previous',
+            ),
+            icon: const Icon(Icons.chevron_left_rounded),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              _modeText('databaseBrowser.page', 'databaseBrowser.simple.page', {
+                'current': currentPage,
+                'total': totalPages,
+              }),
+              maxLines: 1,
+              style: theme.textTheme.labelMedium,
+            ),
+          ),
+          IconButton(
+            key: const ValueKey<String>('database-browser-next-page'),
+            onPressed:
+                snapshot.offset + snapshot.rows.length >=
+                        snapshot.totalRowCount ||
+                    _loadingObject
+                ? null
+                : () => _loadObject(
+                    snapshot.object.name,
+                    offset: snapshot.offset + snapshot.limit,
+                  ),
+            tooltip: _modeText(
+              'databaseBrowser.next',
+              'databaseBrowser.simple.next',
+            ),
+            icon: const Icon(Icons.chevron_right_rounded),
+          ),
+        ],
+      ),
+    );
+    final rangeText = Text(
+      rangeLabel,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+    );
     return Column(
       children: [
         Container(
@@ -877,76 +1610,37 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
             borderRadius: surfaceStyle.mediumBorderRadius,
             border: Border.all(color: theme.dividerColor),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  rangeLabel,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                ),
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: paginationInnerRadius,
-                  border: Border.all(color: theme.dividerColor),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 520) {
+                return Column(
+                  key: const ValueKey<String>(
+                    'database-browser-pagination-stacked',
+                  ),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    IconButton(
-                      key: const ValueKey<String>(
-                        'database-browser-previous-page',
+                    rangeText,
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: pageControls,
                       ),
-                      onPressed: snapshot.offset == 0 || _loadingObject
-                          ? null
-                          : () => _loadObject(
-                              snapshot.object.name,
-                              offset: (snapshot.offset - snapshot.limit).clamp(
-                                0,
-                                snapshot.totalRowCount,
-                              ),
-                            ),
-                      tooltip: _modeText(
-                        'databaseBrowser.previous',
-                        'databaseBrowser.simple.previous',
-                      ),
-                      icon: const Icon(Icons.chevron_left_rounded),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text(
-                        _modeText(
-                          'databaseBrowser.page',
-                          'databaseBrowser.simple.page',
-                          {'current': currentPage, 'total': totalPages},
-                        ),
-                        style: theme.textTheme.labelMedium,
-                      ),
-                    ),
-                    IconButton(
-                      key: const ValueKey<String>('database-browser-next-page'),
-                      onPressed:
-                          snapshot.offset + snapshot.rows.length >=
-                                  snapshot.totalRowCount ||
-                              _loadingObject
-                          ? null
-                          : () => _loadObject(
-                              snapshot.object.name,
-                              offset: snapshot.offset + snapshot.limit,
-                            ),
-                      tooltip: _modeText(
-                        'databaseBrowser.next',
-                        'databaseBrowser.simple.next',
-                      ),
-                      icon: const Icon(Icons.chevron_right_rounded),
                     ),
                   ],
+                );
+              }
+              return Row(
+                key: const ValueKey<String>(
+                  'database-browser-pagination-inline',
                 ),
-              ),
-            ],
+                children: [
+                  Expanded(child: rangeText),
+                  pageControls,
+                ],
+              );
+            },
           ),
         ),
         Expanded(

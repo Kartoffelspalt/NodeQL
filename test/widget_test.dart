@@ -129,6 +129,23 @@ void main() {
           .attachDatabasePath(browserDatabasePath),
     );
     await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('open-database-browser')),
+      findsNothing,
+    );
+
+    final customSqlButton = find.byKey(
+      const ValueKey<String>('toggle-custom-sql'),
+    );
+    expect(tester.widget<IconButton>(customSqlButton).onPressed, isNull);
+    expect(
+      find.byKey(const ValueKey<String>('custom-sql-input')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('open-database-browser')),
+      findsNothing,
+    );
 
     await tester.tap(paletteSearch);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
@@ -602,6 +619,10 @@ class _ReadyTranslationController extends TranslationController {
       'palette.rail.dataTypes': 'SQLite data types',
       'runtime.sqlOutput': '-- SQLite output --',
       'runtime.sqlCommandOutput': 'SQLite-Command Output',
+      'runtime.customSql': 'Custom SQLite',
+      'runtime.customSqlHint': 'Write SQLite directly',
+      'runtime.showGeneratedSql': 'Show generated SQLite',
+      'runtime.runCustomSql': 'Run custom SQLite',
       'runtime.copySql': 'Copy SQLite',
       'runtime.noResults': 'No results',
     };

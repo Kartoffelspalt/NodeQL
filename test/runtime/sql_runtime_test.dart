@@ -199,14 +199,62 @@ void main() {
     await controller.attachDatabasePath(path);
     expect(controller.state.schemas, isEmpty);
 
-    await controller.executeWithSnapshot(
+    final result = await controller.executeWithSnapshot(
       'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);',
     );
 
+    expect(result.success, isTrue);
+    expect(result.changedDatabase, isTrue);
     expect(controller.state.lastMessage, 'OK');
     expect(controller.state.schemas, hasLength(1));
     expect(controller.state.schemas.single.name, 'notes');
     expect(controller.state.schemas.single.columns, <String>['id', 'body']);
+  });
+
+  test(
+    'detects writes from parsed SQLite instead of the first text token',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'nodeql_parsed_write',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final path = '${tempDir.path}${Platform.pathSeparator}runtime.db';
+      sqlite3.open(path).close();
+
+      final controller = SqlRuntimeController();
+      await controller.attachDatabasePath(path);
+      final result = await controller.executeWithSnapshot('''
+      -- This leading comment used to hide the write from snapshot detection.
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL);
+    ''');
+
+      expect(result.success, isTrue);
+      expect(result.changedDatabase, isTrue);
+      expect(controller.state.schemas.single.name, 'tasks');
+    },
+  );
+
+  test('executes dependent SQLite statements from one editor run', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'nodeql_multi_statement',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+    final path = '${tempDir.path}${Platform.pathSeparator}runtime.db';
+    sqlite3.open(path).close();
+
+    final controller = SqlRuntimeController();
+    await controller.attachDatabasePath(path);
+    final result = await controller.executeWithSnapshot('''
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL);
+      INSERT INTO tasks (title) VALUES ('First; task');
+      SELECT id, title FROM tasks;
+    ''');
+
+    expect(result.success, isTrue);
+    expect(result.rows, <Map<String, String>>[
+      <String, String>{'id': '1', 'title': 'First; task'},
+    ]);
+    expect(controller.state.schemas.single.name, 'tasks');
   });
 
   test(

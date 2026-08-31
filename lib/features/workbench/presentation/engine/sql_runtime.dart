@@ -17,6 +17,22 @@ class TableSchema {
   final List<String> columns;
 }
 
+class SqlExecutionResult {
+  const SqlExecutionResult({
+    required this.success,
+    required this.message,
+    this.rows = const <Map<String, String>>[],
+    this.truncated = false,
+    this.changedDatabase = false,
+  });
+
+  final bool success;
+  final String message;
+  final List<Map<String, String>> rows;
+  final bool truncated;
+  final bool changedDatabase;
+}
+
 class SqlRuntimeState {
   const SqlRuntimeState({
     this.dbPath,
@@ -132,18 +148,22 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     return targetPath;
   }
 
-  Future<void> executeWithSnapshot(String sql) async {
+  Future<SqlExecutionResult> executeWithSnapshot(String sql) async {
     final dbPath = state.dbPath;
     if (dbPath == null) {
-      state = state.copyWith(lastMessage: 'No database connected.');
-      return;
+      const message = 'No database connected.';
+      state = state.copyWith(lastMessage: message);
+      return const SqlExecutionResult(success: false, message: message);
     }
-    final needsSnapshot = _isWriteSql(sql);
     File? snapshot;
-    if (needsSnapshot) {
-      snapshot = await _createSnapshot(dbPath);
-    }
+    var changesDatabase = false;
     try {
+      changesDatabase = await Isolate.run(
+        () => _containsWriteStatements(dbPath, sql),
+      );
+      if (changesDatabase) {
+        snapshot = await _createSnapshot(dbPath);
+      }
       final result = await Isolate.run(
         () => _runQuery(dbPath, sql, _maxPreviewRows),
       );
@@ -155,16 +175,29 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         lastSql: sql,
         lastRows: rows,
         lastMessage: message,
-        schemas: needsSnapshot ? _reflectSchema(dbPath) : null,
+        schemas: changesDatabase ? _reflectSchema(dbPath) : null,
+      );
+      return SqlExecutionResult(
+        success: true,
+        message: message,
+        rows: rows,
+        truncated: result.truncated,
+        changedDatabase: changesDatabase,
       );
     } catch (e) {
       if (snapshot != null) {
         await _restoreSnapshot(dbPath, snapshot);
       }
+      final message = 'Rolled back: $e';
       state = state.copyWith(
         lastSql: sql,
         lastRows: const [],
-        lastMessage: 'Rolled back: $e',
+        lastMessage: message,
+      );
+      return SqlExecutionResult(
+        success: false,
+        message: message,
+        changedDatabase: changesDatabase,
       );
     } finally {
       if (snapshot != null && await snapshot.exists()) {
@@ -175,13 +208,13 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
 
   /// Runs a visual SQLite program. SQLite text is rendered only here, at the
   /// database adapter boundary, rather than being assembled by workspace UI.
-  Future<void> executeProgram(SqliteProgram program) {
+  Future<void> executeProgram(SqliteProgram program) async {
     final rendered = const SqliteDialectRenderer().render(program);
     if (rendered.sql.trim().isEmpty) {
       state = state.copyWith(lastMessage: 'No executable SQLite operation.');
-      return Future<void>.value();
+      return;
     }
-    return executeWithSnapshot(rendered.sql);
+    await executeWithSnapshot(rendered.sql);
   }
 
   /// Checks a visual query against a SQLite reference query without allowing
@@ -209,25 +242,6 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       orderSensitive: orderSensitive,
       compareColumnNames: compareColumnNames,
     );
-  }
-
-  bool _isWriteSql(String sql) {
-    final normalized = sql.trimLeft().toUpperCase();
-    if (normalized.isEmpty) return false;
-    return normalized.startsWith('INSERT') ||
-        normalized.startsWith('UPDATE') ||
-        normalized.startsWith('DELETE') ||
-        normalized.startsWith('CREATE') ||
-        normalized.startsWith('ALTER') ||
-        normalized.startsWith('DROP') ||
-        normalized.startsWith('TRUNCATE') ||
-        normalized.startsWith('REPLACE') ||
-        normalized.startsWith('GRANT') ||
-        normalized.startsWith('REVOKE') ||
-        normalized.startsWith('BEGIN') ||
-        normalized.startsWith('COMMIT') ||
-        normalized.startsWith('ROLLBACK') ||
-        normalized.startsWith('PRAGMA');
   }
 
   void setMessage(String message) {
@@ -276,41 +290,162 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
 
   static _QueryResult _runQuery(String path, String sql, int maxRows) {
     final database = sqlite3.open(path);
-    final statements = database.prepareMultiple(sql);
+    var statements = <PreparedStatement>[];
     try {
-      var rows = const <Map<String, String>>[];
-      var truncated = false;
-      for (final statement in statements) {
-        final cursor = statement.selectCursor();
-        final statementRows = <Map<String, String>>[];
-        List<String>? previewColumns;
-        while (cursor.moveNext()) {
-          if (cursor.columnNames.isEmpty) continue;
-          if (statementRows.length >= maxRows) {
-            truncated = true;
-            break;
+      try {
+        statements = database.prepareMultiple(sql);
+      } on Object {
+        // sqlite3_exec compiles and executes each statement in sequence. This
+        // supports scripts where a later statement uses a table created by an
+        // earlier statement in the same editor run.
+        database.execute(sql);
+        for (final candidate in _splitSqlStatements(sql).reversed) {
+          try {
+            final statement = database.prepare(candidate);
+            statements.add(statement);
+            if (!statement.isReadOnly) {
+              return const _QueryResult(rows: [], truncated: false);
+            }
+            return _readPreparedStatements(<PreparedStatement>[
+              statement,
+            ], maxRows);
+          } on Object {
+            // A trailing comment or an internal CREATE TRIGGER fragment is
+            // not a standalone statement. Continue to the preceding chunk.
           }
-          previewColumns ??= _previewColumnNames(
-            cursor.columnNames,
-            cursor.tableNames,
-          );
-          final row = cursor.current;
-          statementRows.add(<String, String>{
-            for (var index = 0; index < previewColumns.length; index++)
-              previewColumns[index]: '${row.columnAt(index) ?? ''}',
-          });
         }
-        if (cursor.columnNames.isNotEmpty) {
-          rows = statementRows;
-        }
+        return const _QueryResult(rows: [], truncated: false);
       }
-      return _QueryResult(rows: rows, truncated: truncated);
+      return _readPreparedStatements(statements, maxRows);
     } finally {
       for (final statement in statements) {
         statement.close();
       }
       database.close();
     }
+  }
+
+  static _QueryResult _readPreparedStatements(
+    Iterable<PreparedStatement> statements,
+    int maxRows,
+  ) {
+    var rows = const <Map<String, String>>[];
+    var truncated = false;
+    for (final statement in statements) {
+      final cursor = statement.selectCursor();
+      final statementRows = <Map<String, String>>[];
+      List<String>? previewColumns;
+      while (cursor.moveNext()) {
+        if (cursor.columnNames.isEmpty) continue;
+        if (statementRows.length >= maxRows) {
+          truncated = true;
+          break;
+        }
+        previewColumns ??= _previewColumnNames(
+          cursor.columnNames,
+          cursor.tableNames,
+        );
+        final row = cursor.current;
+        statementRows.add(<String, String>{
+          for (var index = 0; index < previewColumns.length; index++)
+            previewColumns[index]: '${row.columnAt(index) ?? ''}',
+        });
+      }
+      if (cursor.columnNames.isNotEmpty) {
+        rows = statementRows;
+      }
+    }
+    return _QueryResult(rows: rows, truncated: truncated);
+  }
+
+  static bool _containsWriteStatements(String path, String sql) {
+    final database = sqlite3.open(path);
+    var statements = <PreparedStatement>[];
+    try {
+      statements = database.prepareMultiple(sql);
+      return statements.any((statement) => !statement.isReadOnly);
+    } on Object {
+      // Dependent multi-statement scripts may not be preparable before their
+      // first schema change runs. Treat them as writes so rollback protection
+      // is in place before attempting execution.
+      return true;
+    } finally {
+      for (final statement in statements) {
+        statement.close();
+      }
+      database.close();
+    }
+  }
+
+  static List<String> _splitSqlStatements(String sql) {
+    const normal = 0;
+    const singleQuote = 1;
+    const doubleQuote = 2;
+    const backtickQuote = 3;
+    const bracketQuote = 4;
+    const lineComment = 5;
+    const blockComment = 6;
+    var state = normal;
+    var start = 0;
+    final statements = <String>[];
+
+    for (var index = 0; index < sql.length; index++) {
+      final char = sql[index];
+      final next = index + 1 < sql.length ? sql[index + 1] : '';
+      switch (state) {
+        case normal:
+          if (char == "'") {
+            state = singleQuote;
+          } else if (char == '"') {
+            state = doubleQuote;
+          } else if (char == '`') {
+            state = backtickQuote;
+          } else if (char == '[') {
+            state = bracketQuote;
+          } else if (char == '-' && next == '-') {
+            state = lineComment;
+            index++;
+          } else if (char == '/' && next == '*') {
+            state = blockComment;
+            index++;
+          } else if (char == ';') {
+            final statement = sql.substring(start, index).trim();
+            if (statement.isNotEmpty) statements.add(statement);
+            start = index + 1;
+          }
+        case singleQuote:
+          if (char == "'" && next == "'") {
+            index++;
+          } else if (char == "'") {
+            state = normal;
+          }
+        case doubleQuote:
+          if (char == '"' && next == '"') {
+            index++;
+          } else if (char == '"') {
+            state = normal;
+          }
+        case backtickQuote:
+          if (char == '`' && next == '`') {
+            index++;
+          } else if (char == '`') {
+            state = normal;
+          }
+        case bracketQuote:
+          if (char == ']') state = normal;
+        case lineComment:
+          if (char == '\n' || char == '\r') state = normal;
+        case blockComment:
+          if (char == '*' && next == '/') {
+            state = normal;
+            index++;
+          }
+      }
+    }
+
+    final trailing = sql.substring(start).trim();
+    if (trailing.isNotEmpty) statements.add(trailing);
+    return statements;
   }
 
   static List<String> _previewColumnNames(
