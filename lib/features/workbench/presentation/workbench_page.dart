@@ -21,6 +21,7 @@ import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.d
 import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
+import 'package:nodeql/features/workbench/presentation/widgets/database_browser_dialog.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
@@ -41,6 +42,16 @@ const String _appIconAsset = 'assets/appicon/iconv4dark.png';
 const double _inlineLineHeight = 28;
 const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
+
+ButtonStyle _nodeQlFilledButtonCornerStyle(BuildContext context) {
+  return ButtonStyle(
+    shape: WidgetStatePropertyAll<OutlinedBorder>(
+      RoundedRectangleBorder(
+        borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
+      ),
+    ),
+  );
+}
 
 double _measureSingleLineText(String text, TextStyle style) {
   if (text.isEmpty) return 0;
@@ -458,6 +469,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     LogicalKeyboardKey.keyE,
     LogicalKeyboardKey.keyO,
   ];
+  static const _databaseBrowserKeys = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.keyD,
+    LogicalKeyboardKey.keyB,
+    LogicalKeyboardKey.keyB,
+  ];
   static const _neoCheatTimeout = Duration(seconds: 2);
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
@@ -480,6 +496,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   bool _startupHintShown = false;
   int _neoCheatIndex = 0;
   DateTime? _neoCheatLastKeyAt;
+  int _databaseBrowserKeyIndex = 0;
+  DateTime? _databaseBrowserLastKeyAt;
+  bool _databaseBrowserOpen = false;
   static const bool _showStartupHint = false;
 
   static const String _startupHintText =
@@ -560,10 +579,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         keyboard.isControlPressed ||
         keyboard.isAltPressed) {
       _resetNeoCheat();
+      _resetDatabaseBrowserKeys();
       return false;
     }
 
     final now = DateTime.now();
+    if (_advanceDatabaseBrowserKeys(event.logicalKey, now)) {
+      unawaited(_openDatabaseBrowser());
+      return true;
+    }
     final lastKeyAt = _neoCheatLastKeyAt;
     if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
       _resetNeoCheat();
@@ -600,6 +624,59 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   void _resetNeoCheat() {
     _neoCheatIndex = 0;
     _neoCheatLastKeyAt = null;
+  }
+
+  bool _advanceDatabaseBrowserKeys(LogicalKeyboardKey key, DateTime now) {
+    final lastKeyAt = _databaseBrowserLastKeyAt;
+    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
+      _resetDatabaseBrowserKeys();
+    }
+
+    final expectedKey = _databaseBrowserKeys[_databaseBrowserKeyIndex];
+    if (key == expectedKey) {
+      _databaseBrowserKeyIndex++;
+      _databaseBrowserLastKeyAt = now;
+      if (_databaseBrowserKeyIndex == _databaseBrowserKeys.length) {
+        _resetDatabaseBrowserKeys();
+        return true;
+      }
+      return false;
+    }
+
+    _databaseBrowserKeyIndex = key == _databaseBrowserKeys.first ? 1 : 0;
+    _databaseBrowserLastKeyAt = _databaseBrowserKeyIndex == 0 ? null : now;
+    return false;
+  }
+
+  void _resetDatabaseBrowserKeys() {
+    _databaseBrowserKeyIndex = 0;
+    _databaseBrowserLastKeyAt = null;
+  }
+
+  Future<void> _openDatabaseBrowser() async {
+    if (_databaseBrowserOpen || !mounted) return;
+    final databasePath = ref.read(sqlRuntimeProvider).dbPath;
+    if (databasePath == null) return;
+    _databaseBrowserOpen = true;
+    try {
+      final catalog = ref.read(translationControllerProvider).catalog;
+      final mode = ref.read(sqlModeProvider);
+      await showDialog<void>(
+        context: context,
+        builder: (_) => DatabaseBrowserDialog(
+          databasePath: databasePath,
+          catalog: catalog,
+          initialMode: mode,
+          sqlExecutor: ref
+              .read(sqlRuntimeProvider.notifier)
+              .executeWithSnapshot,
+          onModeChanged: (next) =>
+              unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
+        ),
+      );
+    } finally {
+      _databaseBrowserOpen = false;
+    }
   }
 
   @override
@@ -800,6 +877,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             localeCode: locale.languageCode,
                             catalog: catalog,
                             width: outputWidth,
+                            onExecuteCustomSql: ref
+                                .read(sqlRuntimeProvider.notifier)
+                                .executeWithSnapshot,
                           ),
                         ],
                       );
@@ -1190,9 +1270,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final catalog = ref.read(translationControllerProvider).catalog;
     final action = await showDialog<_SettingsAction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(catalog.text('settings.title')),
-        content: Consumer(
+      builder: (dialogContext) {
+        final surfaceStyle = NodeQlSurfaceStyle.of(dialogContext);
+        final settingsContent = Consumer(
           builder: (context, ref, _) {
             final current = ref.watch(nodeQlThemeProvider);
             const accentColors = <Color>[
@@ -1291,60 +1371,42 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    radius: 999,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: FilledButton.tonal(
-                        key: const ValueKey<String>('settings-manage-plugins'),
-                        onPressed: () => Navigator.of(
-                          dialogContext,
-                        ).pop(_SettingsAction.plugins),
-                        style: const ButtonStyle(
-                          shape: WidgetStatePropertyAll<OutlinedBorder>(
-                            StadiumBorder(),
-                          ),
-                        ),
-                        child: Text(catalog.text('settings.plugins')),
-                      ),
+                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
+                    child: FilledButton.tonal(
+                      key: const ValueKey<String>('settings-manage-plugins'),
+                      clipBehavior: Clip.antiAlias,
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_SettingsAction.plugins),
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      child: Text(catalog.text('settings.plugins')),
                     ),
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    radius: 999,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: FilledButton.tonal(
-                        key: const ValueKey<String>('settings-languages'),
-                        onPressed: () => Navigator.of(
-                          dialogContext,
-                        ).pop(_SettingsAction.languages),
-                        style: const ButtonStyle(
-                          shape: WidgetStatePropertyAll<OutlinedBorder>(
-                            StadiumBorder(),
-                          ),
-                        ),
-                        child: Text(catalog.text('settings.languages')),
-                      ),
+                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
+                    child: FilledButton.tonal(
+                      key: const ValueKey<String>('settings-languages'),
+                      clipBehavior: Clip.antiAlias,
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_SettingsAction.languages),
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      child: Text(catalog.text('settings.languages')),
                     ),
                   ),
                   const SizedBox(height: 8),
                   NodeQlBrutalPressable(
-                    radius: 999,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: FilledButton.tonalIcon(
-                        key: const ValueKey<String>('settings-tutorial'),
-                        onPressed: () => Navigator.of(
-                          dialogContext,
-                        ).pop(_SettingsAction.tutorial),
-                        style: const ButtonStyle(
-                          shape: WidgetStatePropertyAll<OutlinedBorder>(
-                            StadiumBorder(),
-                          ),
-                        ),
-                        icon: const Icon(Icons.school_outlined),
-                        label: Text(catalog.text('settings.tutorial')),
-                      ),
+                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
+                    child: FilledButton.tonalIcon(
+                      key: const ValueKey<String>('settings-tutorial'),
+                      clipBehavior: Clip.antiAlias,
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_SettingsAction.tutorial),
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      icon: const Icon(Icons.school_outlined),
+                      label: Text(catalog.text('settings.tutorial')),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1358,8 +1420,49 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
               ),
             );
           },
-        ),
-      ),
+        );
+        if (surfaceStyle.isBrutalist) {
+          return AlertDialog(
+            title: Text(catalog.text('settings.title')),
+            content: settingsContent,
+          );
+        }
+
+        final theme = Theme.of(dialogContext);
+        return Dialog(
+          key: const ValueKey<String>('settings-dialog'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
+            child: ClipRRect(
+              key: const ValueKey<String>('settings-dialog-surface-clip'),
+              borderRadius: surfaceStyle.largeBorderRadius,
+              clipBehavior: Clip.antiAlias,
+              child: Material(
+                color:
+                    theme.dialogTheme.backgroundColor ??
+                    theme.colorScheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        catalog.text('settings.title'),
+                        style: theme.dialogTheme.titleTextStyle,
+                      ),
+                      const SizedBox(height: 16),
+                      settingsContent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -1620,7 +1723,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
               label: Text(catalog.text('plugins.reload')),
             ),
             FilledButton.icon(
+              key: const ValueKey<String>('install-plugin-manifest'),
               onPressed: () => _installPluginManifest(dialogContext),
+              style: _nodeQlFilledButtonCornerStyle(dialogContext),
               icon: const Icon(Icons.add),
               label: Text(catalog.text('plugins.install')),
             ),
@@ -2213,8 +2318,11 @@ class _TopBar extends StatelessWidget {
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
                   NodeQlBrutalPressable(
+                    radius: surfaceStyle.radiusMedium,
                     child: FilledButton.icon(
+                      key: const ValueKey<String>('run-sqlite'),
                       onPressed: onExecuteGuarded,
+                      style: _nodeQlFilledButtonCornerStyle(context),
                       icon: const Icon(Icons.play_arrow_rounded, size: 19),
                       label: Text(catalog.text('toolbar.runSql')),
                     ),
@@ -2836,6 +2944,7 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.queryLanguage => <_PaletteItem>[
         native(BlockType.eventGreenFlag),
         native(BlockType.sqlSelect),
+        native(BlockType.sqlAlias),
         native(BlockType.sqlWhere),
         native(BlockType.sqlJoin),
         native(BlockType.sqlGroupBy),
@@ -2970,6 +3079,10 @@ class _PaletteState extends State<_Palette> {
         return de
             ? 'Erzeugt einen Textwert, der in runde Eingabefelder eingesetzt werden kann.'
             : 'Creates a text value that can be inserted into rounded input slots.';
+      case BlockType.sqlAlias:
+        return de
+            ? 'Gibt einer Spalte, einem Aggregat oder einem anderen Ergebnisausdruck mit AS einen lesbaren Namen.'
+            : 'Gives a column, aggregate, or other result expression a readable name using AS.';
       case BlockType.sqlFrom:
         return de
             ? 'Legt fest, aus welcher Tabelle gelesen wird.'
@@ -3269,6 +3382,7 @@ class _PaletteState extends State<_Palette> {
           ..inputs.addAll(<String, dynamic>{
             'columns': '*',
             'table': 'table_name',
+            'table_alias': '',
             'separate_from': false,
           }),
       BlockType.eventGreenFlag => EventBlock(
@@ -3286,6 +3400,12 @@ class _PaletteState extends State<_Palette> {
         position: Offset.zero,
         operatorType: type,
         inputs: <String, dynamic>{'text': 'Text'},
+      ),
+      BlockType.sqlAlias => OperatorBlock(
+        id: 'tpl_alias',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'value': 'id', 'alias': 'alias'},
       ),
       BlockType.sqlCount => OperatorBlock(
         id: 'tpl_count',
@@ -3485,12 +3605,50 @@ class _WorkspaceTabsBar extends ConsumerWidget {
     if (renamed != null) controller.renameTab(tab.id, renamed);
   }
 
+  Future<void> _deleteTab(
+    BuildContext context,
+    WorkspaceTab tab,
+    WorkspaceTabsController controller,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(catalog.text('tabs.deleteTitle')),
+        content: Text(
+          catalog.text('tabs.deleteMessage', <String, Object?>{
+            'name': tab.name,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(catalog.text('common.cancel')),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('workspace-tab-delete-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: Text(catalog.text('common.delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) controller.deleteTab(tab.id);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tabsState = ref.watch(workspaceTabsProvider);
     final controller = ref.read(workspaceTabsProvider.notifier);
     final colors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    final tabActionRadius = surfaceStyle.innerRadius(
+      outerRadius: surfaceStyle.radiusSmall,
+      gap: 4,
+    );
     return Container(
       height: 52,
       padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
@@ -3533,6 +3691,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final tab = tabsState.tabs[index];
                 final selected = tab.id == tabsState.activeTabId;
+                final canDelete = tabsState.tabs.length > 1;
                 return Padding(
                   key: ValueKey<String>('workspace-tab-${tab.id}'),
                   padding: const EdgeInsets.only(right: 6),
@@ -3602,17 +3761,103 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                             ),
                             Tooltip(
                               message: catalog.text('tabs.rename'),
-                              child: IconButton(
-                                key: ValueKey<String>(
-                                  'workspace-tab-rename-${tab.id}',
+                              child: NodeQlBrutalPressable(
+                                radius: tabActionRadius,
+                                child: IconButton(
+                                  key: ValueKey<String>(
+                                    'workspace-tab-rename-${tab.id}',
+                                  ),
+                                  onPressed: () => unawaited(
+                                    _renameTab(context, tab, controller),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 15,
+                                  color: surfaceStyle.isBrutalist
+                                      ? null
+                                      : selected
+                                      ? Colors.white70
+                                      : colors.muted,
+                                  style: surfaceStyle.isBrutalist
+                                      ? IconButton.styleFrom(
+                                          fixedSize: const Size.square(32),
+                                          minimumSize: const Size.square(32),
+                                          maximumSize: const Size.square(32),
+                                          padding: EdgeInsets.zero,
+                                          foregroundColor:
+                                              NodeQlNeoBrutalism.ink,
+                                          backgroundColor: selected
+                                              ? NodeQlNeoBrutalism.yellow
+                                              : NodeQlNeoBrutalism.mint,
+                                          side: BorderSide(
+                                            color: NodeQlNeoBrutalism.ink,
+                                            width: surfaceStyle.borderWidth,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              tabActionRadius,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                  icon: const Icon(Icons.edit_rounded),
                                 ),
-                                onPressed: () => unawaited(
-                                  _renameTab(context, tab, controller),
+                              ),
+                            ),
+                            Tooltip(
+                              message: catalog.text(
+                                canDelete
+                                    ? 'tabs.delete'
+                                    : 'tabs.deleteLastDisabled',
+                              ),
+                              child: NodeQlBrutalPressable(
+                                enabled: canDelete,
+                                radius: tabActionRadius,
+                                child: IconButton(
+                                  key: ValueKey<String>(
+                                    'workspace-tab-delete-${tab.id}',
+                                  ),
+                                  onPressed: canDelete
+                                      ? () => unawaited(
+                                          _deleteTab(context, tab, controller),
+                                        )
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 15,
+                                  color: surfaceStyle.isBrutalist
+                                      ? null
+                                      : selected
+                                      ? Colors.white70
+                                      : colors.muted,
+                                  style: surfaceStyle.isBrutalist
+                                      ? IconButton.styleFrom(
+                                          fixedSize: const Size.square(32),
+                                          minimumSize: const Size.square(32),
+                                          maximumSize: const Size.square(32),
+                                          padding: EdgeInsets.zero,
+                                          foregroundColor:
+                                              NodeQlNeoBrutalism.ink,
+                                          backgroundColor:
+                                              NodeQlNeoBrutalism.pink,
+                                          disabledForegroundColor:
+                                              NodeQlNeoBrutalism.mutedInk
+                                                  .withValues(alpha: 0.55),
+                                          disabledBackgroundColor:
+                                              NodeQlNeoBrutalism.paper,
+                                          side: BorderSide(
+                                            color: NodeQlNeoBrutalism.ink,
+                                            width: surfaceStyle.borderWidth,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              tabActionRadius,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                  ),
                                 ),
-                                visualDensity: VisualDensity.compact,
-                                iconSize: 15,
-                                color: selected ? Colors.white70 : colors.muted,
-                                icon: const Icon(Icons.edit_rounded),
                               ),
                             ),
                             const SizedBox(width: 4),
@@ -4979,11 +5224,15 @@ class _NodeView extends ConsumerWidget {
         _ => '"$value"',
       };
     }
-    final nested = reporterForInput(reporter, 'expr');
+    final nestedKey = primaryReporterInputKey(reporter.type);
+    final nested = nestedKey == null
+        ? null
+        : reporterForInput(reporter, nestedKey);
     final value = nested == null
-        ? '${reporter.inputs['expr'] ?? reporter.inputs['column'] ?? '*'}'
+        ? '${reporter.inputs[nestedKey] ?? reporter.inputs['expr'] ?? reporter.inputs['column'] ?? '*'}'
         : _reporterLabel(nested, localeCode, mode);
     return switch (reporter.type) {
+      BlockType.sqlAlias => '$value AS ${reporter.inputs['alias'] ?? 'alias'}',
       BlockType.sqlCount => 'COUNT($value)',
       BlockType.sqlSum => 'SUM($value)',
       BlockType.sqlAvg => 'AVG($value)',
@@ -5036,6 +5285,83 @@ class _NodeView extends ConsumerWidget {
     final nestedReporter = nestedKey == null
         ? null
         : reporterForInput(reporter, nestedKey);
+
+    if (reporter.type == BlockType.sqlAlias) {
+      final expressionController = TextEditingController(
+        text: nestedReporter == null
+            ? '${reporter.inputs['value'] ?? 'id'}'
+            : _reporterLabel(
+                nestedReporter,
+                localeCode,
+                SqlAbstractionMode.advanced,
+              ),
+      );
+      final aliasController = TextEditingController(
+        text: '${reporter.inputs['alias'] ?? 'alias'}',
+      );
+      final result = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(localeCode == 'de' ? 'Alias bearbeiten' : 'Edit alias'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: expressionController,
+                enabled: nestedReporter == null,
+                decoration: InputDecoration(
+                  labelText: catalog.text('editor.value'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: aliasController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Alias'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).pop(<String, String>{'remove': 'true'}),
+              icon: const Icon(Icons.remove_circle_outline),
+              label: Text(catalog.text('editor.removeReporter')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(catalog.text('common.cancel')),
+            ),
+            FilledButton(
+              key: const ValueKey<String>('alias-reporter-submit'),
+              onPressed: () => Navigator.of(context).pop(<String, String>{
+                'value': expressionController.text,
+                'alias': aliasController.text,
+              }),
+              style: _nodeQlFilledButtonCornerStyle(context),
+              child: Text(catalog.text('common.ok')),
+            ),
+          ],
+        ),
+      );
+      if (result?['remove'] == 'true') {
+        engine.removeReporterInput(node, slot.inputKey);
+        return;
+      }
+      if (result != null) {
+        if (nestedReporter == null) {
+          reporter.inputs['value'] = result['value']?.trim() ?? '';
+        }
+        engine.updateReporterInput(
+          node,
+          slot.inputKey,
+          reporter,
+          'alias',
+          result['alias']?.trim() ?? '',
+        );
+      }
+      return;
+    }
 
     if (reporter.type == BlockType.sqlColumn ||
         nestedReporter?.type == BlockType.sqlColumn) {
@@ -5504,7 +5830,9 @@ class _NodeView extends ConsumerWidget {
     final text = '${value ?? ''}'.trim();
     final rawLower = rawKey.toLowerCase();
     final normalized = text.toLowerCase();
-    if (text.isEmpty) return '';
+    if (text.isEmpty) {
+      return _slotInputKey(rawKey) == 'table_alias' ? 'No Alias' : '';
+    }
     if (normalized == rawLower) return '';
     if (normalized == 'table_name' ||
         normalized == 'column' ||
@@ -5553,6 +5881,9 @@ class _NodeView extends ConsumerWidget {
       case 'columns':
       case 'Spalten':
         return '*';
+      case 'alias':
+      case 'Alias':
+        return 'alias';
       case 'column':
       case 'Spalte':
       case 'column_name':
@@ -5638,13 +5969,11 @@ class _NodeView extends ConsumerWidget {
             onPressed: () => Navigator.pop(context),
             child: Text(catalog.text('common.cancel')),
           ),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              style: FilledButton.styleFrom(shape: const StadiumBorder()),
-              child: Text(catalog.text('common.ok')),
-            ),
+          FilledButton(
+            key: const ValueKey<String>('block-input-submit'),
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: _nodeQlFilledButtonCornerStyle(context),
+            child: Text(catalog.text('common.ok')),
           ),
         ],
       ),
@@ -5735,7 +6064,11 @@ class _NodeView extends ConsumerWidget {
             child: Text(catalog.text('common.cancel')),
           ),
           FilledButton(
+            key: mappedKey == 'table_alias'
+                ? const ValueKey<String>('table-alias-submit')
+                : null,
             onPressed: () => Navigator.pop(context, controller.text),
+            style: _nodeQlFilledButtonCornerStyle(context),
             child: Text(catalog.text('common.ok')),
           ),
         ],
@@ -5828,6 +6161,8 @@ class _NodeView extends ConsumerWidget {
         return 'right_column';
       case 'Bedingungs_Spalte':
         return 'condition_column';
+      case 'Alias':
+        return 'alias';
       case 'JOIN_TYPE':
         return 'join_type';
       case 'ASC|DESC':
@@ -6751,6 +7086,7 @@ class _SqlRuntimePane extends StatefulWidget {
     required this.localeCode,
     required this.catalog,
     required this.width,
+    required this.onExecuteCustomSql,
   });
 
   final String sql;
@@ -6759,6 +7095,7 @@ class _SqlRuntimePane extends StatefulWidget {
   final String localeCode;
   final TranslationCatalog catalog;
   final double width;
+  final Future<SqlExecutionResult> Function(String sql) onExecuteCustomSql;
 
   @override
   State<_SqlRuntimePane> createState() => _SqlRuntimePaneState();
@@ -6767,12 +7104,27 @@ class _SqlRuntimePane extends StatefulWidget {
 class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
   final ScrollController _outputHorizontal = ScrollController();
   final ScrollController _outputVertical = ScrollController();
+  final TextEditingController _customSqlController = TextEditingController();
+  final bool _showCustomSql = false;
+  bool _executingCustomSql = false;
 
   @override
   void dispose() {
     _outputHorizontal.dispose();
     _outputVertical.dispose();
+    _customSqlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _executeCustomSql() async {
+    final sql = _customSqlController.text.trim();
+    if (sql.isEmpty || widget.runtime.dbPath == null || _executingCustomSql) {
+      return;
+    }
+    setState(() => _executingCustomSql = true);
+    await widget.onExecuteCustomSql(sql);
+    if (!mounted) return;
+    setState(() => _executingCustomSql = false);
   }
 
   Future<void> _copySqlToClipboard() async {
@@ -6811,7 +7163,9 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
         final lineCount = '\n'.allMatches(sql).length + 1;
         final desiredSqlHeight = 48.0 + 28.0 + (lineCount * 19.0);
         final maxSqlHeight = (constraints.maxHeight * 0.58).clamp(130.0, 420.0);
-        final sqlHeight = desiredSqlHeight.clamp(112.0, maxSqlHeight);
+        final sqlHeight = _showCustomSql
+            ? (constraints.maxHeight * 0.4).clamp(180.0, 320.0)
+            : desiredSqlHeight.clamp(112.0, maxSqlHeight);
         return Column(
           key: const ValueKey('split'),
           children: [
@@ -6837,14 +7191,20 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.terminal_rounded,
+                            _showCustomSql
+                                ? Icons.edit_note_rounded
+                                : Icons.terminal_rounded,
                             size: 18,
                             color: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(width: 9),
                           Expanded(
                             child: Text(
-                              widget.catalog.text('runtime.sqlCommandOutput'),
+                              widget.catalog.text(
+                                _showCustomSql
+                                    ? 'runtime.customSql'
+                                    : 'runtime.sqlCommandOutput',
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -6854,34 +7214,108 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                             ),
                           ),
                           IconButton(
-                            key: const ValueKey('copy-sql-command'),
-                            onPressed: widget.sql.trim().isEmpty
-                                ? null
-                                : _copySqlToClipboard,
+                            key: const ValueKey<String>('toggle-custom-sql'),
+                            onPressed: null,
                             color: Theme.of(context).colorScheme.onSurface,
-                            tooltip: widget.catalog.text('runtime.copySql'),
-                            icon: const Icon(Icons.copy_rounded, size: 19),
+                            tooltip: widget.catalog.text(
+                              _showCustomSql
+                                  ? 'runtime.showGeneratedSql'
+                                  : 'runtime.customSql',
+                            ),
+                            icon: Icon(
+                              _showCustomSql
+                                  ? Icons.code_rounded
+                                  : Icons.edit_note_rounded,
+                              size: 20,
+                            ),
                           ),
+                          if (_showCustomSql)
+                            IconButton(
+                              key: const ValueKey<String>('run-custom-sql'),
+                              onPressed:
+                                  widget.runtime.dbPath == null ||
+                                      _customSqlController.text
+                                          .trim()
+                                          .isEmpty ||
+                                      _executingCustomSql
+                                  ? null
+                                  : _executeCustomSql,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              tooltip: widget.catalog.text(
+                                'runtime.runCustomSql',
+                              ),
+                              icon: _executingCustomSql
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.play_arrow_rounded,
+                                      size: 21,
+                                    ),
+                            )
+                          else
+                            IconButton(
+                              key: const ValueKey('copy-sql-command'),
+                              onPressed: widget.sql.trim().isEmpty
+                                  ? null
+                                  : _copySqlToClipboard,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              tooltip: widget.catalog.text('runtime.copySql'),
+                              icon: const Icon(Icons.copy_rounded, size: 19),
+                            ),
                         ],
                       ),
                     ),
                     Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(12),
-                        child: Align(
-                          alignment: AlignmentDirectional.topStart,
-                          child: SelectionArea(
-                            child: Text(
-                              sql,
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                color: workbenchColors.sqlText,
-                                height: 1.35,
+                      child: _showCustomSql
+                          ? Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: TextField(
+                                key: const ValueKey<String>('custom-sql-input'),
+                                controller: _customSqlController,
+                                onChanged: (_) => setState(() {}),
+                                expands: true,
+                                minLines: null,
+                                maxLines: null,
+                                keyboardType: TextInputType.multiline,
+                                textInputAction: TextInputAction.newline,
+                                autocorrect: false,
+                                enableSuggestions: false,
+                                smartDashesType: SmartDashesType.disabled,
+                                smartQuotesType: SmartQuotesType.disabled,
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  color: workbenchColors.sqlText,
+                                  height: 1.35,
+                                ),
+                                decoration: InputDecoration(
+                                  alignLabelWithHint: true,
+                                  hintText: widget.catalog.text(
+                                    'runtime.customSqlHint',
+                                  ),
+                                  border: InputBorder.none,
+                                ),
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              padding: const EdgeInsets.all(12),
+                              child: Align(
+                                alignment: AlignmentDirectional.topStart,
+                                child: SelectionArea(
+                                  child: Text(
+                                    sql,
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      color: workbenchColors.sqlText,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ),
                     ),
                   ],
                 ),

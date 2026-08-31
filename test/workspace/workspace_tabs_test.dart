@@ -69,6 +69,47 @@ void main() {
       'SELECT * FROM one;\nSELECT * FROM two;',
     );
   });
+
+  test('deleting tabs selects a neighbor and protects the last workspace', () {
+    final workspace = WorkspaceController()..resetWithRoot();
+    final tabs = WorkspaceTabsController(
+      workspace,
+      initialWorkspaceJson: workspace.toJsonString(),
+    );
+
+    _addSelect(workspace, 'first_table');
+    final firstTabId = tabs.state.activeTabId;
+    tabs.addTab(name: 'Second query');
+    _addSelect(workspace, 'second_table');
+    final secondTabId = tabs.state.activeTabId;
+    tabs.addTab(name: 'Third query');
+    _addSelect(workspace, 'third_table');
+    final thirdTabId = tabs.state.activeTabId;
+
+    tabs.selectTab(secondTabId);
+    expect(tabs.deleteTab(secondTabId), isTrue);
+    expect(tabs.state.activeTabId, thirdTabId);
+    expect(
+      workspace.allBlocks().any(
+        (node) => node.inputs['table'] == 'third_table',
+      ),
+      isTrue,
+    );
+
+    expect(tabs.deleteTab(thirdTabId), isTrue);
+    expect(tabs.state.activeTabId, firstTabId);
+    expect(tabs.state.tabs.map((tab) => tab.id), <String>[firstTabId]);
+    expect(
+      workspace.allBlocks().any(
+        (node) => node.inputs['table'] == 'first_table',
+      ),
+      isTrue,
+    );
+
+    expect(tabs.deleteTab(firstTabId), isFalse);
+    expect(tabs.deleteTab('missing'), isFalse);
+    expect(tabs.state.tabs, hasLength(1));
+  });
 }
 
 void _addSelect(WorkspaceController workspace, String table) {

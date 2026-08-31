@@ -72,6 +72,7 @@ bool slotAcceptsReporterType(
 
 String? primaryReporterInputKey(BlockType type) {
   return switch (type) {
+    BlockType.sqlAlias => 'value',
     BlockType.sqlCount ||
     BlockType.sqlSum ||
     BlockType.sqlAvg ||

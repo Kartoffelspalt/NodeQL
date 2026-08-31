@@ -14,6 +14,7 @@ const nativeBlockTypes = <BlockType>[
   BlockType.sqlSelect,
   BlockType.sqlColumn,
   BlockType.sqlText,
+  BlockType.sqlAlias,
   BlockType.sqlFrom,
   BlockType.sqlWhere,
   BlockType.sqlJoin,

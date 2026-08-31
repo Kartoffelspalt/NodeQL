@@ -37,9 +37,11 @@ abstract final class NodeQlDesign {
   static const double space4 = 16;
   static const double space5 = 24;
 
-  static const double radiusSmall = 10;
-  static const double radiusMedium = 14;
   static const double radiusLarge = 20;
+  static const double radiusLargeToMediumGap = 6;
+  static const double radiusMedium = radiusLarge - radiusLargeToMediumGap;
+  static const double radiusMediumToSmallGap = 4;
+  static const double radiusSmall = radiusMedium - radiusMediumToSmallGap;
 
   static const Duration quick = Duration(milliseconds: 140);
   static const Duration standard = Duration(milliseconds: 220);
@@ -115,6 +117,18 @@ class NodeQlSurfaceStyle extends ThemeExtension<NodeQlSurfaceStyle> {
   BorderRadius get smallBorderRadius => BorderRadius.circular(radiusSmall);
   BorderRadius get mediumBorderRadius => BorderRadius.circular(radiusMedium);
   BorderRadius get largeBorderRadius => BorderRadius.circular(radiusLarge);
+
+  /// Returns the concentric inner radius for a surface inset by [gap].
+  ///
+  /// Keeping this calculation here makes the geometry rule consistent across
+  /// the app: outer corner radius minus the actual space to the inner surface.
+  double innerRadius({required double outerRadius, required double gap}) =>
+      (outerRadius - gap).clamp(0.0, double.infinity).toDouble();
+
+  BorderRadius innerBorderRadius({
+    required double outerRadius,
+    required double gap,
+  }) => BorderRadius.circular(innerRadius(outerRadius: outerRadius, gap: gap));
 
   BorderSide borderSide(Color color, {bool disabled = false}) => BorderSide(
     color: disabled ? color.withValues(alpha: 0.38) : color,
@@ -431,7 +445,10 @@ ThemeData _buildTheme({
         ? onSurface.withValues(alpha: 0.42)
         : null;
   });
-  final brutalButtonShape = WidgetStatePropertyAll<OutlinedBorder>(
+  // Keep the same concrete shape type in every theme. In particular, this
+  // lets Flutter interpolate the corners cleanly when leaving Neo Brutalism
+  // instead of falling back to a component-specific default shape.
+  final buttonShape = WidgetStatePropertyAll<OutlinedBorder>(
     RoundedRectangleBorder(borderRadius: roundedMedium),
   );
   final brutalButtonPadding = const WidgetStatePropertyAll<EdgeInsetsGeometry>(
@@ -590,6 +607,7 @@ ThemeData _buildTheme({
       elevation: neoBrutalist ? 10 : null,
       shadowColor: neoBrutalist ? outline : null,
       surfaceTintColor: Colors.transparent,
+      clipBehavior: neoBrutalist ? Clip.none : Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: roundedLarge,
         side: neoBrutalist ? borderSide : BorderSide.none,
@@ -627,7 +645,7 @@ ThemeData _buildTheme({
               foregroundColor: brutalButtonForeground,
               overlayColor: brutalButtonOverlay,
               side: brutalButtonSide,
-              shape: brutalButtonShape,
+              shape: buttonShape,
               animationDuration: NodeQlNeoBrutalism.interactionDuration,
             )
           : FilledButton.styleFrom(
@@ -664,7 +682,7 @@ ThemeData _buildTheme({
                 return Colors.transparent;
               }),
               side: brutalButtonSide,
-              shape: brutalButtonShape,
+              shape: buttonShape,
               animationDuration: NodeQlNeoBrutalism.interactionDuration,
             )
           : OutlinedButton.styleFrom(
@@ -675,9 +693,9 @@ ThemeData _buildTheme({
               shape: RoundedRectangleBorder(borderRadius: roundedMedium),
             ),
     ),
-    elevatedButtonTheme: neoBrutalist
-        ? ElevatedButtonThemeData(
-            style: ButtonStyle(
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: neoBrutalist
+          ? ButtonStyle(
               minimumSize: brutalButtonMinimumSize,
               padding: brutalButtonPadding,
               elevation: brutalButtonElevation,
@@ -685,14 +703,14 @@ ThemeData _buildTheme({
               foregroundColor: brutalButtonForeground,
               overlayColor: brutalButtonOverlay,
               side: brutalButtonSide,
-              shape: brutalButtonShape,
+              shape: buttonShape,
               animationDuration: NodeQlNeoBrutalism.interactionDuration,
-            ),
-          )
-        : null,
-    textButtonTheme: neoBrutalist
-        ? TextButtonThemeData(
-            style: ButtonStyle(
+            )
+          : ButtonStyle(shape: buttonShape),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: neoBrutalist
+          ? ButtonStyle(
               minimumSize: brutalButtonMinimumSize,
               padding: const WidgetStatePropertyAll(
                 EdgeInsets.symmetric(
@@ -714,11 +732,11 @@ ThemeData _buildTheme({
                 }
                 return Colors.transparent;
               }),
-              shape: brutalButtonShape,
+              shape: buttonShape,
               animationDuration: NodeQlNeoBrutalism.interactionDuration,
-            ),
-          )
-        : null,
+            )
+          : ButtonStyle(shape: buttonShape),
+    ),
     iconButtonTheme: IconButtonThemeData(
       style: neoBrutalist
           ? ButtonStyle(
@@ -738,7 +756,7 @@ ThemeData _buildTheme({
               }),
               overlayColor: const WidgetStatePropertyAll(Colors.transparent),
               side: brutalButtonSide,
-              shape: brutalButtonShape,
+              shape: buttonShape,
               animationDuration: NodeQlNeoBrutalism.interactionDuration,
             )
           : IconButton.styleFrom(
@@ -746,9 +764,9 @@ ThemeData _buildTheme({
               shape: RoundedRectangleBorder(borderRadius: roundedMedium),
             ),
     ),
-    segmentedButtonTheme: neoBrutalist
-        ? SegmentedButtonThemeData(
-            style: ButtonStyle(
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: neoBrutalist
+          ? ButtonStyle(
               backgroundColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.disabled)) {
                   return workbenchColors.panel.withValues(alpha: 0.6);
@@ -775,9 +793,9 @@ ThemeData _buildTheme({
                 RoundedRectangleBorder(borderRadius: roundedMedium),
               ),
               animationDuration: NodeQlNeoBrutalism.interactionDuration,
-            ),
-          )
-        : null,
+            )
+          : ButtonStyle(shape: buttonShape),
+    ),
     checkboxTheme: neoBrutalist
         ? CheckboxThemeData(
             shape: RoundedRectangleBorder(

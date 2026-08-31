@@ -63,6 +63,8 @@ Additional screenshots and contribution guidance are available in
 
 - Visual SQLite blocks with snapping, editing, compilation, and execution.
 - Local SQLite database access without a separate system CLI.
+- Graphical table creation in the hidden database browser's Simple Mode and
+  direct `CREATE TABLE` editing in Advanced Mode.
 - Versioned JSON project files, recent projects, per-project autosave, and
   guided upgrades of supported legacy project files with automatic backups.
 - Declarative Plugin SDK v2 with visual blocks, external data-source adapters,
@@ -134,7 +136,7 @@ Use `windows` or `linux` instead of `macos` on the corresponding platform.
 - [Translation guide](docs/localization/README.md)
 - [AI agent guide](docs/ai/README.md)
 - [Release process](docs/RELEASING.md)
-- [0.3.3 release notes](docs/releases/v0.3.3.md)
+- [0.3.6 release notes](docs/releases/v0.3.6.md)
 - [Changelog](CHANGELOG.md)
 - [Trademark policy](TRADEMARKS.md)
 

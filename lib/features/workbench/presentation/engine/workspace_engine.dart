@@ -974,6 +974,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           ..inputs.addAll(<String, dynamic>{
             'columns': '*',
             'table': 'table_name',
+            'table_alias': '',
             'separate_from': false,
           });
       case BlockType.sqlColumn:
@@ -988,6 +989,12 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           position: worldPos,
           operatorType: type,
         )..inputs['text'] = 'Text';
+      case BlockType.sqlAlias:
+        return OperatorBlock(
+          id: 'alias_$suffix',
+          position: worldPos,
+          operatorType: type,
+        )..inputs.addAll(<String, dynamic>{'value': 'id', 'alias': 'alias'});
       case BlockType.sqlCount:
         return OperatorBlock(
           id: 'count_$suffix',
@@ -1009,10 +1016,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           });
       case BlockType.sqlFrom:
         return OperatorBlock(
-          id: 'from_$suffix',
-          position: worldPos,
-          operatorType: type,
-        )..inputs['table'] = 'table_name';
+            id: 'from_$suffix',
+            position: worldPos,
+            operatorType: type,
+          )
+          ..inputs.addAll(<String, dynamic>{
+            'table': 'table_name',
+            'table_alias': '',
+          });
       case BlockType.sqlWhere:
         return MotionBlock(
           id: 'where_$suffix',
@@ -1049,6 +1060,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           )
           ..inputs.addAll(<String, dynamic>{
             'table': 'table_name',
+            'table_alias': '',
             'on': '1 = 1',
             'left_column': 'id',
             'operator': '=',
