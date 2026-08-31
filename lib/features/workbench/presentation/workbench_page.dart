@@ -602,6 +602,59 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _neoCheatLastKeyAt = null;
   }
 
+  bool _advanceDatabaseBrowserKeys(LogicalKeyboardKey key, DateTime now) {
+    final lastKeyAt = _databaseBrowserLastKeyAt;
+    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
+      _resetDatabaseBrowserKeys();
+    }
+
+    final expectedKey = _databaseBrowserKeys[_databaseBrowserKeyIndex];
+    if (key == expectedKey) {
+      _databaseBrowserKeyIndex++;
+      _databaseBrowserLastKeyAt = now;
+      if (_databaseBrowserKeyIndex == _databaseBrowserKeys.length) {
+        _resetDatabaseBrowserKeys();
+        return true;
+      }
+      return false;
+    }
+
+    _databaseBrowserKeyIndex = key == _databaseBrowserKeys.first ? 1 : 0;
+    _databaseBrowserLastKeyAt = _databaseBrowserKeyIndex == 0 ? null : now;
+    return false;
+  }
+
+  void _resetDatabaseBrowserKeys() {
+    _databaseBrowserKeyIndex = 0;
+    _databaseBrowserLastKeyAt = null;
+  }
+
+  Future<void> _openDatabaseBrowser() async {
+    if (_databaseBrowserOpen || !mounted) return;
+    final databasePath = ref.read(sqlRuntimeProvider).dbPath;
+    if (databasePath == null) return;
+    _databaseBrowserOpen = true;
+    try {
+      final catalog = ref.read(translationControllerProvider).catalog;
+      final mode = ref.read(sqlModeProvider);
+      await showDialog<void>(
+        context: context,
+        builder: (_) => DatabaseBrowserDialog(
+          databasePath: databasePath,
+          catalog: catalog,
+          initialMode: mode,
+          sqlExecutor: ref
+              .read(sqlRuntimeProvider.notifier)
+              .executeWithSnapshot,
+          onModeChanged: (next) =>
+              unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
+        ),
+      );
+    } finally {
+      _databaseBrowserOpen = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final translationState = ref.watch(translationControllerProvider);
@@ -800,6 +853,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             localeCode: locale.languageCode,
                             catalog: catalog,
                             width: outputWidth,
+                            onExecuteCustomSql: ref
+                                .read(sqlRuntimeProvider.notifier)
+                                .executeWithSnapshot,
                           ),
                         ],
                       );
@@ -6751,6 +6807,7 @@ class _SqlRuntimePane extends StatefulWidget {
     required this.localeCode,
     required this.catalog,
     required this.width,
+    required this.onExecuteCustomSql,
   });
 
   final String sql;
@@ -6759,6 +6816,7 @@ class _SqlRuntimePane extends StatefulWidget {
   final String localeCode;
   final TranslationCatalog catalog;
   final double width;
+  final Future<SqlExecutionResult> Function(String sql) onExecuteCustomSql;
 
   @override
   State<_SqlRuntimePane> createState() => _SqlRuntimePaneState();
@@ -6767,12 +6825,27 @@ class _SqlRuntimePane extends StatefulWidget {
 class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
   final ScrollController _outputHorizontal = ScrollController();
   final ScrollController _outputVertical = ScrollController();
+  final TextEditingController _customSqlController = TextEditingController();
+  final bool _showCustomSql = false;
+  bool _executingCustomSql = false;
 
   @override
   void dispose() {
     _outputHorizontal.dispose();
     _outputVertical.dispose();
+    _customSqlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _executeCustomSql() async {
+    final sql = _customSqlController.text.trim();
+    if (sql.isEmpty || widget.runtime.dbPath == null || _executingCustomSql) {
+      return;
+    }
+    setState(() => _executingCustomSql = true);
+    await widget.onExecuteCustomSql(sql);
+    if (!mounted) return;
+    setState(() => _executingCustomSql = false);
   }
 
   Future<void> _copySqlToClipboard() async {
@@ -6811,7 +6884,9 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
         final lineCount = '\n'.allMatches(sql).length + 1;
         final desiredSqlHeight = 48.0 + 28.0 + (lineCount * 19.0);
         final maxSqlHeight = (constraints.maxHeight * 0.58).clamp(130.0, 420.0);
-        final sqlHeight = desiredSqlHeight.clamp(112.0, maxSqlHeight);
+        final sqlHeight = _showCustomSql
+            ? (constraints.maxHeight * 0.4).clamp(180.0, 320.0)
+            : desiredSqlHeight.clamp(112.0, maxSqlHeight);
         return Column(
           key: const ValueKey('split'),
           children: [
@@ -6837,14 +6912,20 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.terminal_rounded,
+                            _showCustomSql
+                                ? Icons.edit_note_rounded
+                                : Icons.terminal_rounded,
                             size: 18,
                             color: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(width: 9),
                           Expanded(
                             child: Text(
-                              widget.catalog.text('runtime.sqlCommandOutput'),
+                              widget.catalog.text(
+                                _showCustomSql
+                                    ? 'runtime.customSql'
+                                    : 'runtime.sqlCommandOutput',
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -6854,34 +6935,108 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                             ),
                           ),
                           IconButton(
-                            key: const ValueKey('copy-sql-command'),
-                            onPressed: widget.sql.trim().isEmpty
-                                ? null
-                                : _copySqlToClipboard,
+                            key: const ValueKey<String>('toggle-custom-sql'),
+                            onPressed: null,
                             color: Theme.of(context).colorScheme.onSurface,
-                            tooltip: widget.catalog.text('runtime.copySql'),
-                            icon: const Icon(Icons.copy_rounded, size: 19),
+                            tooltip: widget.catalog.text(
+                              _showCustomSql
+                                  ? 'runtime.showGeneratedSql'
+                                  : 'runtime.customSql',
+                            ),
+                            icon: Icon(
+                              _showCustomSql
+                                  ? Icons.code_rounded
+                                  : Icons.edit_note_rounded,
+                              size: 20,
+                            ),
                           ),
+                          if (_showCustomSql)
+                            IconButton(
+                              key: const ValueKey<String>('run-custom-sql'),
+                              onPressed:
+                                  widget.runtime.dbPath == null ||
+                                      _customSqlController.text
+                                          .trim()
+                                          .isEmpty ||
+                                      _executingCustomSql
+                                  ? null
+                                  : _executeCustomSql,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              tooltip: widget.catalog.text(
+                                'runtime.runCustomSql',
+                              ),
+                              icon: _executingCustomSql
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.play_arrow_rounded,
+                                      size: 21,
+                                    ),
+                            )
+                          else
+                            IconButton(
+                              key: const ValueKey('copy-sql-command'),
+                              onPressed: widget.sql.trim().isEmpty
+                                  ? null
+                                  : _copySqlToClipboard,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              tooltip: widget.catalog.text('runtime.copySql'),
+                              icon: const Icon(Icons.copy_rounded, size: 19),
+                            ),
                         ],
                       ),
                     ),
                     Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(12),
-                        child: Align(
-                          alignment: AlignmentDirectional.topStart,
-                          child: SelectionArea(
-                            child: Text(
-                              sql,
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                color: workbenchColors.sqlText,
-                                height: 1.35,
+                      child: _showCustomSql
+                          ? Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: TextField(
+                                key: const ValueKey<String>('custom-sql-input'),
+                                controller: _customSqlController,
+                                onChanged: (_) => setState(() {}),
+                                expands: true,
+                                minLines: null,
+                                maxLines: null,
+                                keyboardType: TextInputType.multiline,
+                                textInputAction: TextInputAction.newline,
+                                autocorrect: false,
+                                enableSuggestions: false,
+                                smartDashesType: SmartDashesType.disabled,
+                                smartQuotesType: SmartQuotesType.disabled,
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  color: workbenchColors.sqlText,
+                                  height: 1.35,
+                                ),
+                                decoration: InputDecoration(
+                                  alignLabelWithHint: true,
+                                  hintText: widget.catalog.text(
+                                    'runtime.customSqlHint',
+                                  ),
+                                  border: InputBorder.none,
+                                ),
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              padding: const EdgeInsets.all(12),
+                              child: Align(
+                                alignment: AlignmentDirectional.topStart,
+                                child: SelectionArea(
+                                  child: Text(
+                                    sql,
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      color: workbenchColors.sqlText,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ),
                     ),
                   ],
                 ),

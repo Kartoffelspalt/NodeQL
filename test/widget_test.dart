@@ -102,6 +102,91 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(WorkbenchPage)),
     );
+    expect(
+      find.byKey(const ValueKey<String>('open-database-browser')),
+      findsNothing,
+    );
+    final browserDirectory = Directory.systemTemp.createTempSync(
+      'nodeql_dbb_shortcut',
+    );
+    addTearDown(() => browserDirectory.deleteSync(recursive: true));
+    final browserDatabasePath =
+        '${browserDirectory.path}${Platform.pathSeparator}shortcut.db';
+    final browserDatabase = sqlite3.open(browserDatabasePath);
+    browserDatabase.execute('''
+      CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);
+      INSERT INTO notes (body) VALUES ('Shortcut works');
+    ''');
+    browserDatabase.close();
+    await tester.runAsync(
+      () => container
+          .read(sqlRuntimeProvider.notifier)
+          .attachDatabasePath(browserDatabasePath),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('open-database-browser')),
+      findsNothing,
+    );
+
+    final customSqlButton = find.byKey(
+      const ValueKey<String>('toggle-custom-sql'),
+    );
+    expect(tester.widget<IconButton>(customSqlButton).onPressed, isNull);
+    expect(
+      find.byKey(const ValueKey<String>('custom-sql-input')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('open-database-browser')),
+      findsNothing,
+    );
+
+    await tester.tap(paletteSearch);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
+      findsNothing,
+    );
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
+      findsOneWidget,
+    );
+    final databaseBrowserClip = tester.widget<ClipRRect>(
+      find.byKey(const ValueKey<String>('database-browser-surface-clip')),
+    );
+    expect(
+      databaseBrowserClip.borderRadius,
+      NodeQlSurfaceStyle.standard.largeBorderRadius,
+    );
+    final databaseBrowserDialog = tester.widget<Dialog>(find.byType(Dialog));
+    expect(databaseBrowserDialog.backgroundColor, Colors.transparent);
+    expect(databaseBrowserDialog.elevation, 0);
+    expect(databaseBrowserDialog.shadowColor, Colors.transparent);
+    final databaseBrowserBackground = tester.widget<Material>(
+      find.byKey(const ValueKey<String>('database-browser-surface-background')),
+    );
+    final databaseBrowserBackgroundColor = databaseBrowserBackground.color;
+    expect(databaseBrowserBackgroundColor, isNotNull);
+    expect(databaseBrowserBackgroundColor!.a, 1);
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
+      findsNothing,
+    );
+
     final workspaceController = container.read(workspaceProvider.notifier);
     workspaceController.addTemplate(
       BlockType.sqlSelect,
@@ -355,6 +440,10 @@ class _ReadyTranslationController extends TranslationController {
       'palette.rail.dataTypes': 'SQLite data types',
       'runtime.sqlOutput': '-- SQLite output --',
       'runtime.sqlCommandOutput': 'SQLite-Command Output',
+      'runtime.customSql': 'Custom SQLite',
+      'runtime.customSqlHint': 'Write SQLite directly',
+      'runtime.showGeneratedSql': 'Show generated SQLite',
+      'runtime.runCustomSql': 'Run custom SQLite',
       'runtime.copySql': 'Copy SQLite',
       'runtime.noResults': 'No results',
     };
