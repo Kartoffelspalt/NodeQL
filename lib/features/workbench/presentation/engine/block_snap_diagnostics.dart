@@ -17,6 +17,8 @@ const nativeBlockTypes = <BlockType>[
   BlockType.sqlAlias,
   BlockType.sqlFrom,
   BlockType.sqlWhere,
+  BlockType.sqlAnd,
+  BlockType.sqlOr,
   BlockType.sqlJoin,
   BlockType.sqlInnerJoin,
   BlockType.sqlLeftJoin,
@@ -28,6 +30,7 @@ const nativeBlockTypes = <BlockType>[
   BlockType.sqlGroupBy,
   BlockType.sqlHaving,
   BlockType.sqlOrderBy,
+  BlockType.sqlLimit,
   BlockType.sqlUnion,
   BlockType.sqlIntersect,
   BlockType.sqlExcept,
@@ -63,19 +66,40 @@ const nativeBlockTypes = <BlockType>[
   BlockType.sqlCoalesce,
   BlockType.sqlNullIf,
   BlockType.sqlInsert,
+  BlockType.sqlInsertOrReplace,
+  BlockType.sqlUpsert,
   BlockType.sqlUpdate,
   BlockType.sqlDelete,
   BlockType.sqlCreateTable,
+  BlockType.sqlCreateIndex,
+  BlockType.sqlDropIndex,
+  BlockType.sqlCreateView,
+  BlockType.sqlDropView,
+  BlockType.sqlCreateTrigger,
+  BlockType.sqlDropTrigger,
+  BlockType.sqlCreateVirtualTable,
   BlockType.sqlAlterTable,
   BlockType.sqlTruncate,
   BlockType.sqlDropTable,
   BlockType.sqlGrant,
   BlockType.sqlRevoke,
   BlockType.sqlCommit,
+  BlockType.sqlBeginTransaction,
+  BlockType.sqlEndTransaction,
   BlockType.sqlRollback,
   BlockType.sqlSavepoint,
   BlockType.sqlRollbackToSavepoint,
+  BlockType.sqlReleaseSavepoint,
   BlockType.sqlSetTransaction,
+  BlockType.sqlPragma,
+  BlockType.sqlAttachDatabase,
+  BlockType.sqlDetachDatabase,
+  BlockType.sqlVacuum,
+  BlockType.sqlReindex,
+  BlockType.sqlAnalyze,
+  BlockType.sqlExplain,
+  BlockType.sqlWith,
+  BlockType.sqlValues,
   BlockType.sqlLoop,
 ];
 
@@ -156,6 +180,8 @@ BlockNode _diagnosticNode(BlockType type) {
   if (type == BlockType.motionMove ||
       type == BlockType.motionTurn ||
       type == BlockType.sqlWhere ||
+      type == BlockType.sqlAnd ||
+      type == BlockType.sqlOr ||
       type == BlockType.sqlOrderBy) {
     return MotionBlock(id: type.name, position: Offset.zero, motionType: type);
   }

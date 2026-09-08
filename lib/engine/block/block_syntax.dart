@@ -38,16 +38,36 @@ BlockVisualKind blockVisualKindForType(BlockType type) {
     BlockType.eventGreenFlag => BlockVisualKind.trigger,
     BlockType.sqlSelect ||
     BlockType.sqlInsert ||
+    BlockType.sqlInsertOrReplace ||
+    BlockType.sqlUpsert ||
     BlockType.sqlUpdate ||
     BlockType.sqlDelete ||
     BlockType.sqlCreateTable ||
+    BlockType.sqlCreateIndex ||
+    BlockType.sqlDropIndex ||
+    BlockType.sqlCreateView ||
+    BlockType.sqlDropView ||
+    BlockType.sqlCreateTrigger ||
+    BlockType.sqlDropTrigger ||
+    BlockType.sqlCreateVirtualTable ||
     BlockType.sqlAlterTable ||
     BlockType.sqlTruncate ||
     BlockType.sqlDropTable ||
     BlockType.sqlGrant ||
     BlockType.sqlRevoke ||
+    BlockType.sqlBeginTransaction ||
     BlockType.sqlSavepoint ||
     BlockType.sqlRollbackToSavepoint ||
+    BlockType.sqlReleaseSavepoint ||
+    BlockType.sqlPragma ||
+    BlockType.sqlAttachDatabase ||
+    BlockType.sqlDetachDatabase ||
+    BlockType.sqlVacuum ||
+    BlockType.sqlReindex ||
+    BlockType.sqlAnalyze ||
+    BlockType.sqlExplain ||
+    BlockType.sqlWith ||
+    BlockType.sqlValues ||
     BlockType.sqlSetTransaction => BlockVisualKind.statement,
     BlockType.sqlJoin ||
     BlockType.sqlInnerJoin ||
@@ -95,7 +115,9 @@ BlockVisualKind blockVisualKindForType(BlockType type) {
     BlockType.sqlCoalesce ||
     BlockType.sqlNullIf ||
     BlockType.operatorAdd => BlockVisualKind.expression,
-    BlockType.sqlCommit || BlockType.sqlRollback => BlockVisualKind.terminal,
+    BlockType.sqlCommit ||
+    BlockType.sqlEndTransaction ||
+    BlockType.sqlRollback => BlockVisualKind.terminal,
     BlockType.controlRepeat ||
     BlockType.controlForever ||
     BlockType.sqlLoop => BlockVisualKind.container,
@@ -134,6 +156,10 @@ bool joinUsesCondition(BlockNode node) {
 bool isStatementType(BlockType type) =>
     blockVisualKindForType(type) == BlockVisualKind.statement;
 
+bool startsSqlStatement(BlockType type) =>
+    isStatementType(type) ||
+    blockVisualKindForType(type) == BlockVisualKind.terminal;
+
 bool isExpressionType(BlockType type) =>
     blockVisualKindForType(type) == BlockVisualKind.expression;
 
@@ -151,9 +177,12 @@ bool isSqlChainType(BlockType type) {
       isJoinType(type) ||
       type == BlockType.sqlFrom ||
       type == BlockType.sqlWhere ||
+      type == BlockType.sqlAnd ||
+      type == BlockType.sqlOr ||
       type == BlockType.sqlGroupBy ||
       type == BlockType.sqlHaving ||
       type == BlockType.sqlOrderBy ||
+      type == BlockType.sqlLimit ||
       blockVisualKindForType(type) == BlockVisualKind.setOperator ||
       blockVisualKindForType(type) == BlockVisualKind.terminal;
 }
@@ -184,6 +213,7 @@ bool canFollowInSqlChain(BlockType previous, BlockType next) {
         next == BlockType.sqlWhere ||
         next == BlockType.sqlGroupBy ||
         next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit ||
         blockVisualKindForType(next) == BlockVisualKind.setOperator;
   }
   if (previous == BlockType.sqlFrom || isJoinType(previous)) {
@@ -191,27 +221,63 @@ bool canFollowInSqlChain(BlockType previous, BlockType next) {
         next == BlockType.sqlWhere ||
         next == BlockType.sqlGroupBy ||
         next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit ||
         blockVisualKindForType(next) == BlockVisualKind.setOperator;
   }
   if (previous == BlockType.sqlWhere) {
-    return next == BlockType.sqlGroupBy ||
+    return next == BlockType.sqlAnd ||
+        next == BlockType.sqlOr ||
+        next == BlockType.sqlGroupBy ||
         next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit ||
+        blockVisualKindForType(next) == BlockVisualKind.setOperator;
+  }
+  if (previous == BlockType.sqlAnd || previous == BlockType.sqlOr) {
+    return next == BlockType.sqlAnd ||
+        next == BlockType.sqlOr ||
+        next == BlockType.sqlGroupBy ||
+        next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit ||
         blockVisualKindForType(next) == BlockVisualKind.setOperator;
   }
   if (previous == BlockType.sqlGroupBy) {
     return next == BlockType.sqlHaving ||
         next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit ||
         blockVisualKindForType(next) == BlockVisualKind.setOperator;
   }
   if (previous == BlockType.sqlHaving) {
     return next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit ||
         blockVisualKindForType(next) == BlockVisualKind.setOperator;
   }
   if (previous == BlockType.sqlOrderBy) {
-    return blockVisualKindForType(next) == BlockVisualKind.setOperator;
+    return next == BlockType.sqlLimit;
+  }
+  if (blockVisualKindForType(previous) == BlockVisualKind.setOperator) {
+    return blockVisualKindForType(next) == BlockVisualKind.setOperator ||
+        next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit;
   }
   if (previous == BlockType.sqlUpdate || previous == BlockType.sqlDelete) {
-    return next == BlockType.sqlWhere || next == BlockType.sqlOrderBy;
+    return next == BlockType.sqlWhere ||
+        next == BlockType.sqlAnd ||
+        next == BlockType.sqlOr ||
+        next == BlockType.sqlOrderBy ||
+        next == BlockType.sqlLimit ||
+        startsSqlStatement(next);
+  }
+  if (previous == BlockType.sqlWith || previous == BlockType.sqlExplain) {
+    return next == BlockType.sqlSelect ||
+        next == BlockType.sqlInsert ||
+        next == BlockType.sqlInsertOrReplace ||
+        next == BlockType.sqlUpsert ||
+        next == BlockType.sqlUpdate ||
+        next == BlockType.sqlDelete ||
+        next == BlockType.sqlValues;
+  }
+  if (startsSqlStatement(previous)) {
+    return startsSqlStatement(next);
   }
 
   return false;

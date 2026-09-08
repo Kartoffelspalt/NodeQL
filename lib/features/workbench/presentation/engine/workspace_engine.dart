@@ -972,6 +972,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
             operatorType: type,
           )
           ..inputs.addAll(<String, dynamic>{
+            'select_mode': 'ALL',
             'columns': '*',
             'table': 'table_name',
             'table_alias': '',
@@ -1025,11 +1026,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
             'table_alias': '',
           });
       case BlockType.sqlWhere:
+      case BlockType.sqlAnd:
+      case BlockType.sqlOr:
         return MotionBlock(
-          id: 'where_$suffix',
+          id: 'filter_$suffix',
           position: worldPos,
-          motionType: BlockType.sqlWhere,
+          motionType: type,
           inputs: <String, dynamic>{
+            'negation': '',
             'column': 'id',
             'operator': '=',
             'value': '1',
@@ -1091,7 +1095,18 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           id: 'order_$suffix',
           position: worldPos,
           motionType: BlockType.sqlOrderBy,
-          inputs: <String, dynamic>{'expr': 'id DESC'},
+          inputs: <String, dynamic>{
+            'column': 'id',
+            'order': 'DESC',
+            'expr': 'id DESC',
+          },
+        );
+      case BlockType.sqlLimit:
+        return OperatorBlock(
+          id: 'limit_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'count': '5', 'offset': ''},
         );
       case BlockType.sqlInsert:
         return OperatorBlock(
@@ -1101,8 +1116,35 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           )
           ..inputs.addAll(<String, dynamic>{
             'table': 'table_name',
-            'values': '',
+            'columns': 'column_name',
+            'values': "('value')",
           });
+      case BlockType.sqlInsertOrReplace:
+        return OperatorBlock(
+          id: 'replace_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'table': 'table_name',
+            'columns': 'column_name',
+            'values': "('value')",
+          },
+        );
+      case BlockType.sqlUpsert:
+        return OperatorBlock(
+          id: 'upsert_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'table': 'table_name',
+            'columns': 'id, value',
+            'values': "(1, 'value')",
+            'conflict_columns': 'id',
+            'action': 'DO UPDATE',
+            'assignments': 'value = excluded.value',
+            'update_where': '',
+          },
+        );
       case BlockType.sqlUpdate:
         return OperatorBlock(
             id: 'update_$suffix',
@@ -1130,15 +1172,231 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
             'operator': '=',
             'where_value': '1',
           });
-      case BlockType.sqlCreateTable:
-      case BlockType.sqlAlterTable:
-      case BlockType.sqlTruncate:
-      case BlockType.sqlGrant:
-      case BlockType.sqlRevoke:
       case BlockType.sqlUnion:
       case BlockType.sqlIntersect:
       case BlockType.sqlExcept:
+        return OperatorBlock(
+          id: 'set_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            if (type == BlockType.sqlUnion) 'set_mode': '',
+            'sql': 'SELECT 1',
+          },
+        );
       case BlockType.sqlSubqueryIn:
+        return OperatorBlock(
+          id: 'subquery_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'column': 'id',
+            'sql': 'SELECT id FROM table_name',
+          },
+        );
+      case BlockType.sqlCreateTable:
+        return OperatorBlock(
+          id: 'create_table_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'if_not_exists': '',
+            'table': 'new_table',
+            'definition':
+                'id INTEGER PRIMARY KEY AUTOINCREMENT,\nname TEXT NOT NULL',
+          },
+        );
+      case BlockType.sqlCreateIndex:
+        return OperatorBlock(
+          id: 'create_index_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'unique': '',
+            'if_not_exists': '',
+            'name': 'index_name',
+            'table': 'table_name',
+            'columns': 'column_name',
+          },
+        );
+      case BlockType.sqlDropIndex:
+        return OperatorBlock(
+          id: 'drop_index_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'if_exists': 'IF EXISTS',
+            'name': 'index_name',
+          },
+        );
+      case BlockType.sqlCreateView:
+        return OperatorBlock(
+          id: 'create_view_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'temporary': '',
+            'if_not_exists': 'IF NOT EXISTS',
+            'name': 'view_name',
+            'columns': '',
+            'sql': 'SELECT * FROM table_name',
+          },
+        );
+      case BlockType.sqlDropView:
+        return OperatorBlock(
+          id: 'drop_view_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'if_exists': 'IF EXISTS',
+            'name': 'view_name',
+          },
+        );
+      case BlockType.sqlCreateTrigger:
+        return OperatorBlock(
+          id: 'create_trigger_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'temporary': '',
+            'if_not_exists': 'IF NOT EXISTS',
+            'name': 'trigger_name',
+            'timing': 'AFTER',
+            'event': 'INSERT',
+            'table': 'table_name',
+            'when': '',
+            'body': 'SELECT 1',
+          },
+        );
+      case BlockType.sqlDropTrigger:
+        return OperatorBlock(
+          id: 'drop_trigger_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'if_exists': 'IF EXISTS',
+            'name': 'trigger_name',
+          },
+        );
+      case BlockType.sqlCreateVirtualTable:
+        return OperatorBlock(
+          id: 'virtual_table_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'if_not_exists': 'IF NOT EXISTS',
+            'table': 'search_index',
+            'module': 'FTS5',
+            'arguments': 'title, body',
+          },
+        );
+      case BlockType.sqlAlterTable:
+        return OperatorBlock(
+          id: 'alter_table_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'table': 'table_name',
+            'alter_action': 'ADD COLUMN',
+            'alter_value': 'new_column TEXT',
+          },
+        );
+      case BlockType.sqlBeginTransaction:
+        return OperatorBlock(
+          id: 'snapshot_begin_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'behavior': 'DEFERRED'},
+        );
+      case BlockType.sqlEndTransaction:
+      case BlockType.sqlCommit:
+      case BlockType.sqlRollback:
+        return OperatorBlock(
+          id: 'snapshot_finish_$suffix',
+          position: worldPos,
+          operatorType: type,
+        );
+      case BlockType.sqlSavepoint:
+      case BlockType.sqlRollbackToSavepoint:
+      case BlockType.sqlReleaseSavepoint:
+        return OperatorBlock(
+          id: 'restore_point_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'name': 'restore_point_1'},
+        );
+      case BlockType.sqlPragma:
+        return OperatorBlock(
+          id: 'pragma_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'pragma': 'foreign_keys', 'value': 'ON'},
+        );
+      case BlockType.sqlAttachDatabase:
+        return OperatorBlock(
+          id: 'attach_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'path': 'database.db',
+            'schema': 'attached',
+          },
+        );
+      case BlockType.sqlDetachDatabase:
+        return OperatorBlock(
+          id: 'detach_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'schema': 'attached'},
+        );
+      case BlockType.sqlVacuum:
+        return OperatorBlock(
+          id: 'vacuum_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'schema': ''},
+        );
+      case BlockType.sqlReindex:
+      case BlockType.sqlAnalyze:
+        return OperatorBlock(
+          id: 'maintenance_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'target': ''},
+        );
+      case BlockType.sqlExplain:
+        return OperatorBlock(
+          id: 'explain_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'mode': 'EXPLAIN QUERY PLAN',
+            'sql': 'SELECT * FROM table_name',
+          },
+        );
+      case BlockType.sqlWith:
+        return OperatorBlock(
+          id: 'with_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{
+            'recursive': '',
+            'name': 'cte',
+            'columns': '',
+            'sql': 'SELECT 1 AS value',
+            'statement': 'SELECT * FROM cte',
+          },
+        );
+      case BlockType.sqlValues:
+        return OperatorBlock(
+          id: 'values_$suffix',
+          position: worldPos,
+          operatorType: type,
+          inputs: <String, dynamic>{'values': "(1, 'A'), (2, 'B')"},
+        );
+      case BlockType.sqlTruncate:
+      case BlockType.sqlGrant:
+      case BlockType.sqlRevoke:
       case BlockType.sqlSubqueryAny:
       case BlockType.sqlSubqueryAll:
       case BlockType.sqlConcat:
@@ -1164,10 +1422,6 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       case BlockType.sqlIf:
       case BlockType.sqlCoalesce:
       case BlockType.sqlNullIf:
-      case BlockType.sqlCommit:
-      case BlockType.sqlRollback:
-      case BlockType.sqlSavepoint:
-      case BlockType.sqlRollbackToSavepoint:
       case BlockType.sqlSetTransaction:
         return OperatorBlock(
             id: 'create_$suffix',
@@ -1188,10 +1442,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           });
       case BlockType.sqlDropTable:
         return OperatorBlock(
-          id: 'drop_$suffix',
-          position: worldPos,
-          operatorType: type,
-        )..inputs['table'] = 'table_name';
+            id: 'drop_$suffix',
+            position: worldPos,
+            operatorType: type,
+          )
+          ..inputs.addAll(<String, dynamic>{
+            'if_exists': 'IF EXISTS',
+            'table': 'table_name',
+          });
       case BlockType.sqlLoop:
         return ControlBlock(
           id: 'loop_$suffix',
@@ -1800,6 +2058,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       if (current.type == BlockType.sqlSelect ||
           current.type == BlockType.sqlFrom ||
           current.type == BlockType.sqlWhere ||
+          current.type == BlockType.sqlAnd ||
+          current.type == BlockType.sqlOr ||
           current.type == BlockType.sqlOrderBy ||
           current.type == BlockType.sqlGroupBy ||
           current.type == BlockType.sqlHaving) {
@@ -1816,6 +2076,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
 
   bool _acceptsColumnSource(BlockNode node) {
     return node.type == BlockType.sqlWhere ||
+        node.type == BlockType.sqlAnd ||
+        node.type == BlockType.sqlOr ||
         node.type == BlockType.sqlOrderBy ||
         node.type == BlockType.sqlGroupBy ||
         node.type == BlockType.sqlHaving ||
@@ -1848,6 +2110,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       return;
     }
     if (target.type == BlockType.sqlWhere ||
+        target.type == BlockType.sqlAnd ||
+        target.type == BlockType.sqlOr ||
         target.type == BlockType.sqlHaving) {
       target.inputs['column'] = column;
       return;
@@ -1929,6 +2193,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       BlockType.sqlGroupBy =>
         '${target.inputs['column'] ?? target.inputs['expr'] ?? ''}',
       BlockType.sqlWhere ||
+      BlockType.sqlAnd ||
+      BlockType.sqlOr ||
       BlockType.sqlHaving => '${target.inputs['column'] ?? ''}',
       BlockType.sqlJoin ||
       BlockType.sqlInnerJoin ||

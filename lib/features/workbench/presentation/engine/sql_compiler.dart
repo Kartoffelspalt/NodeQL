@@ -1,5 +1,6 @@
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
+import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 
 /// A database-neutral representation of the connected visual blocks.
@@ -70,6 +71,43 @@ class SqlCompiler {
       program: plan.program,
       sql: rendered.sql,
       warnings: <String>[...plan.warnings, ...rendered.warnings],
+      sourceMap: rendered.sourceMap,
+    );
+  }
+}
+
+/// Connects a range in the generated SQLite text back to the visual node that
+/// produced it. A node can own more than one range (for example SELECT and its
+/// legacy pagination suffix).
+class SqlNodeSourceSpan {
+  const SqlNodeSourceSpan({
+    required this.nodeId,
+    required this.nodeType,
+    required this.start,
+    required this.end,
+    required this.statementIndex,
+  });
+
+  final String nodeId;
+  final BlockType nodeType;
+  final int start;
+  final int end;
+  final int statementIndex;
+
+  bool contains(int offset) => offset >= start && offset < end;
+
+  String textIn(String sql) {
+    if (start < 0 || end < start || end > sql.length) return '';
+    return sql.substring(start, end);
+  }
+
+  SqlNodeSourceSpan shiftedBy(int offset, {int statementIndexOffset = 0}) {
+    return SqlNodeSourceSpan(
+      nodeId: nodeId,
+      nodeType: nodeType,
+      start: start + offset,
+      end: end + offset,
+      statementIndex: statementIndex + statementIndexOffset,
     );
   }
 }
@@ -81,25 +119,48 @@ class SqliteDialectRenderer {
   SqliteRenderResult render(SqliteProgram program) {
     final roots = program.roots;
     final pluginBlocks = program.pluginBlocks;
-    final statements = <String>[];
+    final sql = StringBuffer();
+    final sourceMap = <SqlNodeSourceSpan>[];
     final warnings = <String>[];
+    var statementIndex = 0;
 
     for (final root in roots.where((n) => n.type == BlockType.eventGreenFlag)) {
       if (root.next == null) continue;
-      final sql = _compileNode(
+      final rendered = _compileNode(
         root.next!,
         pluginBlocks: pluginBlocks,
         warnings: warnings,
         visited: <String>{root.id},
-      ).trim();
-      if (sql.isNotEmpty) {
-        statements.add(sql.endsWith(';') ? sql : '$sql;');
+      );
+      if (rendered.sql.isNotEmpty) {
+        if (sql.isNotEmpty) sql.write('\n');
+        final statementOffset = sql.length;
+        sql.write(rendered.sql);
+        if (!rendered.sql.endsWith(';')) sql.write(';');
+        sourceMap.addAll(
+          rendered.sourceMap.map(
+            (span) => span.shiftedBy(
+              statementOffset,
+              statementIndexOffset: statementIndex,
+            ),
+          ),
+        );
+        final relativeLastStatement = rendered.sourceMap.fold<int>(
+          0,
+          (latest, span) =>
+              span.statementIndex > latest ? span.statementIndex : latest,
+        );
+        statementIndex += relativeLastStatement + 1;
       }
     }
-    return SqliteRenderResult(sql: statements.join('\n'), warnings: warnings);
+    return SqliteRenderResult(
+      sql: sql.toString(),
+      warnings: warnings,
+      sourceMap: sourceMap,
+    );
   }
 
-  String _compileNode(
+  _RenderedSqlFragment _compileNode(
     BlockNode node, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
     required List<String> warnings,
@@ -110,23 +171,70 @@ class SqliteDialectRenderer {
       warnings.add(
         'Cycle detected at block "${node.id}". The repeated chain was skipped.',
       );
-      return '';
+      return const _RenderedSqlFragment.empty();
     }
     final current = _compileSingle(
       node,
       pluginBlocks: pluginBlocks,
       warnings: warnings,
       visited: seen,
-    );
-    final next = node.next == null
-        ? ''
-        : ' ${_compileNode(node.next!, pluginBlocks: pluginBlocks, warnings: warnings, visited: seen)}';
-    seen.remove(node.id);
-    var compiled = '$current$next'.trim();
-    if (node.type == BlockType.sqlSelect) {
-      compiled = '$compiled${_selectPagination(node, warnings)}'.trim();
+    ).trim();
+    final spans = <SqlNodeSourceSpan>[
+      if (current.isNotEmpty)
+        SqlNodeSourceSpan(
+          nodeId: node.id,
+          nodeType: node.type,
+          start: 0,
+          end: current.length,
+          statementIndex: 0,
+        ),
+    ];
+    final buffer = StringBuffer(current);
+    if (node.next != null) {
+      final next = _compileNode(
+        node.next!,
+        pluginBlocks: pluginBlocks,
+        warnings: warnings,
+        visited: seen,
+      );
+      if (next.sql.isNotEmpty) {
+        var statementIndexOffset = 0;
+        if (buffer.isNotEmpty) {
+          final separator = _separatorBetween(node.type, node.next!.type);
+          buffer.write(separator);
+          if (separator.contains(';')) statementIndexOffset = 1;
+        }
+        final nextOffset = buffer.length;
+        buffer.write(next.sql);
+        spans.addAll(
+          next.sourceMap.map(
+            (span) => span.shiftedBy(
+              nextOffset,
+              statementIndexOffset: statementIndexOffset,
+            ),
+          ),
+        );
+      }
     }
-    return compiled;
+    seen.remove(node.id);
+    if (node.type == BlockType.sqlSelect) {
+      final pagination = _selectPagination(node, warnings).trim();
+      if (pagination.isNotEmpty) {
+        if (buffer.isNotEmpty) buffer.write(' ');
+        final paginationStart = buffer.length;
+        buffer.write(pagination);
+        spans.add(
+          SqlNodeSourceSpan(
+            nodeId: node.id,
+            nodeType: node.type,
+            start: paginationStart,
+            end: buffer.length,
+            statementIndex: 0,
+          ),
+        );
+      }
+    }
+    return _RenderedSqlFragment(sql: buffer.toString(), sourceMap: spans);
   }
 
   String _compileSingle(
@@ -205,7 +313,10 @@ class SqliteDialectRenderer {
         final cols = reporterColumns.isNotEmpty
             ? reporterColumns
             : (colsFromChildren.isNotEmpty ? colsFromChildren : colsFromInput);
-        final selectKeyword = _isEnabled(node.inputs['distinct'])
+        final selectKeyword =
+            _isEnabled(node.inputs['distinct']) ||
+                '${node.inputs['select_mode'] ?? ''}'.trim().toUpperCase() ==
+                    'DISTINCT'
             ? 'SELECT DISTINCT'
             : 'SELECT';
         if (node.next?.type == BlockType.sqlFrom) {
@@ -274,6 +385,10 @@ class SqliteDialectRenderer {
         return 'FROM ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlWhere:
         return 'WHERE ${_predicateFromInputs(node, fallback: '1 = 1')}';
+      case BlockType.sqlAnd:
+        return 'AND ${_predicateFromInputs(node, fallback: '1 = 1')}';
+      case BlockType.sqlOr:
+        return 'OR ${_predicateFromInputs(node, fallback: '1 = 1')}';
       case BlockType.sqlJoin:
         final joinType = _normalizedJoinType(node.inputs['join_type']);
         final table = node.inputs['table'] as String? ?? 'table_name';
@@ -313,14 +428,19 @@ class SqliteDialectRenderer {
         return 'HAVING ${_havingPredicateFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlOrderBy:
         return 'ORDER BY ${_orderByFromInputs(node)}';
+      case BlockType.sqlLimit:
+        return _limitFromInputs(node, warnings);
       case BlockType.sqlUnion:
-        return 'UNION ${node.inputs['sql'] as String? ?? 'SELECT 1'}';
+        final all =
+            _isEnabled(node.inputs['all']) ||
+            '${node.inputs['set_mode'] ?? ''}'.trim().toUpperCase() == 'ALL';
+        return 'UNION${all ? ' ALL' : ''} ${_subquerySql(node.inputs['sql'], fallback: 'SELECT 1')}';
       case BlockType.sqlIntersect:
-        return 'INTERSECT ${node.inputs['sql'] as String? ?? 'SELECT 1'}';
+        return 'INTERSECT ${_subquerySql(node.inputs['sql'], fallback: 'SELECT 1')}';
       case BlockType.sqlExcept:
-        return 'EXCEPT ${node.inputs['sql'] as String? ?? 'SELECT 1'}';
+        return 'EXCEPT ${_subquerySql(node.inputs['sql'], fallback: 'SELECT 1')}';
       case BlockType.sqlSubqueryIn:
-        return '${node.inputs['lhs'] as String? ?? 'id'} IN (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
+        return _subqueryInPredicate(node);
       case BlockType.sqlSubqueryAny:
         return '${node.inputs['lhs'] as String? ?? 'id'} IN (${node.inputs['sql'] as String? ?? 'SELECT id FROM t'})';
       case BlockType.sqlSubqueryAll:
@@ -414,19 +534,144 @@ class SqliteDialectRenderer {
       case BlockType.sqlNullIf:
         return 'NULLIF(${node.inputs['a'] as String? ?? '1'}, ${node.inputs['b'] as String? ?? '1'})';
       case BlockType.sqlInsert:
-        return 'INSERT INTO ${node.inputs['table'] as String? ?? 'table_name'} VALUES (${node.inputs['values'] as String? ?? ''})';
+        final table = node.inputs['table'] as String? ?? 'table_name';
+        final columns = '${node.inputs['columns'] ?? ''}'.trim();
+        final columnList = columns.isEmpty ? '' : ' ($columns)';
+        return 'INSERT INTO $table$columnList VALUES ${_insertRows(node.inputs['values'])}';
+      case BlockType.sqlInsertOrReplace:
+        final table = node.inputs['table'] as String? ?? 'table_name';
+        final columns = '${node.inputs['columns'] ?? ''}'.trim();
+        final columnList = columns.isEmpty ? '' : ' ($columns)';
+        return 'INSERT OR REPLACE INTO $table$columnList VALUES ${_insertRows(node.inputs['values'])}';
+      case BlockType.sqlUpsert:
+        final table = node.inputs['table'] as String? ?? 'table_name';
+        final columns = '${node.inputs['columns'] ?? ''}'.trim();
+        final columnList = columns.isEmpty ? '' : ' ($columns)';
+        final conflictColumns = '${node.inputs['conflict_columns'] ?? ''}'
+            .trim();
+        final conflictTarget = conflictColumns.isEmpty
+            ? ''
+            : ' ($conflictColumns)';
+        final action = '${node.inputs['action'] ?? 'DO UPDATE'}'
+            .trim()
+            .toUpperCase();
+        if (action == 'DO NOTHING') {
+          return 'INSERT INTO $table$columnList VALUES ${_insertRows(node.inputs['values'])} ON CONFLICT$conflictTarget DO NOTHING';
+        }
+        final assignments = '${node.inputs['assignments'] ?? ''}'.trim();
+        final fallbackColumn = columns.isEmpty
+            ? 'id'
+            : columns.split(',').first.trim();
+        final update = assignments.isEmpty
+            ? '$fallbackColumn = excluded.$fallbackColumn'
+            : assignments;
+        final where = '${node.inputs['update_where'] ?? ''}'.trim();
+        return 'INSERT INTO $table$columnList VALUES ${_insertRows(node.inputs['values'])} ON CONFLICT$conflictTarget DO UPDATE SET $update${where.isEmpty ? '' : ' WHERE $where'}';
       case BlockType.sqlUpdate:
         return 'UPDATE ${node.inputs['table'] as String? ?? 'table_name'} SET ${node.inputs['column'] as String? ?? 'column_name'} = ${node.inputs['value'] as String? ?? 'value'} WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: 'id = 1')}';
       case BlockType.sqlDelete:
         return 'DELETE FROM ${node.inputs['table'] as String? ?? 'table_name'} WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: 'id = 1')}';
       case BlockType.sqlCreateTable:
-        return 'CREATE TABLE ${node.inputs['table'] as String? ?? 'new_table'} (${node.inputs['definition'] as String? ?? 'id INTEGER PRIMARY KEY'})';
+        final ifNotExists = _isSqlOptionEnabled(
+          node.inputs['if_not_exists'],
+          'IF NOT EXISTS',
+        );
+        final table = node.inputs['table'] as String? ?? 'new_table';
+        final definition = _tableDefinition(
+          node.inputs['definition'],
+          fallback: 'id INTEGER PRIMARY KEY',
+        );
+        return 'CREATE TABLE${ifNotExists ? ' IF NOT EXISTS' : ''} $table ($definition)';
+      case BlockType.sqlCreateIndex:
+        final unique = _isSqlOptionEnabled(node.inputs['unique'], 'UNIQUE');
+        final ifNotExists = _isSqlOptionEnabled(
+          node.inputs['if_not_exists'],
+          'IF NOT EXISTS',
+        );
+        final name = node.inputs['name'] as String? ?? 'index_name';
+        final table = node.inputs['table'] as String? ?? 'table_name';
+        final columns = node.inputs['columns'] as String? ?? 'column_name';
+        return 'CREATE${unique ? ' UNIQUE' : ''} INDEX${ifNotExists ? ' IF NOT EXISTS' : ''} $name ON $table ($columns)';
+      case BlockType.sqlDropIndex:
+        final ifExists = _isSqlOptionEnabled(
+          node.inputs['if_exists'],
+          'IF EXISTS',
+        );
+        return 'DROP INDEX${ifExists ? ' IF EXISTS' : ''} ${node.inputs['name'] ?? 'index_name'}';
+      case BlockType.sqlCreateView:
+        final temporary = _isSqlOptionEnabled(node.inputs['temporary'], 'TEMP');
+        final ifNotExists = _isSqlOptionEnabled(
+          node.inputs['if_not_exists'],
+          'IF NOT EXISTS',
+        );
+        final name = node.inputs['name'] as String? ?? 'view_name';
+        final columns = '${node.inputs['columns'] ?? ''}'.trim();
+        final query = _trimSqlTerminator(
+          '${node.inputs['sql'] ?? 'SELECT * FROM table_name'}',
+        );
+        return 'CREATE${temporary ? ' TEMP' : ''} VIEW${ifNotExists ? ' IF NOT EXISTS' : ''} $name${columns.isEmpty ? '' : ' ($columns)'} AS $query';
+      case BlockType.sqlDropView:
+        final ifExists = _isSqlOptionEnabled(
+          node.inputs['if_exists'],
+          'IF EXISTS',
+        );
+        return 'DROP VIEW${ifExists ? ' IF EXISTS' : ''} ${node.inputs['name'] ?? 'view_name'}';
+      case BlockType.sqlCreateTrigger:
+        final temporary = _isSqlOptionEnabled(node.inputs['temporary'], 'TEMP');
+        final ifNotExists = _isSqlOptionEnabled(
+          node.inputs['if_not_exists'],
+          'IF NOT EXISTS',
+        );
+        final timing = _oneOf(node.inputs['timing'], const <String>{
+          'BEFORE',
+          'AFTER',
+          'INSTEAD OF',
+        }, 'AFTER');
+        final event = _oneOf(node.inputs['event'], const <String>{
+          'INSERT',
+          'UPDATE',
+          'DELETE',
+        }, 'INSERT');
+        final when = '${node.inputs['when'] ?? ''}'.trim();
+        final body = _trimSqlTerminator('${node.inputs['body'] ?? 'SELECT 1'}');
+        return 'CREATE${temporary ? ' TEMP' : ''} TRIGGER${ifNotExists ? ' IF NOT EXISTS' : ''} ${node.inputs['name'] ?? 'trigger_name'} $timing $event ON ${node.inputs['table'] ?? 'table_name'} FOR EACH ROW${when.isEmpty ? '' : ' WHEN $when'} BEGIN $body; END';
+      case BlockType.sqlDropTrigger:
+        final ifExists = _isSqlOptionEnabled(
+          node.inputs['if_exists'],
+          'IF EXISTS',
+        );
+        return 'DROP TRIGGER${ifExists ? ' IF EXISTS' : ''} ${node.inputs['name'] ?? 'trigger_name'}';
+      case BlockType.sqlCreateVirtualTable:
+        final ifNotExists = _isSqlOptionEnabled(
+          node.inputs['if_not_exists'],
+          'IF NOT EXISTS',
+        );
+        final module = _oneOf(node.inputs['module'], const <String>{
+          'FTS5',
+          'RTREE',
+        }, 'FTS5').toLowerCase();
+        final arguments = '${node.inputs['arguments'] ?? 'content'}'.trim();
+        return 'CREATE VIRTUAL TABLE${ifNotExists ? ' IF NOT EXISTS' : ''} ${node.inputs['table'] ?? 'virtual_table'} USING $module($arguments)';
       case BlockType.sqlAlterTable:
-        return 'ALTER TABLE ${node.inputs['table'] as String? ?? 'table_name'} ${node.inputs['alter'] as String? ?? 'ADD COLUMN c TEXT'}';
+        final legacyAlter = '${node.inputs['alter'] ?? ''}'.trim();
+        if (legacyAlter.isNotEmpty) {
+          return 'ALTER TABLE ${node.inputs['table'] as String? ?? 'table_name'} $legacyAlter';
+        }
+        final action = _oneOf(node.inputs['alter_action'], const <String>{
+          'ADD COLUMN',
+          'RENAME COLUMN',
+          'DROP COLUMN',
+          'RENAME TO',
+        }, 'ADD COLUMN');
+        return 'ALTER TABLE ${node.inputs['table'] as String? ?? 'table_name'} $action ${node.inputs['alter_value'] ?? 'new_column TEXT'}';
       case BlockType.sqlTruncate:
         return 'DELETE FROM ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlDropTable:
-        return 'DROP TABLE ${node.inputs['table'] as String? ?? 'table_name'}';
+        final ifExists = _isSqlOptionEnabled(
+          node.inputs['if_exists'],
+          'IF EXISTS',
+        );
+        return 'DROP TABLE${ifExists ? ' IF EXISTS' : ''} ${node.inputs['table'] as String? ?? 'table_name'}';
       case BlockType.sqlGrant:
         warnings.add('SQLite has no GRANT statement or user management.');
         return '';
@@ -435,17 +680,73 @@ class SqliteDialectRenderer {
         return '';
       case BlockType.sqlCommit:
         return 'COMMIT';
+      case BlockType.sqlBeginTransaction:
+        final behavior = _oneOf(node.inputs['behavior'], const <String>{
+          'DEFERRED',
+          'IMMEDIATE',
+          'EXCLUSIVE',
+        }, 'DEFERRED');
+        return 'BEGIN $behavior TRANSACTION';
+      case BlockType.sqlEndTransaction:
+        return 'END TRANSACTION';
       case BlockType.sqlRollback:
         return 'ROLLBACK';
       case BlockType.sqlSavepoint:
         return 'SAVEPOINT ${node.inputs['name'] as String? ?? 'sp1'}';
       case BlockType.sqlRollbackToSavepoint:
         return 'ROLLBACK TO SAVEPOINT ${node.inputs['name'] as String? ?? 'sp1'}';
+      case BlockType.sqlReleaseSavepoint:
+        return 'RELEASE SAVEPOINT ${node.inputs['name'] as String? ?? 'sp1'}';
       case BlockType.sqlSetTransaction:
         warnings.add(
           'SQLite does not support SET TRANSACTION isolation levels.',
         );
         return '';
+      case BlockType.sqlPragma:
+        return _compilePragma(node, warnings);
+      case BlockType.sqlAttachDatabase:
+        final path = _quoteSqlString('${node.inputs['path'] ?? 'database.db'}');
+        final schema = _quoteSqlIdentifier(
+          '${node.inputs['schema'] ?? 'attached'}',
+        );
+        return 'ATTACH DATABASE $path AS $schema';
+      case BlockType.sqlDetachDatabase:
+        return 'DETACH DATABASE ${_quoteSqlIdentifier('${node.inputs['schema'] ?? 'attached'}')}';
+      case BlockType.sqlVacuum:
+        final schema = '${node.inputs['schema'] ?? ''}'.trim();
+        return 'VACUUM${schema.isEmpty ? '' : ' ${_quoteSqlIdentifier(schema)}'}';
+      case BlockType.sqlReindex:
+        final target = '${node.inputs['target'] ?? ''}'.trim();
+        return 'REINDEX${target.isEmpty ? '' : ' $target'}';
+      case BlockType.sqlAnalyze:
+        final target = '${node.inputs['target'] ?? ''}'.trim();
+        return 'ANALYZE${target.isEmpty ? '' : ' $target'}';
+      case BlockType.sqlExplain:
+        final mode = _oneOf(node.inputs['mode'], const <String>{
+          'EXPLAIN',
+          'EXPLAIN QUERY PLAN',
+        }, 'EXPLAIN QUERY PLAN');
+        if (node.next != null) return mode;
+        return '$mode ${_trimSqlTerminator('${node.inputs['sql'] ?? 'SELECT 1'}')}';
+      case BlockType.sqlWith:
+        final recursive = _isSqlOptionEnabled(
+          node.inputs['recursive'],
+          'RECURSIVE',
+        );
+        final name = node.inputs['name'] as String? ?? 'cte';
+        final columns = '${node.inputs['columns'] ?? ''}'.trim();
+        final cteSql = _trimSqlTerminator(
+          '${node.inputs['sql'] ?? 'SELECT 1'}',
+        );
+        final prefix =
+            'WITH${recursive ? ' RECURSIVE' : ''} $name${columns.isEmpty ? '' : ' ($columns)'} AS ($cteSql)';
+        if (node.next != null) return prefix;
+        final statement = _trimSqlTerminator(
+          '${node.inputs['statement'] ?? 'SELECT * FROM $name'}',
+        );
+        return '$prefix $statement';
+      case BlockType.sqlValues:
+        return 'VALUES ${_insertRows(node.inputs['values'])}';
       case BlockType.sqlLoop:
         // NodeQL loop compiles contained statements as transaction body.
         return 'BEGIN; ${_compileChildren(node.children, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}; COMMIT';
@@ -542,7 +843,20 @@ class SqliteDialectRenderer {
         conditions,
         node.inputs['match'],
       );
-      if (compiled.isNotEmpty) return compiled;
+      if (compiled.isNotEmpty) {
+        return _negatePredicate(
+          compiled,
+          node.inputs['negated'] ?? node.inputs['negation'],
+        );
+      }
+    }
+
+    final valueReporter = reporterForInput(node, valueKey);
+    if (valueReporter?.type == BlockType.sqlSubqueryIn) {
+      return _negatePredicate(
+        _subqueryInPredicate(valueReporter!),
+        node.inputs['negated'] ?? node.inputs['negation'],
+      );
     }
 
     final column = '${node.inputs[columnKey] ?? ''}'.trim();
@@ -550,26 +864,47 @@ class SqliteDialectRenderer {
     final value = '${node.inputs[valueKey] ?? ''}'.trim();
     if (column.isEmpty ||
         (value.isEmpty && operator != 'IS NULL' && operator != 'IS NOT NULL')) {
-      return node.inputs['predicate'] as String? ?? fallback;
+      final predicate = node.inputs['predicate'] as String? ?? fallback;
+      return _negatePredicate(
+        predicate,
+        node.inputs['negated'] ?? node.inputs['negation'],
+      );
     }
     if (operator == 'IS NULL' || operator == 'IS NOT NULL') {
-      return '$column $operator';
+      return _negatePredicate(
+        '$column $operator',
+        node.inputs['negated'] ?? node.inputs['negation'],
+      );
     }
-    return '$column $operator $value';
+    final predicate = switch (operator) {
+      'IN' || 'NOT IN' => '$column $operator (${_inOperand(value)})',
+      'BETWEEN' || 'NOT BETWEEN' => '$column $operator $value',
+      _ => '$column $operator $value',
+    };
+    return _negatePredicate(
+      predicate,
+      node.inputs['negated'] ?? node.inputs['negation'],
+    );
   }
 
   String _compileStructuredPredicate(Map<String, dynamic> condition) {
     final nested = condition['conditions'];
     if (nested is List && nested.isNotEmpty) {
       final group = _compileStructuredConditions(nested, condition['match']);
-      return group.isEmpty ? '' : '($group)';
+      if (group.isEmpty) return '';
+      return _isNegated(condition['negated'] ?? condition['negation'])
+          ? 'NOT ($group)'
+          : '($group)';
     }
 
     final column = '${condition['column'] ?? ''}'.trim();
     if (column.isEmpty) return '';
     final operator = _normalizedComparisonOperator(condition['operator']);
     if (operator == 'IS NULL' || operator == 'IS NOT NULL') {
-      return '$column $operator';
+      return _negatePredicate(
+        '$column $operator',
+        condition['negated'] ?? condition['negation'],
+      );
     }
 
     if (operator == 'BETWEEN' || operator == 'NOT BETWEEN') {
@@ -582,7 +917,10 @@ class SqliteDialectRenderer {
           '${condition['upper'] ?? (values.length > 1 ? values[1] : '')}'
               .trim();
       if (lower.isEmpty || upper.isEmpty) return '';
-      return '$column $operator $lower AND $upper';
+      return _negatePredicate(
+        '$column $operator $lower AND $upper',
+        condition['negated'] ?? condition['negation'],
+      );
     }
 
     if (operator == 'IN' || operator == 'NOT IN') {
@@ -591,12 +929,18 @@ class SqliteDialectRenderer {
           ? rawValue.map((entry) => '$entry').join(', ')
           : '${rawValue ?? ''}'.trim();
       if (value.isEmpty) return '';
-      return '$column $operator ($value)';
+      return _negatePredicate(
+        '$column $operator (${_inOperand(value)})',
+        condition['negated'] ?? condition['negation'],
+      );
     }
 
     final value = '${condition['value'] ?? ''}'.trim();
     if (value.isEmpty) return '';
-    return '$column $operator $value';
+    return _negatePredicate(
+      '$column $operator $value',
+      condition['negated'] ?? condition['negation'],
+    );
   }
 
   String _compileStructuredConditions(List<dynamic> conditions, dynamic match) {
@@ -715,8 +1059,8 @@ class SqliteDialectRenderer {
   }
 
   String _selectPagination(BlockNode node, List<String> warnings) {
-    final rawLimit = node.inputs['limit'];
-    final rawOffset = node.inputs['offset'];
+    final rawLimit = _nonBlank(node.inputs['limit']);
+    final rawOffset = _nonBlank(node.inputs['offset']);
     if (rawLimit == null && rawOffset == null) return '';
 
     final limit = rawLimit == null ? null : int.tryParse('$rawLimit'.trim());
@@ -735,6 +1079,98 @@ class SqliteDialectRenderer {
     }
     if (limit == null) return ' LIMIT -1 OFFSET $offset';
     return offset == null ? ' LIMIT $limit' : ' LIMIT $limit OFFSET $offset';
+  }
+
+  String _limitFromInputs(BlockNode node, List<String> warnings) {
+    final rawCount = _nonBlank(node.inputs['count'] ?? node.inputs['limit']);
+    final rawOffset = _nonBlank(node.inputs['offset']);
+    final count = rawCount == null ? null : int.tryParse('$rawCount'.trim());
+    final offset = rawOffset == null ? null : int.tryParse('$rawOffset'.trim());
+    if (count == null || count < 0) {
+      warnings.add(
+        'LIMIT block "${node.id}" needs a non-negative integer count.',
+      );
+      return '';
+    }
+    if (rawOffset != null && (offset == null || offset < 0)) {
+      warnings.add(
+        'LIMIT block "${node.id}" has an invalid OFFSET. Use a non-negative integer.',
+      );
+      return 'LIMIT $count';
+    }
+    return offset == null ? 'LIMIT $count' : 'LIMIT $count OFFSET $offset';
+  }
+
+  dynamic _nonBlank(dynamic value) {
+    if (value == null) return null;
+    return '$value'.trim().isEmpty ? null : value;
+  }
+
+  String _negatePredicate(String predicate, dynamic negated) {
+    return _isNegated(negated) ? 'NOT ($predicate)' : predicate;
+  }
+
+  bool _isNegated(dynamic value) {
+    return _isEnabled(value) || '${value ?? ''}'.trim().toUpperCase() == 'NOT';
+  }
+
+  String _withoutOuterParentheses(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length >= 2 &&
+        trimmed.startsWith('(') &&
+        trimmed.endsWith(')')) {
+      return trimmed.substring(1, trimmed.length - 1).trim();
+    }
+    return trimmed;
+  }
+
+  String _inOperand(String value) {
+    final operand = _withoutOuterParentheses(value);
+    return operand.trimLeft().toUpperCase().startsWith('SELECT ')
+        ? _subquerySql(operand, fallback: operand)
+        : operand;
+  }
+
+  String _subqueryInPredicate(BlockNode node) {
+    final lhs =
+        node.inputs['lhs'] as String? ??
+        node.inputs['column'] as String? ??
+        'id';
+    final sql = _subquerySql(node.inputs['sql'], fallback: 'SELECT id FROM t');
+    return '$lhs IN ($sql)';
+  }
+
+  String _subquerySql(dynamic value, {required String fallback}) {
+    final sql = '${value ?? fallback}'.trim();
+    return sql.endsWith(';') ? sql.substring(0, sql.length - 1).trim() : sql;
+  }
+
+  String _insertRows(dynamic value) {
+    var rows = '${value ?? ''}'.trim();
+    if (rows.toUpperCase().startsWith('VALUES ')) {
+      rows = rows.substring('VALUES '.length).trimLeft();
+    }
+    if (rows.endsWith(';')) {
+      rows = rows.substring(0, rows.length - 1).trimRight();
+    }
+    if (rows.isEmpty) return '()';
+    return rows.startsWith('(') ? rows : '($rows)';
+  }
+
+  String _tableDefinition(dynamic value, {required String fallback}) {
+    var definition = '${value ?? fallback}'.trim();
+    if (definition.endsWith(';')) {
+      definition = definition.substring(0, definition.length - 1).trimRight();
+    }
+    if (definition.startsWith('(') && definition.endsWith(')')) {
+      definition = definition.substring(1, definition.length - 1).trim();
+    }
+    return definition.isEmpty ? fallback : definition;
+  }
+
+  bool _isSqlOptionEnabled(dynamic value, String sqlKeyword) {
+    return _isEnabled(value) ||
+        '${value ?? ''}'.trim().toUpperCase() == sqlKeyword;
   }
 
   bool _isEnabled(dynamic value) {
@@ -772,6 +1208,59 @@ class SqliteDialectRenderer {
     return '$expression AS "${alias.replaceAll('"', '""')}"';
   }
 
+  String _separatorBetween(BlockType current, BlockType next) {
+    if (current == BlockType.sqlWith || current == BlockType.sqlExplain) {
+      return ' ';
+    }
+    if (startsSqlStatement(current) && startsSqlStatement(next)) {
+      return '; ';
+    }
+    return ' ';
+  }
+
+  String _oneOf(dynamic value, Set<String> choices, String fallback) {
+    final normalized = '${value ?? ''}'.trim().toUpperCase();
+    return choices.contains(normalized) ? normalized : fallback;
+  }
+
+  String _trimSqlTerminator(String sql) {
+    return sql.trim().replaceFirst(RegExp(r';+\s*$'), '');
+  }
+
+  String _quoteSqlString(String value) {
+    final unquoted =
+        value.length >= 2 && value.startsWith("'") && value.endsWith("'")
+        ? value.substring(1, value.length - 1).replaceAll("''", "'")
+        : value;
+    return "'${unquoted.replaceAll("'", "''")}'";
+  }
+
+  String _quoteSqlIdentifier(String value) {
+    return '"${value.trim().replaceAll('"', '""')}"';
+  }
+
+  String _compilePragma(BlockNode node, List<String> warnings) {
+    final name = '${node.inputs['pragma'] ?? 'foreign_keys'}'
+        .trim()
+        .toLowerCase();
+    final value = '${node.inputs['value'] ?? ''}'.trim();
+    switch (name) {
+      case 'foreign_keys':
+        return 'PRAGMA foreign_keys = ${_oneOf(value, const <String>{'ON', 'OFF'}, 'ON')}';
+      case 'table_info':
+        return 'PRAGMA table_info(${_quoteSqlString(value.isEmpty ? 'table_name' : value)})';
+      case 'database_list':
+        return 'PRAGMA database_list';
+      case 'journal_mode':
+        return 'PRAGMA journal_mode = ${_oneOf(value, const <String>{'DELETE', 'TRUNCATE', 'PERSIST', 'MEMORY', 'WAL', 'OFF'}, 'WAL')}';
+      default:
+        warnings.add(
+          'Unsupported PRAGMA "$name" at block "${node.id}". Using foreign_keys = ON.',
+        );
+        return 'PRAGMA foreign_keys = ON';
+    }
+  }
+
   String _compileChildren(
     List<BlockNode> children, {
     required Map<String, NodeQlPluginBlock> pluginBlocks,
@@ -786,7 +1275,7 @@ class SqliteDialectRenderer {
           pluginBlocks: pluginBlocks,
           warnings: warnings,
           visited: visited == null ? null : <String>{...visited},
-        ),
+        ).sql,
       );
     }
 
@@ -835,10 +1324,15 @@ class SqliteDialectRenderer {
 }
 
 class SqliteRenderResult {
-  const SqliteRenderResult({required this.sql, required this.warnings});
+  const SqliteRenderResult({
+    required this.sql,
+    required this.warnings,
+    this.sourceMap = const <SqlNodeSourceSpan>[],
+  });
 
   final String sql;
   final List<String> warnings;
+  final List<SqlNodeSourceSpan> sourceMap;
 }
 
 class SqlCompileResult {
@@ -846,9 +1340,22 @@ class SqlCompileResult {
     required this.program,
     required this.sql,
     required this.warnings,
+    this.sourceMap = const <SqlNodeSourceSpan>[],
   });
 
   final SqliteProgram program;
   final String sql;
   final List<String> warnings;
+  final List<SqlNodeSourceSpan> sourceMap;
+}
+
+class _RenderedSqlFragment {
+  const _RenderedSqlFragment({required this.sql, required this.sourceMap});
+
+  const _RenderedSqlFragment.empty()
+    : sql = '',
+      sourceMap = const <SqlNodeSourceSpan>[];
+
+  final String sql;
+  final List<SqlNodeSourceSpan> sourceMap;
 }

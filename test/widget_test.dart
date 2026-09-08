@@ -82,7 +82,13 @@ void main() {
       find.text(
         'Checks whether a value matches any value returned by a subquery.',
       ),
-      findsNothing,
+      findsOneWidget,
+    );
+    await tester.enterText(paletteSearch, 'sqlCreateIndex');
+    await tester.pump();
+    expect(
+      find.text('Creates an optionally unique index over one or more columns.'),
+      findsOneWidget,
     );
     await tester.enterText(paletteSearch, '');
     await tester.pump();
@@ -137,13 +143,31 @@ void main() {
     final customSqlButton = find.byKey(
       const ValueKey<String>('toggle-custom-sql'),
     );
-    expect(tester.widget<IconButton>(customSqlButton).onPressed, isNull);
+    expect(tester.widget<IconButton>(customSqlButton).onPressed, isNotNull);
     expect(
       find.byKey(const ValueKey<String>('custom-sql-input')),
       findsNothing,
     );
+    await tester.tap(customSqlButton);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('custom-sql-input')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey<String>('sql-ide-pane')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('full-output-preview')),
+      findsOneWidget,
+    );
+    expect(find.text('Output preview'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('open-database-browser')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('close-sql-ide')));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('custom-sql-input')),
       findsNothing,
     );
 
@@ -621,6 +645,11 @@ class _ReadyTranslationController extends TranslationController {
       'runtime.sqlCommandOutput': 'SQLite-Command Output',
       'runtime.customSql': 'Custom SQLite',
       'runtime.customSqlHint': 'Write SQLite directly',
+      'runtime.localCompletion': 'Local smart completion',
+      'runtime.ideTitle': 'SQLite editor',
+      'runtime.ideSubtitle': 'Write and run SQLite with schema completion',
+      'runtime.outputPreview': 'Output preview',
+      'runtime.showNodeWorkspace': 'Show visual node workspace',
       'runtime.showGeneratedSql': 'Show generated SQLite',
       'runtime.runCustomSql': 'Run custom SQLite',
       'runtime.copySql': 'Copy SQLite',

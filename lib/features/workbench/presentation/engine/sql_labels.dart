@@ -33,19 +33,44 @@ String sqlLabelFor(
       _ => 'TEXT {text}',
     };
   }
+  if (type == BlockType.sqlPragma) {
+    final pragma = '${inputs['pragma'] ?? 'foreign_keys'}'.toLowerCase();
+    final de = languageCode.toLowerCase().startsWith('de');
+    if (pragma == 'database_list') {
+      return mode == SqlAbstractionMode.advanced
+          ? 'PRAGMA [pragma]'
+          : (de ? 'zeige [pragma]' : 'show [pragma]');
+    }
+    if (pragma == 'table_info') {
+      return mode == SqlAbstractionMode.advanced
+          ? 'PRAGMA [pragma]([pragma_value])'
+          : (de
+                ? 'zeige [pragma] fuer [pragma_value]'
+                : 'show [pragma] for [pragma_value]');
+    }
+    return mode == SqlAbstractionMode.advanced
+        ? 'PRAGMA [pragma] = [pragma_value]'
+        : (de
+              ? 'konfiguriere [pragma] als [pragma_value]'
+              : 'configure [pragma] as [pragma_value]');
+  }
   final simpleLang = _simpleByLanguage(languageCode);
   final genericJoinUsesCondition =
       '${inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase() != 'CROSS' &&
       '${inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase() != 'NATURAL';
   final adv = <BlockType, String>{
     BlockType.eventGreenFlag: 'EXECUTE QUERY',
-    BlockType.sqlSelect: 'SELECT [columns] FROM [table_name] AS [table_alias]',
+    BlockType.sqlSelect:
+        'SELECT [select_mode] [columns] FROM [table_name] AS [table_alias]',
     BlockType.sqlColumn: '[column]',
     BlockType.sqlText: 'TEXT {text}',
     BlockType.sqlAlias: '{value} AS [alias]',
     BlockType.sqlFrom: 'FROM [table_name] AS [table_alias]',
-    BlockType.sqlWhere: 'WHERE [column] [operator] [value]',
+    BlockType.sqlWhere: 'WHERE [negation] [column] [operator] [value]',
+    BlockType.sqlAnd: 'AND [negation] [column] [operator] [value]',
+    BlockType.sqlOr: 'OR [negation] [column] [operator] [value]',
     BlockType.sqlOrderBy: 'ORDER BY [column] [ASC|DESC]',
+    BlockType.sqlLimit: 'LIMIT [count] OFFSET [offset]',
     BlockType.sqlGroupBy: 'GROUP BY [column]',
     BlockType.sqlHaving: 'HAVING [aggregate]([column]) [operator] [value]',
     BlockType.sqlJoin: genericJoinUsesCondition
@@ -64,23 +89,50 @@ String sqlLabelFor(
         'SELF JOIN [table] AS [table_alias]\nON [left_column] [operator] [right_column]',
     BlockType.sqlNaturalJoin: 'NATURAL JOIN [table] AS [table_alias]',
     BlockType.sqlInsert: 'INSERT INTO [table] ([columns]) VALUES ([values])',
+    BlockType.sqlInsertOrReplace:
+        'INSERT OR REPLACE INTO [table] ([columns]) VALUES ([values])',
+    BlockType.sqlUpsert:
+        'INSERT INTO [table] ([columns]) VALUES ([values])\nON CONFLICT ([conflict_columns]) [action] SET [assignments]',
     BlockType.sqlUpdate:
         'UPDATE [table] SET [column] = [value] WHERE [where_column] [operator] [where_value]',
     BlockType.sqlDelete:
         'DELETE FROM [table] WHERE [where_column] [operator] [where_value]',
     BlockType.sqlCreateTable:
-        'CREATE TABLE [table_name] ([column_definitions])',
+        'CREATE TABLE [if_not_exists] [table_name]\n([column_definitions])',
+    BlockType.sqlCreateIndex:
+        'CREATE [unique] INDEX [if_not_exists] [name]\nON [table] ([columns])',
+    BlockType.sqlDropIndex: 'DROP INDEX [if_exists] [name]',
+    BlockType.sqlCreateView:
+        'CREATE [temporary] VIEW [if_not_exists] [name]\nAS [sql]',
+    BlockType.sqlDropView: 'DROP VIEW [if_exists] [name]',
+    BlockType.sqlCreateTrigger:
+        'CREATE [temporary] TRIGGER [if_not_exists] [name]\n[timing] [event] ON [table] WHEN [when] DO [body]',
+    BlockType.sqlDropTrigger: 'DROP TRIGGER [if_exists] [name]',
+    BlockType.sqlCreateVirtualTable:
+        'CREATE VIRTUAL TABLE [if_not_exists] [table]\nUSING [module] ([arguments])',
     BlockType.sqlAlterTable:
-        'ALTER TABLE [table_name] ADD [column_name] [datatype]',
-    BlockType.sqlDropTable: 'DROP TABLE [table_name]',
+        'ALTER TABLE [table_name] [alter_action] [alter_value]',
+    BlockType.sqlDropTable: 'DROP TABLE [if_exists] [table_name]',
     BlockType.sqlTruncate: 'TRUNCATE TABLE [table_name]',
     BlockType.sqlGrant: 'GRANT [privilege] ON [table] TO [user]',
     BlockType.sqlRevoke: 'REVOKE [privilege] ON [table] FROM [user]',
     BlockType.sqlSavepoint: 'SAVEPOINT [name]',
     BlockType.sqlRollbackToSavepoint: 'ROLLBACK TO SAVEPOINT [name]',
+    BlockType.sqlReleaseSavepoint: 'RELEASE SAVEPOINT [name]',
+    BlockType.sqlBeginTransaction: 'BEGIN [behavior] TRANSACTION',
     BlockType.sqlCommit: 'COMMIT',
+    BlockType.sqlEndTransaction: 'END TRANSACTION',
     BlockType.sqlRollback: 'ROLLBACK',
-    BlockType.sqlUnion: 'UNION [sql]',
+    BlockType.sqlPragma: 'PRAGMA [pragma] [pragma_value]',
+    BlockType.sqlAttachDatabase: 'ATTACH DATABASE [path] AS [schema]',
+    BlockType.sqlDetachDatabase: 'DETACH DATABASE [schema]',
+    BlockType.sqlVacuum: 'VACUUM [schema]',
+    BlockType.sqlReindex: 'REINDEX [target]',
+    BlockType.sqlAnalyze: 'ANALYZE [target]',
+    BlockType.sqlExplain: '[explain_mode]',
+    BlockType.sqlWith: 'WITH [recursive] [name] ([columns]) AS ([sql])',
+    BlockType.sqlValues: 'VALUES [values]',
+    BlockType.sqlUnion: 'UNION [set_mode] [sql]',
     BlockType.sqlIntersect: 'INTERSECT [sql]',
     BlockType.sqlExcept: 'EXCEPT [sql]',
     BlockType.sqlSubqueryIn: '[column] IN ([sql])',
@@ -122,13 +174,17 @@ String sqlLabelFor(
   final simpleDe = <BlockType, String>{
     BlockType.eventGreenFlag: 'QUERY AUSFUEHREN',
     BlockType.sqlSelect:
-        'Zeige [Spalten] aus Tabelle [table_name] als [table_alias]',
+        'Zeige [select_mode] [Spalten] aus Tabelle [table_name] als [table_alias]',
     BlockType.sqlColumn: '[Spalte]',
     BlockType.sqlText: 'Text {text}',
     BlockType.sqlAlias: '{value} als [Alias]',
     BlockType.sqlFrom: 'aus Tabelle [table_name] als [table_alias]',
-    BlockType.sqlWhere: 'filtere Zeilen\n[Spalte] [operator] [value]',
+    BlockType.sqlWhere:
+        'filtere Zeilen\n[negation] [Spalte] [operator] [value]',
+    BlockType.sqlAnd: 'und zusätzlich\n[negation] [Spalte] [operator] [value]',
+    BlockType.sqlOr: 'oder alternativ\n[negation] [Spalte] [operator] [value]',
     BlockType.sqlOrderBy: 'sortiere nach\n[Spalte] [aufsteigend|absteigend]',
+    BlockType.sqlLimit: 'zeige höchstens [count]\nüberspringe [offset]',
     BlockType.sqlGroupBy: 'bilde Gruppen nach [Spalte]',
     BlockType.sqlHaving:
         'filtere Gruppen\n[aggregate] von [Spalte] [operator] [value]',
@@ -150,15 +206,30 @@ String sqlLabelFor(
     BlockType.sqlNaturalJoin:
         'verbinde automatisch mit [table] als [table_alias]',
     BlockType.sqlInsert: 'fuege ein in [table]\n[Spalten] = [values]',
+    BlockType.sqlInsertOrReplace:
+        'fuege ein oder ersetze in [table]\n[Spalten] = [values]',
+    BlockType.sqlUpsert:
+        'fuege [Spalten] = [values] in [table] ein\nbei Konflikt in [conflict_columns] [action]: [assignments]',
     BlockType.sqlUpdate:
         'aendere [table]: [Spalte] = [value]\nwenn [Filter_Spalte] [operator] [where_value]',
     BlockType.sqlDelete:
         'loesche aus [table]\nwenn [Filter_Spalte] [operator] [where_value]',
     BlockType.sqlCreateTable:
-        'erstelle Tabelle [table_name]\nmit Spalten [Spaltendefinitionen]',
+        'erstelle Tabelle [if_not_exists] [table_name]\nmit Spalten [Spaltendefinitionen]',
+    BlockType.sqlCreateIndex:
+        'erstelle [unique] Index [if_not_exists] [name]\nauf [table] für [Spalten]',
+    BlockType.sqlDropIndex: 'loesche Index [if_exists] [name]',
+    BlockType.sqlCreateView: 'erstelle Sicht [if_not_exists] [name]\naus [sql]',
+    BlockType.sqlDropView: 'loesche Sicht [if_exists] [name]',
+    BlockType.sqlCreateTrigger:
+        'erstelle Automatik [name]\n[timing] [event] auf [table]: [body]',
+    BlockType.sqlDropTrigger: 'loesche Automatik [if_exists] [name]',
+    BlockType.sqlCreateVirtualTable:
+        'erstelle Spezialtabelle [table]\nmit [module] fuer [arguments]',
     BlockType.sqlAlterTable:
-        'aendere Tabelle [table_name]\nfuege [Spaltenname] als [datatype] hinzu',
-    BlockType.sqlDropTable: 'loesche Tabelle [table_name] permanent',
+        'aendere Tabelle [table_name]\n[alter_action] [alter_value]',
+    BlockType.sqlDropTable:
+        'loesche Tabelle [if_exists] [table_name] permanent',
     BlockType.sqlTruncate: 'leere Tabelle [table_name] komplett',
     BlockType.sqlGrant: 'erlaube das Recht [privilege] auf [table] fuer [user]',
     BlockType.sqlRevoke:
@@ -166,9 +237,22 @@ String sqlLabelFor(
     BlockType.sqlSavepoint: 'setze Sicherungspunkt [name]',
     BlockType.sqlRollbackToSavepoint:
         'springe zurueck zu Sicherungspunkt [name]',
-    BlockType.sqlCommit: 'bestaetige Transaktion',
-    BlockType.sqlRollback: 'verwerfe Transaktion',
-    BlockType.sqlUnion: 'vereine mit [sql]',
+    BlockType.sqlReleaseSavepoint: 'gib Sicherungspunkt [name] frei',
+    BlockType.sqlBeginTransaction: 'starte Snapshot [behavior]',
+    BlockType.sqlCommit: 'uebernehme Snapshot dauerhaft',
+    BlockType.sqlEndTransaction: 'beende und uebernehme Snapshot',
+    BlockType.sqlRollback: 'stelle Zustand vor Snapshot wieder her',
+    BlockType.sqlPragma: 'konfiguriere SQLite: [pragma] [pragma_value]',
+    BlockType.sqlAttachDatabase: 'binde Datenbank [path] als [schema] ein',
+    BlockType.sqlDetachDatabase: 'trenne Datenbank [schema]',
+    BlockType.sqlVacuum: 'raeume Datenbank [schema] auf',
+    BlockType.sqlReindex: 'baue Indizes [target] neu',
+    BlockType.sqlAnalyze: 'aktualisiere Statistiken fuer [target]',
+    BlockType.sqlExplain: 'zeige Abfrageplan [explain_mode]',
+    BlockType.sqlWith:
+        'definiere [recursive] Zwischenergebnis [name] als ([sql])',
+    BlockType.sqlValues: 'erzeuge Werte [values]',
+    BlockType.sqlUnion: 'vereine [set_mode] mit [sql]',
     BlockType.sqlIntersect: 'schneide mit [sql]',
     BlockType.sqlExcept: 'entferne Treffer aus [sql]',
     BlockType.sqlSubqueryIn: '[Spalte] ist in ([sql])',
@@ -210,13 +294,16 @@ String sqlLabelFor(
   final simpleEn = <BlockType, String>{
     BlockType.eventGreenFlag: 'RUN QUERY',
     BlockType.sqlSelect:
-        'Show [columns] from table [table_name] as [table_alias]',
+        'Show [select_mode] [columns] from table [table_name] as [table_alias]',
     BlockType.sqlColumn: '[column]',
     BlockType.sqlText: 'text {text}',
     BlockType.sqlAlias: '{value} as [alias]',
     BlockType.sqlFrom: 'from table [table_name] as [table_alias]',
-    BlockType.sqlWhere: 'filter rows\n[column] [operator] [value]',
+    BlockType.sqlWhere: 'filter rows\n[negation] [column] [operator] [value]',
+    BlockType.sqlAnd: 'and also\n[negation] [column] [operator] [value]',
+    BlockType.sqlOr: 'or alternatively\n[negation] [column] [operator] [value]',
     BlockType.sqlOrderBy: 'sort by\n[column] [ascending|descending]',
+    BlockType.sqlLimit: 'show at most [count]\nskip [offset]',
     BlockType.sqlGroupBy: 'make groups by [column]',
     BlockType.sqlHaving:
         'filter groups\n[aggregate] of [column] [operator] [value]',
@@ -236,23 +323,49 @@ String sqlLabelFor(
         'join [table] as [table_alias] with itself\non [left_column] [operator] [right_column]',
     BlockType.sqlNaturalJoin: 'auto-join with [table] as [table_alias]',
     BlockType.sqlInsert: 'add to [table]\n[columns] = [values]',
+    BlockType.sqlInsertOrReplace:
+        'insert or replace in [table]\n[columns] = [values]',
+    BlockType.sqlUpsert:
+        'insert [columns] = [values] into [table]\non conflict in [conflict_columns] [action]: [assignments]',
     BlockType.sqlUpdate:
         'change [table]: [column] = [value]\nwhen [where_column] [operator] [where_value]',
     BlockType.sqlDelete:
         'delete from [table]\nwhen [where_column] [operator] [where_value]',
     BlockType.sqlCreateTable:
-        'create table [table_name]\nwith columns [column_definitions]',
+        'create table [if_not_exists] [table_name]\nwith columns [column_definitions]',
+    BlockType.sqlCreateIndex:
+        'create [unique] index [if_not_exists] [name]\non [table] for [columns]',
+    BlockType.sqlDropIndex: 'drop index [if_exists] [name]',
+    BlockType.sqlCreateView: 'create view [if_not_exists] [name]\nfrom [sql]',
+    BlockType.sqlDropView: 'drop view [if_exists] [name]',
+    BlockType.sqlCreateTrigger:
+        'create automation [name]\n[timing] [event] on [table]: [body]',
+    BlockType.sqlDropTrigger: 'drop automation [if_exists] [name]',
+    BlockType.sqlCreateVirtualTable:
+        'create special table [table]\nusing [module] for [arguments]',
     BlockType.sqlAlterTable:
-        'change table [table_name]\nadd [column_name] as [datatype]',
-    BlockType.sqlDropTable: 'delete table [table_name] permanently',
+        'change table [table_name]\n[alter_action] [alter_value]',
+    BlockType.sqlDropTable: 'delete table [if_exists] [table_name] permanently',
     BlockType.sqlTruncate: 'clear table [table_name] completely',
     BlockType.sqlGrant: 'allow [privilege] on [table] for [user]',
     BlockType.sqlRevoke: 'remove [privilege] on [table] for [user]',
     BlockType.sqlSavepoint: 'set savepoint [name]',
     BlockType.sqlRollbackToSavepoint: 'go back to savepoint [name]',
-    BlockType.sqlCommit: 'confirm transaction',
-    BlockType.sqlRollback: 'cancel transaction',
-    BlockType.sqlUnion: 'combine with [sql]',
+    BlockType.sqlReleaseSavepoint: 'release savepoint [name]',
+    BlockType.sqlBeginTransaction: 'start snapshot [behavior]',
+    BlockType.sqlCommit: 'keep snapshot changes',
+    BlockType.sqlEndTransaction: 'finish and keep snapshot changes',
+    BlockType.sqlRollback: 'restore state before snapshot',
+    BlockType.sqlPragma: 'configure SQLite: [pragma] [pragma_value]',
+    BlockType.sqlAttachDatabase: 'attach database [path] as [schema]',
+    BlockType.sqlDetachDatabase: 'detach database [schema]',
+    BlockType.sqlVacuum: 'clean up database [schema]',
+    BlockType.sqlReindex: 'rebuild indexes [target]',
+    BlockType.sqlAnalyze: 'refresh statistics for [target]',
+    BlockType.sqlExplain: 'show query plan [explain_mode]',
+    BlockType.sqlWith: 'define [recursive] temporary result [name] as ([sql])',
+    BlockType.sqlValues: 'create values [values]',
+    BlockType.sqlUnion: 'combine [set_mode] with [sql]',
     BlockType.sqlIntersect: 'keep overlap with [sql]',
     BlockType.sqlExcept: 'remove matches from [sql]',
     BlockType.sqlSubqueryIn: '[column] is in ([sql])',
@@ -295,8 +408,12 @@ String sqlLabelFor(
   final simple = {...simpleBase, ...?simpleLang};
   final map = mode == SqlAbstractionMode.advanced ? adv : simple;
   if (type == BlockType.sqlSelect && inputs['separate_from'] == true) {
-    if (mode == SqlAbstractionMode.advanced) return 'SELECT [columns]';
-    return languageCode == 'de' ? 'Zeige [Spalten]' : 'Show [columns]';
+    if (mode == SqlAbstractionMode.advanced) {
+      return 'SELECT [select_mode] [columns]';
+    }
+    return languageCode == 'de'
+        ? 'Zeige [select_mode] [Spalten]'
+        : 'Show [select_mode] [columns]';
   }
   return map[type] ?? simpleBase[type] ?? adv[type] ?? type.name;
 }
@@ -307,17 +424,17 @@ Map<BlockType, String>? _simpleByLanguage(String languageCode) {
       return <BlockType, String>{
         BlockType.eventGreenFlag: 'EXECUTER REQUETE',
         BlockType.sqlSelect:
-            'affiche [columns] de la table [table_name] comme [table_alias]',
-        BlockType.sqlWhere: 'si [condition]',
-        BlockType.sqlOrderBy: 'trie par [column] {croissant|décroissant}',
+            'affiche [select_mode] [columns] de la table [table_name] comme [table_alias]',
+        BlockType.sqlWhere: 'si [negation] [column] [operator] [value]',
+        BlockType.sqlOrderBy: 'trie par [column] [ascending|descending]',
       };
     case 'es':
       return <BlockType, String>{
         BlockType.eventGreenFlag: 'EJECUTAR CONSULTA',
         BlockType.sqlSelect:
-            'muestra [columns] de tabla [table_name] como [table_alias]',
-        BlockType.sqlWhere: 'si [condition]',
-        BlockType.sqlOrderBy: 'ordena por [column] {ascendente|descendente}',
+            'muestra [select_mode] [columns] de tabla [table_name] como [table_alias]',
+        BlockType.sqlWhere: 'si [negation] [column] [operator] [value]',
+        BlockType.sqlOrderBy: 'ordena por [column] [ascending|descending]',
       };
     default:
       return null;

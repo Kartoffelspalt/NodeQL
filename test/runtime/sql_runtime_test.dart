@@ -258,6 +258,50 @@ void main() {
   });
 
   test(
+    'enforces foreign keys and ON DELETE CASCADE on every execution',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'nodeql_foreign_keys',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final path = '${tempDir.path}${Platform.pathSeparator}relations.db';
+      sqlite3.open(path).close();
+
+      final controller = SqlRuntimeController();
+      await controller.attachDatabasePath(path);
+      final setup = await controller.executeWithSnapshot('''
+      CREATE TABLE kunden (
+        kunden_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vorname TEXT NOT NULL
+      );
+      CREATE TABLE bestellungen (
+        bestell_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kunden_id INTEGER NOT NULL,
+        gesamtbetrag REAL NOT NULL CHECK (gesamtbetrag >= 0),
+        FOREIGN KEY (kunden_id) REFERENCES kunden(kunden_id)
+          ON DELETE CASCADE
+      );
+      CREATE INDEX idx_bestellungen_kunden
+        ON bestellungen(kunden_id);
+      INSERT INTO kunden (vorname) VALUES ('Max');
+      INSERT INTO bestellungen (kunden_id, gesamtbetrag)
+        VALUES (1, 600.00), (1, 500.00);
+    ''');
+      expect(setup.success, isTrue);
+
+      final deletion = await controller.executeWithSnapshot(
+        'DELETE FROM kunden WHERE kunden_id = 1;',
+      );
+      expect(deletion.success, isTrue);
+
+      await controller.executeWithSnapshot(
+        'SELECT COUNT(*) AS count FROM bestellungen;',
+      );
+      expect(controller.state.lastRows.single['count'], '0');
+    },
+  );
+
+  test(
     'limits large SELECT previews while executing on a worker isolate',
     () async {
       final tempDir = await Directory.systemTemp.createTemp(
@@ -292,4 +336,285 @@ void main() {
       expect(controller.state.lastMessage, 'OK (showing first 500 rows)');
     },
   );
+
+  test(
+    'executes replace, upsert, trigger and view nodes as one visual program',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'nodeql_extended_program',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final path = '${tempDir.path}${Platform.pathSeparator}extended.db';
+      sqlite3.open(path).close();
+
+      OperatorBlock operation(
+        String id,
+        BlockType type,
+        Map<String, dynamic> inputs,
+      ) => OperatorBlock(
+        id: id,
+        position: Offset.zero,
+        operatorType: type,
+        inputs: inputs,
+      );
+
+      final createItems = operation('create-items', BlockType.sqlCreateTable, {
+        'table': 'items',
+        'definition': 'id INTEGER PRIMARY KEY, value TEXT NOT NULL',
+      });
+      final createAudit = operation('create-audit', BlockType.sqlCreateTable, {
+        'table': 'audit',
+        'definition': 'item_id INTEGER NOT NULL',
+      });
+      final trigger = operation('trigger', BlockType.sqlCreateTrigger, {
+        'name': 'audit_item',
+        'timing': 'AFTER',
+        'event': 'INSERT',
+        'table': 'items',
+        'body': 'INSERT INTO audit (item_id) VALUES (NEW.id)',
+      });
+      final insert = operation('insert', BlockType.sqlInsert, {
+        'table': 'items',
+        'columns': 'id, value',
+        'values': "(1, 'first')",
+      });
+      final replace = operation('replace', BlockType.sqlInsertOrReplace, {
+        'table': 'items',
+        'columns': 'id, value',
+        'values': "(1, 'replaced')",
+      });
+      final upsert = operation('upsert', BlockType.sqlUpsert, {
+        'table': 'items',
+        'columns': 'id, value',
+        'values': "(1, 'updated')",
+        'conflict_columns': 'id',
+        'assignments': 'value = excluded.value',
+      });
+      final view = operation('view', BlockType.sqlCreateView, {
+        'name': 'item_view',
+        'sql': 'SELECT id, value FROM items',
+      });
+      final select = operation('select', BlockType.sqlSelect, {
+        'columns': 'id, value',
+        'table': 'item_view',
+      });
+      createItems.next = createAudit;
+      createAudit.next = trigger;
+      trigger.next = insert;
+      insert.next = replace;
+      replace.next = upsert;
+      upsert.next = view;
+      view.next = select;
+      final root = EventBlock(id: 'run-extended', position: Offset.zero)
+        ..next = createItems;
+
+      final controller = SqlRuntimeController();
+      await controller.attachDatabasePath(path);
+      await controller.executeProgram(
+        const SqliteProgramCompiler().compileWorkspace(<BlockNode>[
+          root,
+        ]).program,
+      );
+
+      expect(controller.state.lastMessage, 'OK');
+      expect(controller.state.lastRows, <Map<String, String>>[
+        <String, String>{'id': '1', 'value': 'updated'},
+      ]);
+      await controller.executeWithSnapshot(
+        'SELECT COUNT(*) AS count FROM audit;',
+      );
+      expect(controller.state.lastRows.single['count'], '2');
+    },
+  );
+
+  test('snapshot TCL restores to a named point inside one chain', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'nodeql_snapshot_tcl',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+    final path = '${tempDir.path}${Platform.pathSeparator}snapshot.db';
+    final database = sqlite3.open(path);
+    database.execute(
+      'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL);',
+    );
+    database.close();
+
+    OperatorBlock operation(
+      String id,
+      BlockType type, [
+      Map<String, dynamic> inputs = const <String, dynamic>{},
+    ]) => OperatorBlock(
+      id: id,
+      position: Offset.zero,
+      operatorType: type,
+      inputs: inputs,
+    );
+
+    final begin = operation('begin', BlockType.sqlBeginTransaction, {
+      'behavior': 'IMMEDIATE',
+    });
+    final kept = operation('kept', BlockType.sqlInsert, {
+      'table': 'notes',
+      'columns': 'body',
+      'values': "('kept')",
+    });
+    final savepoint = operation('savepoint', BlockType.sqlSavepoint, {
+      'name': 'before_optional_change',
+    });
+    final discarded = operation('discarded', BlockType.sqlInsert, {
+      'table': 'notes',
+      'columns': 'body',
+      'values': "('discarded')",
+    });
+    final restore = operation('restore', BlockType.sqlRollbackToSavepoint, {
+      'name': 'before_optional_change',
+    });
+    final release = operation('release', BlockType.sqlReleaseSavepoint, {
+      'name': 'before_optional_change',
+    });
+    final commit = operation('commit', BlockType.sqlCommit);
+    final select = operation('select', BlockType.sqlSelect, {
+      'columns': 'body',
+      'table': 'notes',
+    });
+    begin.next = kept;
+    kept.next = savepoint;
+    savepoint.next = discarded;
+    discarded.next = restore;
+    restore.next = release;
+    release.next = commit;
+
+    final controller = SqlRuntimeController();
+    await controller.attachDatabasePath(path);
+    await controller.executeProgram(
+      const SqliteProgramCompiler().compileWorkspace(<BlockNode>[
+        EventBlock(id: 'run-snapshot', position: Offset.zero)..next = begin,
+      ]).program,
+    );
+    expect(controller.state.lastMessage, 'OK');
+
+    await controller.executeProgram(
+      const SqliteProgramCompiler().compileWorkspace(<BlockNode>[
+        EventBlock(id: 'run-select', position: Offset.zero)..next = select,
+      ]).program,
+    );
+    expect(controller.state.lastRows, <Map<String, String>>[
+      <String, String>{'body': 'kept'},
+    ]);
+  });
+
+  test('executes PRAGMA, WITH, VALUES, EXPLAIN, ATTACH and FTS5 nodes', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'nodeql_sqlite_tools',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+    final path = '${tempDir.path}${Platform.pathSeparator}main.db';
+    final attachedPath = '${tempDir.path}${Platform.pathSeparator}archive.db';
+    final database = sqlite3.open(path);
+    database.execute(
+      'CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT NOT NULL);',
+    );
+    database.close();
+    final archive = sqlite3.open(attachedPath);
+    archive.execute(
+      "CREATE TABLE archived (id INTEGER PRIMARY KEY, value TEXT); "
+      "INSERT INTO archived VALUES (7, 'stored');",
+    );
+    archive.close();
+
+    OperatorBlock operation(
+      String id,
+      BlockType type, [
+      Map<String, dynamic> inputs = const <String, dynamic>{},
+    ]) => OperatorBlock(
+      id: id,
+      position: Offset.zero,
+      operatorType: type,
+      inputs: inputs,
+    );
+    SqliteProgram program(BlockNode first) =>
+        const SqliteProgramCompiler().compileWorkspace(<BlockNode>[
+          EventBlock(id: 'run-${first.id}', position: Offset.zero)
+            ..next = first,
+        ]).program;
+
+    final controller = SqlRuntimeController();
+    await controller.attachDatabasePath(path);
+
+    await controller.executeProgram(
+      program(
+        operation('pragma', BlockType.sqlPragma, {
+          'pragma': 'table_info',
+          'value': 'items',
+        }),
+      ),
+    );
+    expect(controller.state.lastRows.map((row) => row['name']), <String?>[
+      'id',
+      'value',
+    ]);
+
+    await controller.executeProgram(
+      program(
+        operation('values', BlockType.sqlValues, {
+          'values': "(1, 'A'), (2, 'B')",
+        }),
+      ),
+    );
+    expect(controller.state.lastRows, hasLength(2));
+    expect(controller.state.lastRows.first.values, <String>['1', 'A']);
+
+    await controller.executeProgram(
+      program(
+        operation('with', BlockType.sqlWith, {
+          'name': 'numbers',
+          'columns': 'n',
+          'sql': 'VALUES (1), (2)',
+          'statement': 'SELECT SUM(n) AS total FROM numbers',
+        }),
+      ),
+    );
+    expect(controller.state.lastRows.single['total'], '3');
+
+    final explain = operation('explain', BlockType.sqlExplain, {
+      'mode': 'EXPLAIN QUERY PLAN',
+    });
+    explain.next = operation('select-items', BlockType.sqlSelect, {
+      'columns': '*',
+      'table': 'items',
+    });
+    await controller.executeProgram(program(explain));
+    expect(controller.state.lastRows, isNotEmpty);
+    expect(controller.state.lastRows.first, contains('detail'));
+
+    final attach = operation('attach', BlockType.sqlAttachDatabase, {
+      'path': attachedPath,
+      'schema': 'archive',
+    });
+    final attachedSelect = operation('attached-select', BlockType.sqlSelect, {
+      'columns': 'value',
+      'table': 'archive.archived',
+    });
+    attach.next = attachedSelect;
+    await controller.executeProgram(program(attach));
+    expect(controller.state.lastRows.single['value'], 'stored');
+
+    await controller.executeProgram(
+      program(
+        operation('fts', BlockType.sqlCreateVirtualTable, {
+          'table': 'search_docs',
+          'module': 'FTS5',
+          'arguments': 'title, body',
+        }),
+      ),
+    );
+    expect(controller.state.lastMessage, 'OK');
+    await controller.executeWithSnapshot(
+      "INSERT INTO search_docs (title, body) VALUES ('SQLite', 'Node search');",
+    );
+    await controller.executeWithSnapshot(
+      "SELECT title FROM search_docs WHERE search_docs MATCH 'sqlite';",
+    );
+    expect(controller.state.lastRows.single['title'], 'SQLite');
+  });
 }

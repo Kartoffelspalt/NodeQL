@@ -137,10 +137,32 @@ void main() {
         const <String, dynamic>{},
         'de',
       ),
-      'Zeige [Spalten] aus Tabelle [table_name] als [table_alias]',
+      'Zeige [select_mode] [Spalten] aus Tabelle [table_name] als [table_alias]',
     );
     expect(simpleAllColumnsLabel('de-DE'), 'Alles');
     expect(simpleAllColumnsLabel('en'), 'Everything');
+  });
+
+  test('allows boolean filters and LIMIT in query order', () {
+    expect(canFollowInSqlChain(BlockType.sqlWhere, BlockType.sqlAnd), isTrue);
+    expect(canFollowInSqlChain(BlockType.sqlAnd, BlockType.sqlOr), isTrue);
+    expect(canFollowInSqlChain(BlockType.sqlOr, BlockType.sqlOrderBy), isTrue);
+    expect(
+      canFollowInSqlChain(BlockType.sqlOrderBy, BlockType.sqlLimit),
+      isTrue,
+    );
+    expect(
+      canFollowInSqlChain(BlockType.sqlUnion, BlockType.sqlOrderBy),
+      isTrue,
+    );
+    expect(
+      canFollowInSqlChain(BlockType.sqlOrderBy, BlockType.sqlUnion),
+      isFalse,
+    );
+    expect(
+      canFollowInSqlChain(BlockType.sqlLimit, BlockType.sqlWhere),
+      isFalse,
+    );
   });
 
   test('simple German labels use localized column placeholders', () {
