@@ -8,6 +8,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - No unreleased changes yet.
 
+## [0.3.6] - 2026-08-31
+
+### Added
+
+- Added a graphical table builder to the database browser's Simple Mode with
+  editable column names, SQLite data types, primary keys, required values, and
+  unique constraints.
+- Added a live, read-only SQLite preview to the graphical table builder.
+- Added a raw `CREATE TABLE` workspace to Advanced Mode for users who want to
+  write the complete SQLite statement themselves.
+- Added validation for missing table and column names and duplicate columns.
+
+### Changed
+
+- Kept the database browser out of the visible workbench UI and made it
+  accessible through the `D`, `B`, `B` keyboard sequence.
+- Kept the separate Custom SQLite control visible but disabled for this
+  release.
+- Refreshed the browser schema immediately after successful table creation.
+- Improved the database browser layout for narrow windows, including stacked
+  object metadata and pagination controls.
+
+### Fixed
+
+- Improved SQLite statement classification so writable statements are detected
+  through SQLite instead of relying only on SQL keywords.
+- Made dependent multi-statement scripts execute against the same database
+  state and restore the snapshot when execution fails.
+
 ## [0.3.3] - 2026-07-13
 
 ### Added
