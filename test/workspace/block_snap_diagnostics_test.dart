@@ -4,6 +4,7 @@ import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnos
 
 void main() {
   test('covers every native block pair in the snap matrix', () {
+    expect(nativeBlockTypes.toSet(), BlockType.values.toSet());
     final report = buildBlockSnapDiagnosticReport();
 
     expect(report.total, nativeBlockTypes.length * nativeBlockTypes.length);

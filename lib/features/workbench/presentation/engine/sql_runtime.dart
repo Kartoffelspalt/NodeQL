@@ -71,7 +71,8 @@ final sqlRuntimeProvider =
     );
 
 class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
-  SqlRuntimeController() : super(const SqlRuntimeState());
+  SqlRuntimeController({SqlRuntimeState initialState = const SqlRuntimeState()})
+    : super(initialState);
   static const _securityChannel = MethodChannel('nodeql/security_scope');
   static const int _maxPreviewRows = 500;
 
@@ -292,6 +293,10 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     final database = sqlite3.open(path);
     var statements = <PreparedStatement>[];
     try {
+      // SQLite foreign-key enforcement is connection-local and disabled by
+      // default. Every NodeQL execution uses a fresh worker connection, so it
+      // must be enabled before preparing or running user statements.
+      database.execute('PRAGMA foreign_keys = ON;');
       try {
         statements = database.prepareMultiple(sql);
       } on Object {

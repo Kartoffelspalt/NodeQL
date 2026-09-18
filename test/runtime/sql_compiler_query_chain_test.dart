@@ -666,4 +666,273 @@ void main() {
     expect(unsupported.sql, isEmpty);
     expect(unsupported.warnings.single, contains('SQLite has no GRANT'));
   });
+
+  test('compiles all requested filter operators and boolean connectors', () {
+    final root = EventBlock(id: 'run-filters', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select-filters',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{
+        'select_mode': 'DISTINCT',
+        'columns': 'name',
+        'table': 'people',
+      },
+    );
+    final where = MotionBlock(
+      id: 'where-like',
+      position: Offset.zero,
+      motionType: BlockType.sqlWhere,
+      inputs: <String, dynamic>{
+        'column': 'name',
+        'operator': 'LIKE',
+        'value': "'A%'",
+      },
+    );
+    final and = MotionBlock(
+      id: 'and-in',
+      position: Offset.zero,
+      motionType: BlockType.sqlAnd,
+      inputs: <String, dynamic>{
+        'column': 'id',
+        'operator': 'IN',
+        'value': '1, 2, 3',
+      },
+    );
+    final or = MotionBlock(
+      id: 'or-between',
+      position: Offset.zero,
+      motionType: BlockType.sqlOr,
+      inputs: <String, dynamic>{
+        'negation': 'NOT',
+        'column': 'age',
+        'operator': 'BETWEEN',
+        'value': '10 AND 20',
+      },
+    );
+    final andNull = MotionBlock(
+      id: 'and-null',
+      position: Offset.zero,
+      motionType: BlockType.sqlAnd,
+      inputs: <String, dynamic>{
+        'column': 'deleted_at',
+        'operator': 'IS NULL',
+        'value': '',
+      },
+    );
+    final limit = OperatorBlock(
+      id: 'limit',
+      position: Offset.zero,
+      operatorType: BlockType.sqlLimit,
+      inputs: <String, dynamic>{'count': 5, 'offset': 10},
+    );
+    root.next = select;
+    select.next = where;
+    where.next = and;
+    and.next = or;
+    or.next = andNull;
+    andNull.next = limit;
+
+    final result = const SqlCompiler().compileWorkspace(<BlockNode>[root]);
+
+    expect(
+      result.sql,
+      "SELECT DISTINCT name FROM people WHERE name LIKE 'A%' "
+      'AND id IN (1, 2, 3) OR NOT (age BETWEEN 10 AND 20) '
+      'AND deleted_at IS NULL LIMIT 5 OFFSET 10;',
+    );
+    expect(result.warnings, isEmpty);
+  });
+
+  test('compiles UNION variants, subqueries, CASE and aggregates', () {
+    final unionRoot = EventBlock(id: 'union-run', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'union-select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{'columns': 'id', 'table': 'current_people'},
+    );
+    final union = OperatorBlock(
+      id: 'union-all',
+      position: Offset.zero,
+      operatorType: BlockType.sqlUnion,
+      inputs: <String, dynamic>{
+        'set_mode': 'ALL',
+        'sql': 'SELECT id FROM archived_people;',
+      },
+    );
+    unionRoot.next = select;
+    select.next = union;
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[unionRoot]).sql,
+      'SELECT id FROM current_people UNION ALL '
+      'SELECT id FROM archived_people;',
+    );
+
+    final expressionRoot = EventBlock(
+      id: 'expression-run',
+      position: Offset.zero,
+    );
+    final expressionSelect = OperatorBlock(
+      id: 'expression-select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{'columns': '*', 'table': 'orders'},
+    );
+    final count = OperatorBlock(
+      id: 'count',
+      position: Offset.zero,
+      operatorType: BlockType.sqlCount,
+      inputs: <String, dynamic>{'column': '*'},
+    );
+    setReporterForInput(expressionSelect, 'columns', count);
+    expressionRoot.next = expressionSelect;
+    final subqueryWhere = MotionBlock(
+      id: 'subquery-filter',
+      position: Offset.zero,
+      motionType: BlockType.sqlWhere,
+      inputs: <String, dynamic>{
+        'column': 'ignored',
+        'operator': '=',
+        'value': 'ignored',
+      },
+    );
+    setReporterForInput(
+      subqueryWhere,
+      'value',
+      OperatorBlock(
+        id: 'subquery-in',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSubqueryIn,
+        inputs: <String, dynamic>{
+          'column': 'customer_id',
+          'sql': 'SELECT id FROM customers WHERE active = 1;',
+        },
+      ),
+    );
+    expressionSelect.next = subqueryWhere;
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[expressionRoot]).sql,
+      'SELECT COUNT(*) FROM orders WHERE customer_id IN '
+      '(SELECT id FROM customers WHERE active = 1);',
+    );
+  });
+
+  test('compiles INSERT column lists and validates LIMIT values', () {
+    final insertRoot = EventBlock(id: 'insert-run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'insert',
+        position: Offset.zero,
+        operatorType: BlockType.sqlInsert,
+        inputs: <String, dynamic>{
+          'table': 'people',
+          'columns': 'name, age',
+          'values': "('Ada', 36),\n('Grace', 37)",
+        },
+      );
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[insertRoot]).sql,
+      "INSERT INTO people (name, age) VALUES ('Ada', 36),\n"
+      "('Grace', 37);",
+    );
+
+    final invalidLimit =
+        EventBlock(id: 'invalid-limit-run', position: Offset.zero)
+          ..next = OperatorBlock(
+            id: 'invalid-limit',
+            position: Offset.zero,
+            operatorType: BlockType.sqlLimit,
+            inputs: <String, dynamic>{'count': '-1'},
+          );
+    final invalidResult = const SqlCompiler().compileWorkspace(<BlockNode>[
+      invalidLimit,
+    ]);
+    expect(invalidResult.sql, isEmpty);
+    expect(invalidResult.warnings.single, contains('non-negative integer'));
+  });
+
+  test('compiles guarded tables, constraints, indexes and guarded drops', () {
+    String compile(BlockNode statement) {
+      final root = EventBlock(id: 'run-${statement.id}', position: Offset.zero)
+        ..next = statement;
+      return const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql;
+    }
+
+    final createCustomers = OperatorBlock(
+      id: 'create-customers',
+      position: Offset.zero,
+      operatorType: BlockType.sqlCreateTable,
+      inputs: <String, dynamic>{
+        'if_not_exists': 'IF NOT EXISTS',
+        'table': 'kunden',
+        'definition': '''
+kunden_id INTEGER PRIMARY KEY AUTOINCREMENT,
+vorname TEXT NOT NULL,
+status TEXT NOT NULL DEFAULT 'Aktiv',
+registriert_seit DATE NOT NULL
+''',
+      },
+    );
+    expect(
+      compile(createCustomers),
+      'CREATE TABLE IF NOT EXISTS kunden ('
+      'kunden_id INTEGER PRIMARY KEY AUTOINCREMENT,\n'
+      'vorname TEXT NOT NULL,\n'
+      "status TEXT NOT NULL DEFAULT 'Aktiv',\n"
+      'registriert_seit DATE NOT NULL);',
+    );
+
+    final createOrders = OperatorBlock(
+      id: 'create-orders',
+      position: Offset.zero,
+      operatorType: BlockType.sqlCreateTable,
+      inputs: <String, dynamic>{
+        'table': 'bestellungen',
+        'definition': '''
+bestell_id INTEGER PRIMARY KEY AUTOINCREMENT,
+kunden_id INTEGER NOT NULL,
+gesamtbetrag REAL NOT NULL CHECK (gesamtbetrag >= 0),
+FOREIGN KEY (kunden_id) REFERENCES kunden(kunden_id) ON DELETE CASCADE
+''',
+      },
+    );
+    expect(
+      compile(createOrders),
+      contains(
+        'FOREIGN KEY (kunden_id) REFERENCES kunden(kunden_id) '
+        'ON DELETE CASCADE',
+      ),
+    );
+
+    final createIndex = OperatorBlock(
+      id: 'create-index',
+      position: Offset.zero,
+      operatorType: BlockType.sqlCreateIndex,
+      inputs: <String, dynamic>{
+        'unique': 'UNIQUE',
+        'if_not_exists': 'IF NOT EXISTS',
+        'name': 'idx_kunden_status_datum',
+        'table': 'kunden',
+        'columns': 'status, registriert_seit',
+      },
+    );
+    expect(
+      compile(createIndex),
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_kunden_status_datum '
+      'ON kunden (status, registriert_seit);',
+    );
+
+    final dropTable = OperatorBlock(
+      id: 'drop-orders',
+      position: Offset.zero,
+      operatorType: BlockType.sqlDropTable,
+      inputs: <String, dynamic>{
+        'if_exists': 'IF EXISTS',
+        'table': 'bestellungen',
+      },
+    );
+    expect(compile(dropTable), 'DROP TABLE IF EXISTS bestellungen;');
+  });
 }

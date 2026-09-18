@@ -11,6 +11,7 @@ import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:nodeql/data/project/project_file_upgrade_service.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_backwards_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
@@ -22,8 +23,12 @@ import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dar
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/database_browser_dialog.dart';
+import 'package:nodeql/features/workbench/presentation/widgets/sql_code_editor.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
+import 'package:nodeql/features/tutorial/tutorial_models.dart';
+import 'package:nodeql/features/tutorial/tutorial_practice.dart';
+import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
@@ -106,22 +111,23 @@ class _RopeHighlightColors {
   }
 }
 
-Map<String, _SimpleNodeDiagnostic> _simpleNodeDiagnostics({
+Map<String, _SimpleNodeDiagnostic> _nodeDiagnostics({
   required SqlAbstractionMode mode,
   required List<BlockNode> roots,
   required SqlRuntimeState runtime,
   required SqlCompileResult compileResult,
 }) {
-  if (mode != SqlAbstractionMode.simple) {
-    return const <String, _SimpleNodeDiagnostic>{};
-  }
   final diagnostics = <String, _SimpleNodeDiagnostic>{};
   for (final warning in compileResult.warnings) {
     final node = _nodeForCompilerWarning(roots, warning);
     if (node != null) {
       diagnostics[node.id] = _SimpleNodeDiagnostic(
-        title: 'Problem in dieser Blockkette',
-        message: _friendlyCompileWarning(warning),
+        title: mode == SqlAbstractionMode.simple
+            ? 'Problem in dieser Blockkette'
+            : 'Compiler-Warnung an diesem Node',
+        message: mode == SqlAbstractionMode.simple
+            ? _friendlyCompileWarning(warning)
+            : warning,
       );
     }
   }
@@ -130,11 +136,23 @@ Map<String, _SimpleNodeDiagnostic> _simpleNodeDiagnostics({
     return diagnostics;
   }
   if (!_looksLikeRuntimeError(runtimeMessage)) return diagnostics;
-  final node = _nodeForRuntimeError(roots, runtimeMessage);
+  // A previous execution must not mark nodes after the workspace changed, and
+  // SQL typed directly into the output pane has no visual origin.
+  if (runtime.lastSql != compileResult.sql) return diagnostics;
+  final projection = const SqlBackwardsCompiler().project(
+    compilation: compileResult,
+    sqliteError: runtimeMessage,
+  );
+  if (projection == null) return diagnostics;
+  final node = _findNodeById(roots, projection.nodeId);
   if (node == null) return diagnostics;
   diagnostics[node.id] = _SimpleNodeDiagnostic(
-    title: 'Fehler an diesem Node',
-    message: _friendlyRuntimeError(runtimeMessage),
+    title: mode == SqlAbstractionMode.simple
+        ? 'Fehler an diesem Node'
+        : 'SQLite-Fehler an diesem Node',
+    message: mode == SqlAbstractionMode.simple
+        ? _friendlyRuntimeError(runtimeMessage)
+        : runtimeMessage,
   );
   return diagnostics;
 }
@@ -186,67 +204,6 @@ String _visibleCompileWarnings({
   return warnings.map(_friendlyCompileWarning).join('\n');
 }
 
-BlockNode? _nodeForRuntimeError(List<BlockNode> roots, String message) {
-  final normalized = message.toLowerCase();
-  final noSuchTable = RegExp(
-    r'no such table: ([^\s,)]+)',
-    caseSensitive: false,
-  ).firstMatch(message);
-  if (noSuchTable != null) {
-    final table = _stripSqlToken(noSuchTable.group(1)!);
-    return _firstNodeWhere(
-      roots,
-      (node) =>
-          node.inputs['table']?.toString() == table ||
-          node.inputs['table_name']?.toString() == table,
-    );
-  }
-  final noSuchColumn = RegExp(
-    r'no such column: ([^\s,)]+)',
-    caseSensitive: false,
-  ).firstMatch(message);
-  if (noSuchColumn != null) {
-    final column = _stripSqlToken(noSuchColumn.group(1)!);
-    return _firstNodeWhere(
-      roots,
-      (node) => node.inputs.values.any((value) {
-        final text = value?.toString() ?? '';
-        return text == column ||
-            text.endsWith('.$column') ||
-            text.split(',').map((part) => part.trim()).contains(column);
-      }),
-    );
-  }
-  final near = RegExp(
-    r'near "([^"]+)": syntax error',
-    caseSensitive: false,
-  ).firstMatch(message);
-  if (near != null) {
-    final token = near.group(1)!.toUpperCase();
-    final node = _firstNodeWhere(
-      roots,
-      (node) => _sqlKeywordForNode(node.type) == token,
-    );
-    if (node != null) return node;
-  }
-  if (normalized.contains('syntax error')) {
-    return _firstNodeWhere(roots, _likelySyntaxProblemNode);
-  }
-  if (normalized.contains('constraint')) {
-    return _firstNodeWhere(
-      roots,
-      (node) =>
-          node.type == BlockType.sqlInsert ||
-          node.type == BlockType.sqlUpdate ||
-          node.type == BlockType.sqlDelete,
-    );
-  }
-  return _firstNodeWhere(
-    roots,
-    (node) => node.type != BlockType.eventGreenFlag,
-  );
-}
-
 String _friendlyRuntimeError(String message) {
   final normalized = message.toLowerCase();
   final noSuchTable = RegExp(
@@ -265,6 +222,14 @@ String _friendlyRuntimeError(String message) {
   }
   if (normalized.contains('ambiguous column')) {
     return 'Diese Spalte gibt es in mehreren Tabellen. Wähle eindeutig, aus welcher Tabelle die Spalte kommt.';
+  }
+  if (normalized.contains('no such index') ||
+      normalized.contains('no such view') ||
+      normalized.contains('no such trigger')) {
+    return 'Dieses Datenbankobjekt wurde nicht gefunden. Prüfe den Namen im markierten Node.';
+  }
+  if (normalized.contains('already exists')) {
+    return 'Dieses Datenbankobjekt existiert bereits. Aktiviere IF NOT EXISTS oder wähle einen anderen Namen.';
   }
   if (normalized.contains('misuse of aggregate')) {
     return 'Eine Rechenfunktion wie SUM oder COUNT steht an der falschen Stelle. Nutze sie meist in SELECT oder HAVING.';
@@ -332,60 +297,6 @@ _SimpleNodeDiagnostic _dragRejectedDiagnostic(SqlAbstractionMode mode) {
   );
 }
 
-String _stripSqlToken(String token) {
-  return token
-      .replaceAll('"', '')
-      .replaceAll('`', '')
-      .replaceAll('[', '')
-      .replaceAll(']', '')
-      .split('.')
-      .last
-      .trim();
-}
-
-bool _likelySyntaxProblemNode(BlockNode node) {
-  return switch (node.type) {
-    BlockType.sqlWhere ||
-    BlockType.sqlJoin ||
-    BlockType.sqlInnerJoin ||
-    BlockType.sqlLeftJoin ||
-    BlockType.sqlRightJoin ||
-    BlockType.sqlFullJoin ||
-    BlockType.sqlHaving ||
-    BlockType.sqlOrderBy ||
-    BlockType.sqlInsert ||
-    BlockType.sqlUpdate ||
-    BlockType.sqlDelete => true,
-    _ => false,
-  };
-}
-
-String? _sqlKeywordForNode(BlockType type) {
-  return switch (type) {
-    BlockType.sqlSelect => 'SELECT',
-    BlockType.sqlFrom => 'FROM',
-    BlockType.sqlWhere => 'WHERE',
-    BlockType.sqlJoin ||
-    BlockType.sqlInnerJoin ||
-    BlockType.sqlLeftJoin ||
-    BlockType.sqlRightJoin ||
-    BlockType.sqlFullJoin ||
-    BlockType.sqlCrossJoin ||
-    BlockType.sqlNaturalJoin ||
-    BlockType.sqlSelfJoin => 'JOIN',
-    BlockType.sqlGroupBy => 'GROUP',
-    BlockType.sqlHaving => 'HAVING',
-    BlockType.sqlOrderBy => 'ORDER',
-    BlockType.sqlInsert => 'INSERT',
-    BlockType.sqlUpdate => 'UPDATE',
-    BlockType.sqlDelete => 'DELETE',
-    BlockType.sqlCreateTable => 'CREATE',
-    BlockType.sqlAlterTable => 'ALTER',
-    BlockType.sqlDropTable => 'DROP',
-    _ => null,
-  };
-}
-
 BlockNode? _findNodeById(List<BlockNode> roots, String id) {
   return _firstNodeWhere(roots, (node) => node.id == id);
 }
@@ -424,11 +335,20 @@ Color _sqlColorForType(BlockType type) {
       ScratchPalette.sqlQuery,
     BlockVisualKind.statement
         when type == BlockType.sqlInsert ||
+            type == BlockType.sqlInsertOrReplace ||
+            type == BlockType.sqlUpsert ||
             type == BlockType.sqlUpdate ||
             type == BlockType.sqlDelete =>
       ScratchPalette.sqlMutation,
     BlockVisualKind.statement
         when type == BlockType.sqlCreateTable ||
+            type == BlockType.sqlCreateIndex ||
+            type == BlockType.sqlDropIndex ||
+            type == BlockType.sqlCreateView ||
+            type == BlockType.sqlDropView ||
+            type == BlockType.sqlCreateTrigger ||
+            type == BlockType.sqlDropTrigger ||
+            type == BlockType.sqlCreateVirtualTable ||
             type == BlockType.sqlAlterTable ||
             type == BlockType.sqlTruncate ||
             type == BlockType.sqlDropTable ||
@@ -444,7 +364,11 @@ Color _sqlColorForType(BlockType type) {
     BlockVisualKind.clause when type == BlockType.sqlFrom =>
       ScratchPalette.sqlSource,
     BlockVisualKind.clause
-        when type == BlockType.sqlWhere || type == BlockType.sqlOrderBy =>
+        when type == BlockType.sqlWhere ||
+            type == BlockType.sqlAnd ||
+            type == BlockType.sqlOr ||
+            type == BlockType.sqlOrderBy ||
+            type == BlockType.sqlLimit =>
       ScratchPalette.sqlFilter,
     BlockVisualKind.clause => ScratchPalette.sqlAggregate,
     BlockVisualKind.trigger => ScratchPalette.events,
@@ -477,6 +401,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   static const _neoCheatTimeout = Duration(seconds: 2);
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
+  final SqlHighlightingController _customSqlController =
+      SqlHighlightingController();
   final SqlCompiler _compiler = const SqlCompiler();
   SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
   String? _activeProjectPath;
@@ -488,17 +414,18 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   int _lastAutosaveRevision = -1;
   Timer? _autosaveDebounce;
   double _paletteWidth = 250;
-  bool _tutorialWasPresented = false;
   bool _blockDiagnosticsRunning = false;
   int _blockDiagnosticsRunToken = 0;
   Future<void>? _pendingSave;
-  ProviderSubscription<TutorialState>? _tutorialSubscription;
   bool _startupHintShown = false;
   int _neoCheatIndex = 0;
   DateTime? _neoCheatLastKeyAt;
   int _databaseBrowserKeyIndex = 0;
+  bool _showCustomSqlEditor = false;
+  bool _executingCustomSql = false;
   DateTime? _databaseBrowserLastKeyAt;
   bool _databaseBrowserOpen = false;
+  bool _workshopMode = false;
   static const bool _showStartupHint = false;
 
   static const String _startupHintText =
@@ -518,19 +445,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showStartupHintOnce();
     });
-
-    _tutorialSubscription = ref.listenManual<TutorialState>(
-      tutorialControllerProvider,
-      (_, next) {
-        if (!next.loading && !next.completed && !_tutorialWasPresented) {
-          _tutorialWasPresented = true;
-          Future<void>.delayed(const Duration(milliseconds: 450), () {
-            if (mounted) _openTutorial(context);
-          });
-        }
-      },
-      fireImmediately: true,
-    );
   }
 
   Future<void> _showStartupHintOnce() async {
@@ -558,13 +472,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
     _menuChannel.setMethodCallHandler(null);
     _autosaveDebounce?.cancel();
-    _tutorialSubscription?.close();
     _workspaceFocus.dispose();
+    _customSqlController.dispose();
     super.dispose();
   }
 
   bool _handleGlobalKeyEvent(KeyEvent event) {
     if (!mounted || event is! KeyDownEvent) return false;
+    if (_workshopMode) return false;
     final keyboard = HardwareKeyboard.instance;
     final isSaveShortcut =
         event.logicalKey == LogicalKeyboardKey.keyS &&
@@ -684,6 +599,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final translationState = ref.watch(translationControllerProvider);
     final catalog = translationState.catalog;
     final locale = translationState.locale;
+    if (_workshopMode) {
+      return _WorkshopProviderScope(onExit: _exitWorkshop);
+    }
     final workspaceRevision = ref.watch(
       workspaceProvider.select((s) => s.revision),
     );
@@ -705,7 +623,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       pluginBlocks: pluginState.blocksByQualifiedId,
     );
     final sql = compileResult.sql;
-    final nodeDiagnostics = _simpleNodeDiagnostics(
+    final nodeDiagnostics = _nodeDiagnostics(
       mode: mode,
       roots: workspaceRoots,
       runtime: runtime,
@@ -788,7 +706,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   onModeChanged: (next) =>
                       ref.read(sqlModeProvider.notifier).setMode(next),
                   onSettings: () => _openSettings(context),
-                  onTutorial: () => _openTutorial(context),
+                  onWorkshop: _enterWorkshop,
                   onDiagnostics: () => _openBlockDiagnostics(context),
                 ),
                 Expanded(
@@ -855,20 +773,30 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             ),
                           ),
                           Expanded(
-                            child: Column(
-                              children: [
-                                _WorkspaceTabsBar(catalog: catalog),
-                                Expanded(
-                                  child: _WorkspaceCanvas(
-                                    focusNode: _workspaceFocus,
-                                    transform: _transform,
-                                    paletteWidth: 72.0 + paletteWidth,
-                                    diagnostics: nodeDiagnostics,
-                                    onSaveProject: () => _saveProject(context),
+                            child: _showCustomSqlEditor
+                                ? _SqlIdePane(
+                                    controller: _customSqlController,
+                                    runtime: runtime,
+                                    catalog: catalog,
+                                    executing: _executingCustomSql,
+                                    onExecute: _executeCustomSqlFromEditor,
+                                    onClose: () => _toggleCustomSqlEditor(sql),
+                                  )
+                                : Column(
+                                    children: [
+                                      _WorkspaceTabsBar(catalog: catalog),
+                                      Expanded(
+                                        child: _WorkspaceCanvas(
+                                          focusNode: _workspaceFocus,
+                                          transform: _transform,
+                                          paletteWidth: 72.0 + paletteWidth,
+                                          diagnostics: nodeDiagnostics,
+                                          onSaveProject: () =>
+                                              _saveProject(context),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
                           _SqlRuntimePane(
                             sql: sql,
@@ -877,9 +805,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             localeCode: locale.languageCode,
                             catalog: catalog,
                             width: outputWidth,
-                            onExecuteCustomSql: ref
-                                .read(sqlRuntimeProvider.notifier)
-                                .executeWithSnapshot,
+                            customMode: _showCustomSqlEditor,
+                            onToggleCustomMode: () =>
+                                _toggleCustomSqlEditor(sql),
                           ),
                         ],
                       );
@@ -892,6 +820,27 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         ),
       ),
     );
+  }
+
+  void _toggleCustomSqlEditor(String generatedSql) {
+    if (!_showCustomSqlEditor &&
+        _customSqlController.text.trim().isEmpty &&
+        generatedSql.trim().isNotEmpty) {
+      _customSqlController.value = TextEditingValue(
+        text: generatedSql,
+        selection: TextSelection.collapsed(offset: generatedSql.length),
+      );
+    }
+    setState(() => _showCustomSqlEditor = !_showCustomSqlEditor);
+  }
+
+  Future<void> _executeCustomSqlFromEditor() async {
+    final sql = _customSqlController.text.trim();
+    final runtime = ref.read(sqlRuntimeProvider);
+    if (sql.isEmpty || runtime.dbPath == null || _executingCustomSql) return;
+    setState(() => _executingCustomSql = true);
+    await ref.read(sqlRuntimeProvider.notifier).executeWithSnapshot(sql);
+    if (mounted) setState(() => _executingCustomSql = false);
   }
 
   Future<void> _maybeAutosave(int revision) async {
@@ -1471,7 +1420,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       case _SettingsAction.languages:
         await _openLanguageManager(this.context);
       case _SettingsAction.tutorial:
-        await _openTutorial(this.context);
+        _enterWorkshop();
       case _SettingsAction.about:
         await _openAbout(this.context);
     }
@@ -1624,18 +1573,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     await Future<void>.delayed(const Duration(milliseconds: 90));
   }
 
-  Future<void> _openTutorial(BuildContext context) async {
-    if (!mounted) return;
-    final catalog = ref.read(translationControllerProvider).catalog;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => TutorialDialog(
-        catalog: catalog,
-        onComplete: () =>
-            ref.read(tutorialControllerProvider.notifier).complete(),
-      ),
-    );
+  void _enterWorkshop() {
+    if (_workshopMode) return;
+    unawaited(ref.read(tutorialControllerProvider.notifier).initialize());
+    _autosaveDebounce?.cancel();
+    setState(() => _workshopMode = true);
+  }
+
+  void _exitWorkshop() {
+    if (!_workshopMode) return;
+    setState(() => _workshopMode = false);
   }
 
   Future<void> _openAbout(BuildContext context) async {
@@ -2191,6 +2138,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _handleNativeMenuAction(MethodCall call) async {
+    if (_workshopMode) return;
     switch (call.method) {
       case 'newProject':
         await _newProject(context);
@@ -2226,6 +2174,570 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 }
 
+const _workshopRuntimeState = SqlRuntimeState(
+  schemas: <TableSchema>[
+    TableSchema(
+      name: 'customers',
+      columns: <String>['id', 'name', 'city', 'country', 'active'],
+    ),
+    TableSchema(
+      name: 'orders',
+      columns: <String>['id', 'customer_id', 'total', 'created_at'],
+    ),
+    TableSchema(name: 'archived_customers', columns: <String>['id', 'name']),
+  ],
+);
+
+class _WorkshopProviderScope extends StatelessWidget {
+  const _WorkshopProviderScope({required this.onExit});
+
+  final VoidCallback onExit;
+
+  @override
+  Widget build(BuildContext context) => ProviderScope(
+    key: const ValueKey('workshop-provider-scope'),
+    overrides: [
+      workspaceProvider.overrideWith((ref) {
+        return WorkspaceController()
+          ..resetWithRoot(recordUndo: false, clearHistory: true);
+      }),
+      workspaceTabsProvider.overrideWith((ref) {
+        final workspace = ref.read(workspaceProvider.notifier);
+        return WorkspaceTabsController(
+          workspace,
+          initialWorkspaceJson: workspace.toJsonString(),
+        );
+      }),
+      sqlRuntimeProvider.overrideWith(
+        (ref) => SqlRuntimeController(initialState: _workshopRuntimeState),
+      ),
+      sqlModeProvider.overrideWith((ref) => SqlModeController.session()),
+    ],
+    child: _WorkshopWorkspaceView(onExit: onExit),
+  );
+}
+
+class _WorkshopWorkspaceView extends ConsumerStatefulWidget {
+  const _WorkshopWorkspaceView({required this.onExit});
+
+  final VoidCallback onExit;
+
+  @override
+  ConsumerState<_WorkshopWorkspaceView> createState() =>
+      _WorkshopWorkspaceViewState();
+}
+
+class _WorkshopWorkspaceViewState
+    extends ConsumerState<_WorkshopWorkspaceView> {
+  final TransformationController _transform = TransformationController();
+  final FocusNode _workspaceFocus = FocusNode();
+  final SqlCompiler _compiler = const SqlCompiler();
+  SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
+  double _paletteWidth = 250;
+  TutorialPracticeSession? _practice;
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    _workspaceFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final translationState = ref.watch(translationControllerProvider);
+    final catalog = translationState.catalog;
+    final localeCode = translationState.locale.languageCode;
+    final workspace = ref.watch(workspaceProvider);
+    final runtime = ref.watch(sqlRuntimeProvider);
+    final mode = ref.watch(sqlModeProvider);
+    final roots = workspace.roots;
+    final practice = _practice;
+    final definition = practice == null
+        ? null
+        : tutorialPracticeDefinitions[practice.mode];
+    final result = definition?.evaluate(roots, practice?.stepIndex ?? 0);
+    final compileResult = _compiler.compileWorkspace(roots);
+    final diagnostics = _nodeDiagnostics(
+      mode: mode,
+      roots: roots,
+      runtime: runtime,
+      compileResult: compileResult,
+    );
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _WorkshopModeTopBar(
+              catalog: catalog,
+              mode: mode,
+              onModeChanged: (next) =>
+                  unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
+              onLessons: () => _openTutorial(context),
+              onClose: widget.onExit,
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 1180;
+                  final paletteWidth = compact
+                      ? _paletteWidth.clamp(200.0, 280.0)
+                      : _paletteWidth;
+                  final outputWidth = compact ? 320.0 : 420.0;
+                  return Row(
+                    children: [
+                      _CategoryRail(
+                        active: _activeCategory,
+                        hasPlugins: false,
+                        catalog: catalog,
+                        onSelect: (next) =>
+                            setState(() => _activeCategory = next),
+                      ),
+                      _Palette(
+                        key: ValueKey<String>(
+                          'workshop-palette-'
+                          '${practice?.mode.name ?? 'overview'}-'
+                          '${practice?.stepIndex ?? 0}-${mode.name}',
+                        ),
+                        category: _activeCategory,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: localeCode,
+                        catalog: catalog,
+                        width: paletteWidth,
+                        pluginEntries: const <PluginPaletteEntry>[],
+                        onAdd: (type, defaults) {
+                          final controller = ref.read(
+                            workspaceProvider.notifier,
+                          );
+                          controller.addTemplate(
+                            type,
+                            controller.suggestedTemplatePosition(type),
+                            defaults: defaults,
+                          );
+                        },
+                      ),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (details) {
+                            setState(() {
+                              _paletteWidth = (_paletteWidth + details.delta.dx)
+                                  .clamp(200.0, 520.0);
+                            });
+                          },
+                          child: Container(
+                            width: 10,
+                            color: Colors.transparent,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 2,
+                              height: double.infinity,
+                              color: NodeQlWorkbenchColors.of(context).border,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            _WorkspaceTabsBar(catalog: catalog),
+                            if (practice != null &&
+                                definition != null &&
+                                result != null)
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 220),
+                                switchInCurve: Curves.easeOutCubic,
+                                child: TutorialPracticePanel(
+                                  key: ValueKey<String>(
+                                    'practice-${practice.mode.name}-'
+                                    '${practice.stepIndex}',
+                                  ),
+                                  catalog: catalog,
+                                  session: practice,
+                                  definition: definition,
+                                  result: result,
+                                  abstractionMode: mode,
+                                  localeCode: localeCode,
+                                  liveSql: compileResult.sql,
+                                  onCheck: () => _checkPractice(result),
+                                  onHint: _showHint,
+                                  onClose: _closePractice,
+                                ),
+                              )
+                            else
+                              _WorkshopEmptyCoach(
+                                catalog: catalog,
+                                onChoosePath: () => _openTutorial(context),
+                              ),
+                            Expanded(
+                              child: _WorkspaceCanvas(
+                                focusNode: _workspaceFocus,
+                                transform: _transform,
+                                paletteWidth: 72.0 + paletteWidth,
+                                diagnostics: diagnostics,
+                                onSaveProject: () async {},
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _SqlRuntimePane(
+                        sql: compileResult.sql,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: localeCode,
+                        catalog: catalog,
+                        width: outputWidth,
+                        customMode: false,
+                        showCustomModeToggle: false,
+                        onToggleCustomMode: () {},
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTutorial(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => TutorialDialog(
+        catalog: catalog,
+        initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
+        onProgressChanged: (mode, progress) => ref
+            .read(tutorialControllerProvider.notifier)
+            .saveLessonProgress(mode, progress),
+        onStartPractice: _startPractice,
+        onComplete: () =>
+            ref.read(tutorialControllerProvider.notifier).complete(),
+      ),
+    );
+  }
+
+  Future<void> _startPractice(TutorialKnowledgeMode mode) async {
+    final definition = tutorialPracticeDefinitions[mode]!;
+    final abstractionMode = ref.read(sqlModeProvider);
+    final progress = ref.read(tutorialControllerProvider).progressFor(mode);
+    final completedSteps = progress.practiceCompleted
+        ? const <int>{}
+        : progress.completedPracticeSteps;
+    final stepIndex = definition.nextStep(completedSteps);
+    final workspace = ref.read(workspaceProvider.notifier)
+      ..resetWithRoot(recordUndo: false, clearHistory: true);
+    for (final seed in definition.starterFor(abstractionMode, stepIndex)) {
+      workspace.addTemplate(
+        seed.type,
+        workspace.suggestedTemplatePosition(seed.type),
+        defaults: seed.defaults,
+        recordUndo: false,
+      );
+    }
+    final catalog = ref.read(translationControllerProvider).catalog;
+    ref
+        .read(workspaceTabsProvider.notifier)
+        .resetToCurrentWorkspace(name: catalog.text('${definition.key}.tab'));
+    _transform.value = Matrix4.identity();
+    if (!mounted) return;
+    setState(() {
+      _activeCategory = _categoryForPracticeStep(definition.steps[stepIndex]);
+      _practice = TutorialPracticeSession(
+        mode: mode,
+        stepIndex: stepIndex,
+        completedSteps: completedSteps,
+      );
+    });
+  }
+
+  Future<void> _checkPractice(TutorialPracticeResult result) async {
+    final session = _practice;
+    if (session == null) return;
+    if (!result.complete) {
+      setState(() => _practice = session.copyWith(attempted: true));
+      return;
+    }
+
+    final tutorial = ref.read(tutorialControllerProvider);
+    final progress = tutorial.progressFor(session.mode);
+    final definition = tutorialPracticeDefinitions[session.mode]!;
+    final completedSteps = <int>{...session.completedSteps, session.stepIndex};
+    final finished = List<int>.generate(
+      definition.stepCount,
+      (index) => index,
+    ).every(completedSteps.contains);
+    final nextStepIndex = finished ? session.stepIndex : session.stepIndex + 1;
+    setState(() {
+      if (!finished) {
+        _activeCategory = _categoryForPracticeStep(
+          definition.steps[nextStepIndex],
+        );
+      }
+      _practice = session.copyWith(
+        stepIndex: nextStepIndex,
+        completedSteps: completedSteps,
+        showHint: false,
+        attempted: false,
+        completed: finished,
+      );
+    });
+    final persistedSteps = progress.practiceCompleted && !finished
+        ? progress.completedPracticeSteps
+        : completedSteps;
+    await ref
+        .read(tutorialControllerProvider.notifier)
+        .saveLessonProgress(
+          session.mode,
+          progress.copyWith(
+            completedPracticeSteps: persistedSteps,
+            completed: progress.completed || finished,
+            practiceCompleted: progress.practiceCompleted || finished,
+          ),
+        );
+  }
+
+  void _showHint() {
+    final session = _practice;
+    if (session == null) return;
+    setState(() => _practice = session.copyWith(showHint: true));
+  }
+
+  void _closePractice() => setState(() => _practice = null);
+
+  SqlPaletteCategory _categoryForPracticeStep(TutorialPracticeStep step) {
+    if (step.focusNodes.contains(BlockType.sqlText)) {
+      return SqlPaletteCategory.dataTypes;
+    }
+    return SqlPaletteCategory.queryLanguage;
+  }
+}
+
+class _WorkshopModeTopBar extends StatelessWidget {
+  const _WorkshopModeTopBar({
+    required this.catalog,
+    required this.mode,
+    required this.onModeChanged,
+    required this.onLessons,
+    required this.onClose,
+  });
+
+  final TranslationCatalog catalog;
+  final SqlAbstractionMode mode;
+  final ValueChanged<SqlAbstractionMode> onModeChanged;
+  final VoidCallback onLessons;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      decoration: BoxDecoration(
+        color: colors.topBar,
+        border: Border(bottom: BorderSide(color: colors.border)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: Image.asset(
+              _appIconAsset,
+              width: 36,
+              height: 36,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  catalog.text('tutorial.window.title'),
+                  style: TextStyle(
+                    color: colors.topBarForeground,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  catalog.text('tutorial.window.subtitle'),
+                  style: TextStyle(color: colors.muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          SegmentedButton<SqlAbstractionMode>(
+            segments: [
+              ButtonSegment(
+                value: SqlAbstractionMode.simple,
+                label: Text(catalog.text('toolbar.simple')),
+              ),
+              ButtonSegment(
+                value: SqlAbstractionMode.advanced,
+                label: Text(catalog.text('toolbar.advanced')),
+              ),
+            ],
+            selected: <SqlAbstractionMode>{mode},
+            onSelectionChanged: (selection) => onModeChanged(selection.first),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            key: const ValueKey('workshop-choose-path'),
+            onPressed: onLessons,
+            icon: const Icon(Icons.route_outlined),
+            label: Text(catalog.text('tutorial.window.paths')),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            key: const ValueKey('workshop-mode-exit'),
+            onPressed: onClose,
+            tooltip: catalog.text('tutorial.window.close'),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkshopEmptyCoach extends StatelessWidget {
+  const _WorkshopEmptyCoach({
+    required this.catalog,
+    required this.onChoosePath,
+  });
+
+  final TranslationCatalog catalog;
+  final VoidCallback onChoosePath;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.panelElevated,
+        border: Border(bottom: BorderSide(color: colors.border)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final introduction = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.school_outlined, color: Color(0xFF60A5FA)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      catalog.text('tutorial.window.emptyTitle'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      catalog.text('tutorial.window.emptyBody'),
+                      style: TextStyle(color: colors.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final guide = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _WorkshopGuideStep(
+                icon: Icons.route_outlined,
+                label: catalog.text('tutorial.window.guide.pick'),
+              ),
+              _WorkshopGuideStep(
+                icon: Icons.account_tree_outlined,
+                label: catalog.text('tutorial.window.guide.build'),
+              ),
+              _WorkshopGuideStep(
+                icon: Icons.task_alt_outlined,
+                label: catalog.text('tutorial.window.guide.check'),
+              ),
+            ],
+          );
+          final action = FilledButton.icon(
+            key: const ValueKey('workshop-empty-choose-path'),
+            onPressed: onChoosePath,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: Text(catalog.text('tutorial.window.paths')),
+          );
+          if (constraints.maxWidth < 760) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                introduction,
+                const SizedBox(height: 12),
+                guide,
+                const SizedBox(height: 12),
+                action,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [introduction, const SizedBox(height: 12), guide],
+                ),
+              ),
+              const SizedBox(width: 16),
+              action,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WorkshopGuideStep extends StatelessWidget {
+  const _WorkshopGuideStep({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 11)),
+        ],
+      ),
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.catalog,
@@ -2239,7 +2751,7 @@ class _TopBar extends StatelessWidget {
     required this.mode,
     required this.onModeChanged,
     required this.onSettings,
-    required this.onTutorial,
+    required this.onWorkshop,
     required this.onDiagnostics,
   });
 
@@ -2254,7 +2766,7 @@ class _TopBar extends StatelessWidget {
   final SqlAbstractionMode mode;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onSettings;
-  final VoidCallback onTutorial;
+  final VoidCallback onWorkshop;
   final VoidCallback onDiagnostics;
 
   @override
@@ -2384,14 +2896,6 @@ class _TopBar extends StatelessWidget {
                       if (v != null) onLocale(v);
                     },
                   ),
-                  const SizedBox(width: NodeQlDesign.space1),
-                  IconButton(
-                    key: const ValueKey('open-tutorial'),
-                    onPressed: onTutorial,
-                    tooltip: catalog.text('toolbar.tutorial'),
-                    color: workbenchColors.topBarForeground,
-                    icon: const Icon(Icons.school_outlined),
-                  ),
                   IconButton(
                     onPressed: onSettings,
                     tooltip: catalog.text('toolbar.settings'),
@@ -2400,6 +2904,24 @@ class _TopBar extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(width: NodeQlDesign.space3),
+          NodeQlBrutalPressable(
+            radius: surfaceStyle.radiusMedium,
+            child: FilledButton.icon(
+              key: const ValueKey('open-workshop'),
+              onPressed: onWorkshop,
+              style: _nodeQlFilledButtonCornerStyle(context).copyWith(
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                ),
+                textStyle: const WidgetStatePropertyAll(
+                  TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+              icon: const Icon(Icons.school_rounded, size: 22),
+              label: Text(catalog.text('toolbar.workshop')),
             ),
           ),
         ],
@@ -2650,7 +3172,15 @@ class _PluginRepositoriesView extends StatelessWidget {
   }
 }
 
-enum SqlPaletteCategory { queryLanguage, dataTypes, dml, ddl, txn, plugins }
+enum SqlPaletteCategory {
+  queryLanguage,
+  dataTypes,
+  dml,
+  ddl,
+  txn,
+  database,
+  plugins,
+}
 
 class _PaletteItem {
   const _PaletteItem({
@@ -2699,6 +3229,7 @@ class _CategoryRail extends StatelessWidget {
       (SqlPaletteCategory.dml, Icons.edit_note, ScratchPalette.control),
       (SqlPaletteCategory.ddl, Icons.schema, ScratchPalette.operators),
       (SqlPaletteCategory.txn, Icons.account_tree, ScratchPalette.variables),
+      (SqlPaletteCategory.database, Icons.storage, ScratchPalette.sqlSource),
       if (hasPlugins)
         (SqlPaletteCategory.plugins, Icons.extension, ScratchPalette.myBlocks),
     ];
@@ -2765,6 +3296,7 @@ class _Palette extends StatefulWidget {
     required this.width,
     required this.pluginEntries,
     required this.onAdd,
+    super.key,
   });
 
   final SqlPaletteCategory category;
@@ -2944,13 +3476,30 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.queryLanguage => <_PaletteItem>[
         native(BlockType.eventGreenFlag),
         native(BlockType.sqlSelect),
+        native(BlockType.sqlColumn),
         native(BlockType.sqlAlias),
+        native(BlockType.sqlFrom),
         native(BlockType.sqlWhere),
+        native(BlockType.sqlAnd),
+        native(BlockType.sqlOr),
         native(BlockType.sqlJoin),
         native(BlockType.sqlGroupBy),
         native(BlockType.sqlHaving),
         native(BlockType.sqlOrderBy),
-        native(BlockType.sqlFrom),
+        native(BlockType.sqlLimit),
+        native(BlockType.sqlCount),
+        native(BlockType.sqlSum),
+        native(BlockType.sqlAvg),
+        native(BlockType.sqlMin),
+        native(BlockType.sqlMax),
+        native(BlockType.sqlCase),
+        native(BlockType.sqlSubqueryIn),
+        native(BlockType.sqlUnion),
+        native(BlockType.sqlIntersect),
+        native(BlockType.sqlExcept),
+        native(BlockType.sqlWith),
+        native(BlockType.sqlValues),
+        native(BlockType.sqlExplain),
       ],
       SqlPaletteCategory.dataTypes => <_PaletteItem>[
         dataType(
@@ -2986,24 +3535,41 @@ class _PaletteState extends State<_Palette> {
       ],
       SqlPaletteCategory.dml => <_PaletteItem>[
         native(BlockType.sqlInsert),
+        native(BlockType.sqlInsertOrReplace),
+        native(BlockType.sqlUpsert),
         native(BlockType.sqlUpdate),
         native(BlockType.sqlDelete),
       ],
       SqlPaletteCategory.ddl => <_PaletteItem>[
         native(BlockType.sqlCreateTable),
+        native(BlockType.sqlCreateIndex),
+        native(BlockType.sqlDropIndex),
+        native(BlockType.sqlCreateView),
+        native(BlockType.sqlDropView),
+        native(BlockType.sqlCreateTrigger),
+        native(BlockType.sqlDropTrigger),
+        native(BlockType.sqlCreateVirtualTable),
         native(BlockType.sqlAlterTable),
         // SQLite has no TRUNCATE; this block executes as DELETE FROM.
         native(BlockType.sqlTruncate),
         native(BlockType.sqlDropTable),
       ],
       SqlPaletteCategory.txn => <_PaletteItem>[
-        native(BlockType.sqlCommit),
-        native(BlockType.sqlRollback),
+        native(BlockType.sqlBeginTransaction),
         native(BlockType.sqlSavepoint),
         native(BlockType.sqlRollbackToSavepoint),
-        native(BlockType.sqlUnion),
-        native(BlockType.sqlIntersect),
-        native(BlockType.sqlExcept),
+        native(BlockType.sqlReleaseSavepoint),
+        native(BlockType.sqlCommit),
+        native(BlockType.sqlEndTransaction),
+        native(BlockType.sqlRollback),
+      ],
+      SqlPaletteCategory.database => <_PaletteItem>[
+        native(BlockType.sqlPragma),
+        native(BlockType.sqlAttachDatabase),
+        native(BlockType.sqlDetachDatabase),
+        native(BlockType.sqlVacuum),
+        native(BlockType.sqlReindex),
+        native(BlockType.sqlAnalyze),
       ],
       SqlPaletteCategory.plugins =>
         widget.pluginEntries
@@ -3091,10 +3657,22 @@ class _PaletteState extends State<_Palette> {
         return de
             ? 'Filtert Zeilen anhand einer Bedingung, z. B. nur Kunden mit Alter > 30.'
             : 'Filters rows by a condition, for example customers with age > 30.';
+      case BlockType.sqlAnd:
+        return de
+            ? 'Verknüpft einen weiteren Filter mit UND.'
+            : 'Adds another filter joined with AND.';
+      case BlockType.sqlOr:
+        return de
+            ? 'Verknüpft einen alternativen Filter mit ODER.'
+            : 'Adds an alternative filter joined with OR.';
       case BlockType.sqlOrderBy:
         return de
             ? 'Sortiert die Ergebnisliste nach einer Spalte auf- oder absteigend.'
             : 'Sorts the result set by a column in ascending or descending order.';
+      case BlockType.sqlLimit:
+        return de
+            ? 'Begrenzt die Ergebniszahl und kann vorherige Zeilen überspringen.'
+            : 'Limits the result count and can skip preceding rows.';
       case BlockType.sqlJoin:
         return de
             ? 'Verknüpft Tabellen über passende Werte, damit zusammengehörige Daten in einer Abfrage erscheinen.'
@@ -3269,6 +3847,14 @@ class _PaletteState extends State<_Palette> {
         return de
             ? 'Fügt neue Datensätze in eine Tabelle ein.'
             : 'Adds new records to a table.';
+      case BlockType.sqlInsertOrReplace:
+        return de
+            ? 'Fügt Datensätze ein und ersetzt bei einem Schlüsselkonflikt den bestehenden Datensatz.'
+            : 'Inserts records and replaces an existing record on a key conflict.';
+      case BlockType.sqlUpsert:
+        return de
+            ? 'Fügt Datensätze ein oder aktualisiert gezielt Spalten bei einem Konflikt.'
+            : 'Inserts records or updates selected columns on a conflict.';
       case BlockType.sqlUpdate:
         return de
             ? 'Ändert bestehende Datensätze in einer Tabelle.'
@@ -3279,8 +3865,36 @@ class _PaletteState extends State<_Palette> {
             : 'Removes records from a table, optionally with a condition.';
       case BlockType.sqlCreateTable:
         return de
-            ? 'Erstellt eine neue Tabelle oder andere Datenbankobjekte.'
-            : 'Creates a new table or other database objects.';
+            ? 'Erstellt eine Tabelle mit Spalten-, CHECK- und Fremdschlüsseldefinitionen.'
+            : 'Creates a table with column, CHECK, and foreign-key definitions.';
+      case BlockType.sqlCreateIndex:
+        return de
+            ? 'Erstellt einen optional eindeutigen Index über eine oder mehrere Spalten.'
+            : 'Creates an optionally unique index over one or more columns.';
+      case BlockType.sqlDropIndex:
+        return de
+            ? 'Entfernt einen bestehenden Datenbankindex.'
+            : 'Drops an existing database index.';
+      case BlockType.sqlCreateView:
+        return de
+            ? 'Erstellt eine gespeicherte Sicht auf das Ergebnis einer SELECT-Abfrage.'
+            : 'Creates a stored view over the result of a SELECT query.';
+      case BlockType.sqlDropView:
+        return de
+            ? 'Entfernt eine bestehende Datenbanksicht.'
+            : 'Drops an existing database view.';
+      case BlockType.sqlCreateTrigger:
+        return de
+            ? 'Führt bei INSERT, UPDATE oder DELETE automatisch SQLite-Anweisungen aus.'
+            : 'Automatically runs SQLite statements on INSERT, UPDATE, or DELETE.';
+      case BlockType.sqlDropTrigger:
+        return de
+            ? 'Entfernt eine bestehende Datenbank-Automatik.'
+            : 'Drops an existing database trigger.';
+      case BlockType.sqlCreateVirtualTable:
+        return de
+            ? 'Erstellt eine virtuelle FTS5- oder R*Tree-Tabelle.'
+            : 'Creates a virtual FTS5 or R*Tree table.';
       case BlockType.sqlAlterTable:
         return de
             ? 'Fügt Spalten hinzu, löscht sie oder ändert Spalten in einer bestehenden Tabelle.'
@@ -3303,12 +3917,20 @@ class _PaletteState extends State<_Palette> {
             : 'Takes away privileges previously granted to users or roles.';
       case BlockType.sqlCommit:
         return de
-            ? 'Speichert alle Änderungen der aktuellen Transaktion.'
-            : 'Persists changes of the current transaction.';
+            ? 'Übernimmt alle Änderungen des aktuellen Snapshots dauerhaft.'
+            : 'Permanently keeps all changes in the current snapshot.';
+      case BlockType.sqlBeginTransaction:
+        return de
+            ? 'Startet einen geschützten Snapshot für die folgenden Änderungsschritte.'
+            : 'Starts a protected snapshot for the following mutation steps.';
+      case BlockType.sqlEndTransaction:
+        return de
+            ? 'Beendet den Snapshot und übernimmt seine Änderungen wie COMMIT.'
+            : 'Ends the snapshot and keeps its changes like COMMIT.';
       case BlockType.sqlRollback:
         return de
-            ? 'Verwirft Änderungen der aktuellen Transaktion.'
-            : 'Discards changes of the current transaction.';
+            ? 'Verwirft den Snapshot und stellt den vorherigen Zustand wieder her.'
+            : 'Discards the snapshot and restores the previous state.';
       case BlockType.sqlSavepoint:
         return de
             ? 'Setzt einen Zwischenstand innerhalb einer Transaktion.'
@@ -3317,10 +3939,50 @@ class _PaletteState extends State<_Palette> {
         return de
             ? 'Springt auf einen gesetzten Zwischenstand zurück.'
             : 'Rolls back to a defined transaction checkpoint.';
+      case BlockType.sqlReleaseSavepoint:
+        return de
+            ? 'Gibt einen Wiederherstellungspunkt frei, ohne seine Änderungen zu verwerfen.'
+            : 'Releases a restore point without discarding its changes.';
       case BlockType.sqlSetTransaction:
         return de
             ? 'Setzt Eigenschaften der aktuellen Transaktion.'
             : 'Sets properties of the current transaction.';
+      case BlockType.sqlPragma:
+        return de
+            ? 'Konfiguriert SQLite oder liest Engine- und Tabelleninformationen aus.'
+            : 'Configures SQLite or reads engine and table information.';
+      case BlockType.sqlAttachDatabase:
+        return de
+            ? 'Bindet eine weitere SQLite-Datei unter einem Schemanamen ein.'
+            : 'Attaches another SQLite file under a schema name.';
+      case BlockType.sqlDetachDatabase:
+        return de
+            ? 'Trennt eine zuvor eingebundene SQLite-Datenbank.'
+            : 'Detaches a previously attached SQLite database.';
+      case BlockType.sqlVacuum:
+        return de
+            ? 'Defragmentiert die Datenbankdatei und gibt freien Speicherplatz zurück.'
+            : 'Defragments the database file and reclaims unused space.';
+      case BlockType.sqlReindex:
+        return de
+            ? 'Baut alle oder ausgewählte SQLite-Indizes neu auf.'
+            : 'Rebuilds all or selected SQLite indexes.';
+      case BlockType.sqlAnalyze:
+        return de
+            ? 'Aktualisiert Statistiken für die SQLite-Abfrageplanung.'
+            : 'Refreshes statistics used by SQLite query planning.';
+      case BlockType.sqlExplain:
+        return de
+            ? 'Zeigt Bytecode oder den verständlicheren Ausführungsplan einer verbundenen Abfrage.'
+            : 'Shows bytecode or the more readable query plan for a connected query.';
+      case BlockType.sqlWith:
+        return de
+            ? 'Definiert ein temporäres oder rekursives Zwischenergebnis für die folgende Abfrage.'
+            : 'Defines a temporary or recursive result for the following query.';
+      case BlockType.sqlValues:
+        return de
+            ? 'Erzeugt eine eigenständige Tabelle aus angegebenen Wertzeilen.'
+            : 'Creates a standalone table from the supplied value rows.';
       case BlockType.sqlLoop:
         return de
             ? 'Führt enthaltene SQLite-Blöcke wiederholt aus.'
@@ -3369,6 +4031,9 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.dml => widget.catalog.text('palette.category.dml'),
       SqlPaletteCategory.ddl => widget.catalog.text('palette.category.ddl'),
       SqlPaletteCategory.txn => widget.catalog.text('palette.category.txn'),
+      SqlPaletteCategory.database => widget.catalog.text(
+        'palette.category.database',
+      ),
       SqlPaletteCategory.plugins => widget.catalog.text(
         'palette.category.plugins',
       ),
@@ -3380,6 +4045,7 @@ class _PaletteState extends State<_Palette> {
       BlockType.sqlSelect =>
         OperatorBlock(id: 'tpl_sel', position: Offset.zero, operatorType: type)
           ..inputs.addAll(<String, dynamic>{
+            'select_mode': 'ALL',
             'columns': '*',
             'table': 'table_name',
             'table_alias': '',
@@ -3422,10 +4088,75 @@ class _PaletteState extends State<_Palette> {
         operatorType: type,
         inputs: <String, dynamic>{'expr': 'amount'},
       ),
-      BlockType.sqlWhere || BlockType.sqlOrderBy => MotionBlock(
+      BlockType.sqlWhere || BlockType.sqlAnd || BlockType.sqlOr => MotionBlock(
         id: 'tpl_mot',
         position: Offset.zero,
         motionType: type,
+        inputs: <String, dynamic>{
+          'negation': '',
+          'column': 'id',
+          'operator': '=',
+          'value': '1',
+        },
+      ),
+      BlockType.sqlOrderBy => MotionBlock(
+        id: 'tpl_order',
+        position: Offset.zero,
+        motionType: type,
+        inputs: <String, dynamic>{'column': 'id', 'order': 'ASC'},
+      ),
+      BlockType.sqlLimit => OperatorBlock(
+        id: 'tpl_limit',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'count': '5', 'offset': ''},
+      ),
+      BlockType.sqlUnion => OperatorBlock(
+        id: 'tpl_union',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{'set_mode': '', 'sql': 'SELECT 1'},
+      ),
+      BlockType.sqlInsert => OperatorBlock(
+        id: 'tpl_insert',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{
+          'table': 'table_name',
+          'columns': 'column_name',
+          'values': "('value')",
+        },
+      ),
+      BlockType.sqlCreateTable => OperatorBlock(
+        id: 'tpl_create_table',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{
+          'if_not_exists': '',
+          'table': 'new_table',
+          'definition': 'id INTEGER PRIMARY KEY, name TEXT NOT NULL',
+        },
+      ),
+      BlockType.sqlCreateIndex => OperatorBlock(
+        id: 'tpl_create_index',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{
+          'unique': '',
+          'if_not_exists': '',
+          'name': 'index_name',
+          'table': 'table_name',
+          'columns': 'column_name',
+        },
+      ),
+      BlockType.sqlDropTable => OperatorBlock(
+        id: 'tpl_drop_table',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{
+          'if_exists': 'IF EXISTS',
+          'table': 'table_name',
+        },
       ),
       BlockType.sqlLoop => ControlBlock(
         id: 'tpl_ctl',
@@ -5830,8 +6561,20 @@ class _NodeView extends ConsumerWidget {
     final text = '${value ?? ''}'.trim();
     final rawLower = rawKey.toLowerCase();
     final normalized = text.toLowerCase();
+    final inputKey = _slotInputKey(rawKey);
     if (text.isEmpty) {
-      return _slotInputKey(rawKey) == 'table_alias' ? 'No Alias' : '';
+      if (inputKey == 'table_alias') return 'No Alias';
+      if (inputKey == 'select_mode') return 'ALL';
+      if (inputKey == 'set_mode') return '—';
+      if (inputKey == 'negation') return '—';
+      if (inputKey == 'if_not_exists' ||
+          inputKey == 'if_exists' ||
+          inputKey == 'unique' ||
+          inputKey == 'temporary' ||
+          inputKey == 'recursive') {
+        return '—';
+      }
+      return '';
     }
     if (normalized == rawLower) return '';
     if (normalized == 'table_name' ||
@@ -5842,25 +6585,49 @@ class _NodeView extends ConsumerWidget {
         normalized == 'columns') {
       final defaultDisplay = _slotDefaultDisplay(rawKey);
       if (mode == SqlAbstractionMode.simple &&
-          _slotInputKey(rawKey) == 'columns' &&
+          inputKey == 'columns' &&
           defaultDisplay == '*') {
         return simpleAllColumnsLabel(localeCode);
       }
       return defaultDisplay;
     }
-    if (_slotInputKey(rawKey) == 'order') {
+    if (inputKey == 'order') {
       return _localizedOrderLabel(_normalizeOrderValue(text), localeCode);
     }
-    if (_slotInputKey(rawKey) == 'join_type') {
+    if (inputKey == 'join_type') {
       return _normalizeJoinValue(text);
     }
-    if (_slotInputKey(rawKey) == 'operator') {
+    if (inputKey == 'operator') {
       return _normalizeOperatorValue(text);
     }
-    if (_slotInputKey(rawKey) == 'aggregate') {
+    if (inputKey == 'aggregate') {
       return _normalizeAggregateValue(text);
     }
-    if (_slotInputKey(rawKey) == 'columns') {
+    if (inputKey == 'select_mode') {
+      return text.toUpperCase() == 'DISTINCT' ? 'DISTINCT' : 'ALL';
+    }
+    if (inputKey == 'set_mode') {
+      return text.toUpperCase() == 'ALL' ? 'ALL' : '—';
+    }
+    if (inputKey == 'negation') {
+      return text.toUpperCase() == 'NOT' ? 'NOT' : '—';
+    }
+    if (inputKey == 'if_not_exists') {
+      return text.toUpperCase() == 'IF NOT EXISTS' ? 'IF NOT EXISTS' : '—';
+    }
+    if (inputKey == 'if_exists') {
+      return text.toUpperCase() == 'IF EXISTS' ? 'IF EXISTS' : '—';
+    }
+    if (inputKey == 'unique') {
+      return text.toUpperCase() == 'UNIQUE' ? 'UNIQUE' : '—';
+    }
+    if (inputKey == 'temporary') {
+      return text.toUpperCase() == 'TEMP' ? 'TEMP' : '—';
+    }
+    if (inputKey == 'recursive') {
+      return text.toUpperCase() == 'RECURSIVE' ? 'RECURSIVE' : '—';
+    }
+    if (inputKey == 'columns') {
       if (mode == SqlAbstractionMode.simple && text == '*') {
         return simpleAllColumnsLabel(localeCode);
       }
@@ -5901,7 +6668,23 @@ class _NodeView extends ConsumerWidget {
         return '=';
       case 'aggregate':
         return 'COUNT';
+      case 'select_mode':
+        return 'ALL';
+      case 'set_mode':
+        return '—';
+      case 'negation':
+      case 'if_not_exists':
+      case 'if_exists':
+      case 'unique':
+      case 'temporary':
+      case 'recursive':
+        return '—';
+      case 'count':
+        return '5';
+      case 'offset':
+        return '0';
       case 'value':
+      case 'pragma_value':
       case 'where_value':
       case 'condition_value':
         return '1';
@@ -5937,9 +6720,14 @@ class _NodeView extends ConsumerWidget {
     if (node.type == BlockType.sqlFrom ||
         node.type == BlockType.sqlJoin ||
         node.type == BlockType.sqlInsert ||
+        node.type == BlockType.sqlInsertOrReplace ||
+        node.type == BlockType.sqlUpsert ||
         node.type == BlockType.sqlUpdate ||
         node.type == BlockType.sqlDelete ||
         node.type == BlockType.sqlCreateTable ||
+        node.type == BlockType.sqlCreateIndex ||
+        node.type == BlockType.sqlCreateTrigger ||
+        node.type == BlockType.sqlCreateVirtualTable ||
         node.type == BlockType.sqlDropTable ||
         node.type == BlockType.sqlSelect) {
       return 'table';
@@ -6045,7 +6833,11 @@ class _NodeView extends ConsumerWidget {
             engine.updateInput(node, mappedKey, merged);
           }
         } else {
-          engine.updateInput(node, mappedKey, picked);
+          engine.updateInput(
+            node,
+            mappedKey,
+            _normalizeInputValue(mappedKey, picked),
+          );
         }
       }
       return;
@@ -6054,10 +6846,22 @@ class _NodeView extends ConsumerWidget {
     final controller = TextEditingController(
       text: '${node.inputs[mappedKey] ?? ''}',
     );
+    final multiline =
+        mappedKey == 'definition' ||
+        mappedKey == 'values' ||
+        mappedKey == 'sql' ||
+        mappedKey == 'body' ||
+        mappedKey == 'assignments' ||
+        mappedKey == 'statement';
     final parsed = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        content: TextField(controller: controller),
+        content: TextField(
+          controller: controller,
+          keyboardType: multiline ? TextInputType.multiline : null,
+          minLines: multiline ? 4 : 1,
+          maxLines: multiline ? 14 : 1,
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -6109,6 +6913,23 @@ class _NodeView extends ConsumerWidget {
       'aufsteigend|absteigend',
       'ascending|descending',
       'privilege',
+      'select_mode',
+      'set_mode',
+      'negation',
+      'if_not_exists',
+      'if_exists',
+      'unique',
+      'temporary',
+      'recursive',
+      'behavior',
+      'action',
+      'timing',
+      'event',
+      'module',
+      'pragma',
+      'pragma_value',
+      'explain_mode',
+      'alter_action',
     };
     final dropdownMapped = <String>{
       'table',
@@ -6132,6 +6953,22 @@ class _NodeView extends ConsumerWidget {
       'datatype',
       'order',
       'privilege',
+      'select_mode',
+      'set_mode',
+      'negation',
+      'if_not_exists',
+      'if_exists',
+      'unique',
+      'temporary',
+      'recursive',
+      'behavior',
+      'action',
+      'timing',
+      'event',
+      'module',
+      'pragma',
+      'mode',
+      'alter_action',
     };
     return dropdownRaw.contains(rawToken) || dropdownMapped.contains(mappedKey);
   }
@@ -6165,6 +7002,12 @@ class _NodeView extends ConsumerWidget {
         return 'alias';
       case 'JOIN_TYPE':
         return 'join_type';
+      case 'union_mode':
+        return 'set_mode';
+      case 'pragma_value':
+        return 'value';
+      case 'explain_mode':
+        return 'mode';
       case 'ASC|DESC':
       case 'aufsteigend|absteigend':
       case 'ascending|descending':
@@ -6225,7 +7068,106 @@ class _NodeView extends ConsumerWidget {
     }
 
     if (mappedKey == 'operator') {
-      return const <String>['=', '!=', '<>', '>', '>=', '<', '<=', 'LIKE'];
+      return const <String>[
+        '=',
+        '!=',
+        '<>',
+        '>',
+        '>=',
+        '<',
+        '<=',
+        'LIKE',
+        'NOT LIKE',
+        'IN',
+        'NOT IN',
+        'BETWEEN',
+        'NOT BETWEEN',
+        'IS NULL',
+        'IS NOT NULL',
+      ];
+    }
+
+    if (mappedKey == 'select_mode') {
+      return const <String>['ALL', 'DISTINCT'];
+    }
+
+    if (mappedKey == 'set_mode') {
+      return const <String>['NONE', 'ALL'];
+    }
+
+    if (mappedKey == 'behavior') {
+      return const <String>['DEFERRED', 'IMMEDIATE', 'EXCLUSIVE'];
+    }
+
+    if (mappedKey == 'action') {
+      return const <String>['DO UPDATE', 'DO NOTHING'];
+    }
+
+    if (mappedKey == 'alter_action') {
+      return const <String>[
+        'ADD COLUMN',
+        'RENAME COLUMN',
+        'DROP COLUMN',
+        'RENAME TO',
+      ];
+    }
+
+    if (mappedKey == 'timing') {
+      return const <String>['BEFORE', 'AFTER', 'INSTEAD OF'];
+    }
+
+    if (mappedKey == 'event') {
+      return const <String>['INSERT', 'UPDATE', 'DELETE'];
+    }
+
+    if (mappedKey == 'module') {
+      return const <String>['FTS5', 'RTREE'];
+    }
+
+    if (mappedKey == 'pragma') {
+      return const <String>[
+        'foreign_keys',
+        'table_info',
+        'database_list',
+        'journal_mode',
+      ];
+    }
+
+    if (node.type == BlockType.sqlPragma && mappedKey == 'value') {
+      return switch ('${node.inputs['pragma'] ?? 'foreign_keys'}') {
+        'foreign_keys' => const <String>['ON', 'OFF'],
+        'table_info' =>
+          runtime.schemas.map((schema) => schema.name).toList(growable: false),
+        'journal_mode' => const <String>[
+          'DELETE',
+          'TRUNCATE',
+          'PERSIST',
+          'MEMORY',
+          'WAL',
+          'OFF',
+        ],
+        _ => const <String>['NONE'],
+      };
+    }
+
+    if (mappedKey == 'mode') {
+      return const <String>['EXPLAIN QUERY PLAN', 'EXPLAIN'];
+    }
+
+    if (mappedKey == 'negation') {
+      return const <String>['NONE', 'NOT'];
+    }
+
+    if (mappedKey == 'if_not_exists') {
+      return const <String>['NONE', 'IF NOT EXISTS'];
+    }
+
+    if (mappedKey == 'if_exists') {
+      return const <String>['NONE', 'IF EXISTS'];
+    }
+
+    if (mappedKey == 'unique') {
+      return const <String>['NONE', 'UNIQUE'];
     }
 
     if (mappedKey == 'datatype') {
@@ -6933,6 +7875,12 @@ class _NodeView extends ConsumerWidget {
       '<=',
       'LIKE',
       'NOT LIKE',
+      'IN',
+      'NOT IN',
+      'BETWEEN',
+      'NOT BETWEEN',
+      'IS NULL',
+      'IS NOT NULL',
     };
     if (known.contains(normalized)) return normalized;
     if (normalized == '=>') return '>=';
@@ -6948,6 +7896,32 @@ class _NodeView extends ConsumerWidget {
     if (mappedKey == 'join_type') return _normalizeJoinValue(value);
     if (mappedKey == 'operator') return _normalizeOperatorValue(value);
     if (mappedKey == 'aggregate') return _normalizeAggregateValue(value);
+    if (mappedKey == 'select_mode') {
+      return value.trim().toUpperCase() == 'DISTINCT' ? 'DISTINCT' : 'ALL';
+    }
+    if (mappedKey == 'set_mode') {
+      return value.trim().toUpperCase() == 'ALL' ? 'ALL' : '';
+    }
+    if (mappedKey == 'negation') {
+      return value.trim().toUpperCase() == 'NOT' ? 'NOT' : '';
+    }
+    if (mappedKey == 'if_not_exists') {
+      return value.trim().toUpperCase() == 'IF NOT EXISTS'
+          ? 'IF NOT EXISTS'
+          : '';
+    }
+    if (mappedKey == 'if_exists') {
+      return value.trim().toUpperCase() == 'IF EXISTS' ? 'IF EXISTS' : '';
+    }
+    if (mappedKey == 'unique') {
+      return value.trim().toUpperCase() == 'UNIQUE' ? 'UNIQUE' : '';
+    }
+    if (mappedKey == 'temporary') {
+      return value.trim().toUpperCase() == 'TEMP' ? 'TEMP' : '';
+    }
+    if (mappedKey == 'recursive') {
+      return value.trim().toUpperCase() == 'RECURSIVE' ? 'RECURSIVE' : '';
+    }
     return value;
   }
 
@@ -7078,6 +8052,131 @@ class _NodeDiagnosticBadge extends StatelessWidget {
   }
 }
 
+class _SqlIdePane extends StatefulWidget {
+  const _SqlIdePane({
+    required this.controller,
+    required this.runtime,
+    required this.catalog,
+    required this.executing,
+    required this.onExecute,
+    required this.onClose,
+  });
+
+  final SqlHighlightingController controller;
+  final SqlRuntimeState runtime;
+  final TranslationCatalog catalog;
+  final bool executing;
+  final VoidCallback onExecute;
+  final VoidCallback onClose;
+
+  @override
+  State<_SqlIdePane> createState() => _SqlIdePaneState();
+}
+
+class _SqlIdePaneState extends State<_SqlIdePane> {
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    final canExecute =
+        widget.runtime.dbPath != null &&
+        widget.controller.text.trim().isNotEmpty &&
+        !widget.executing;
+    return Padding(
+      key: const ValueKey<String>('sql-ide-pane'),
+      padding: const EdgeInsets.all(NodeQlDesign.space3),
+      child: Container(
+        decoration: surfaceStyle.surfaceDecoration(
+          color: colors.panel,
+          borderColor: colors.border,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Container(
+              height: 58,
+              padding: const EdgeInsets.only(left: 16, right: 6),
+              decoration: BoxDecoration(
+                color: colors.panelElevated,
+                border: Border(bottom: BorderSide(color: colors.border)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.data_object_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.catalog.text('runtime.ideTitle'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          widget.catalog.text('runtime.ideSubtitle'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    key: const ValueKey<String>('run-custom-sql'),
+                    onPressed: canExecute ? widget.onExecute : null,
+                    tooltip: widget.catalog.text('runtime.runCustomSql'),
+                    icon: widget.executing
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.play_arrow_rounded),
+                  ),
+                  IconButton(
+                    key: const ValueKey<String>('close-sql-ide'),
+                    onPressed: widget.onClose,
+                    tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
+                    icon: const Icon(Icons.account_tree_outlined),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: SqlCodeEditor(
+                  controller: widget.controller,
+                  schemas: widget.runtime.schemas,
+                  onChanged: (_) => setState(() {}),
+                  onRun: canExecute ? widget.onExecute : null,
+                  hintText: widget.catalog.text('runtime.customSqlHint'),
+                  localModelLabel: widget.catalog.text(
+                    'runtime.localCompletion',
+                  ),
+                  externalError:
+                      widget.runtime.lastSql.trim() ==
+                          widget.controller.text.trim()
+                      ? widget.runtime.lastMessage
+                      : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SqlRuntimePane extends StatefulWidget {
   const _SqlRuntimePane({
     required this.sql,
@@ -7086,7 +8185,9 @@ class _SqlRuntimePane extends StatefulWidget {
     required this.localeCode,
     required this.catalog,
     required this.width,
-    required this.onExecuteCustomSql,
+    required this.customMode,
+    required this.onToggleCustomMode,
+    this.showCustomModeToggle = true,
   });
 
   final String sql;
@@ -7095,7 +8196,9 @@ class _SqlRuntimePane extends StatefulWidget {
   final String localeCode;
   final TranslationCatalog catalog;
   final double width;
-  final Future<SqlExecutionResult> Function(String sql) onExecuteCustomSql;
+  final bool customMode;
+  final VoidCallback onToggleCustomMode;
+  final bool showCustomModeToggle;
 
   @override
   State<_SqlRuntimePane> createState() => _SqlRuntimePaneState();
@@ -7104,27 +8207,12 @@ class _SqlRuntimePane extends StatefulWidget {
 class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
   final ScrollController _outputHorizontal = ScrollController();
   final ScrollController _outputVertical = ScrollController();
-  final TextEditingController _customSqlController = TextEditingController();
-  final bool _showCustomSql = false;
-  bool _executingCustomSql = false;
 
   @override
   void dispose() {
     _outputHorizontal.dispose();
     _outputVertical.dispose();
-    _customSqlController.dispose();
     super.dispose();
-  }
-
-  Future<void> _executeCustomSql() async {
-    final sql = _customSqlController.text.trim();
-    if (sql.isEmpty || widget.runtime.dbPath == null || _executingCustomSql) {
-      return;
-    }
-    setState(() => _executingCustomSql = true);
-    await widget.onExecuteCustomSql(sql);
-    if (!mounted) return;
-    setState(() => _executingCustomSql = false);
   }
 
   Future<void> _copySqlToClipboard() async {
@@ -7147,7 +8235,63 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
       width: widget.width,
       child: Padding(
         padding: const EdgeInsets.all(NodeQlDesign.space3),
-        child: _buildSplitOutput(),
+        child: widget.customMode
+            ? _buildFullOutputPreview()
+            : _buildSplitOutput(),
+      ),
+    );
+  }
+
+  Widget _buildFullOutputPreview() {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    return Container(
+      key: const ValueKey<String>('full-output-preview'),
+      decoration: surfaceStyle.surfaceDecoration(
+        color: colors.panel,
+        borderColor: colors.border,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            height: 48,
+            padding: const EdgeInsets.only(left: 14, right: 4),
+            decoration: BoxDecoration(
+              color: colors.panelElevated,
+              border: Border(bottom: BorderSide(color: colors.border)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.table_rows_rounded,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    widget.catalog.text('runtime.outputPreview'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (widget.showCustomModeToggle)
+                  IconButton(
+                    key: const ValueKey<String>('toggle-custom-sql'),
+                    onPressed: widget.onToggleCustomMode,
+                    tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
+                    icon: const Icon(Icons.account_tree_outlined, size: 20),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: _buildOutputBody(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -7163,9 +8307,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
         final lineCount = '\n'.allMatches(sql).length + 1;
         final desiredSqlHeight = 48.0 + 28.0 + (lineCount * 19.0);
         final maxSqlHeight = (constraints.maxHeight * 0.58).clamp(130.0, 420.0);
-        final sqlHeight = _showCustomSql
-            ? (constraints.maxHeight * 0.4).clamp(180.0, 320.0)
-            : desiredSqlHeight.clamp(112.0, maxSqlHeight);
+        final sqlHeight = desiredSqlHeight.clamp(112.0, maxSqlHeight);
         return Column(
           key: const ValueKey('split'),
           children: [
@@ -7191,20 +8333,14 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                       child: Row(
                         children: [
                           Icon(
-                            _showCustomSql
-                                ? Icons.edit_note_rounded
-                                : Icons.terminal_rounded,
+                            Icons.terminal_rounded,
                             size: 18,
                             color: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(width: 9),
                           Expanded(
                             child: Text(
-                              widget.catalog.text(
-                                _showCustomSql
-                                    ? 'runtime.customSql'
-                                    : 'runtime.sqlCommandOutput',
-                              ),
+                              widget.catalog.text('runtime.sqlCommandOutput'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -7213,109 +8349,46 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                               ),
                             ),
                           ),
-                          IconButton(
-                            key: const ValueKey<String>('toggle-custom-sql'),
-                            onPressed: null,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            tooltip: widget.catalog.text(
-                              _showCustomSql
-                                  ? 'runtime.showGeneratedSql'
-                                  : 'runtime.customSql',
-                            ),
-                            icon: Icon(
-                              _showCustomSql
-                                  ? Icons.code_rounded
-                                  : Icons.edit_note_rounded,
-                              size: 20,
-                            ),
-                          ),
-                          if (_showCustomSql)
+                          if (widget.showCustomModeToggle)
                             IconButton(
-                              key: const ValueKey<String>('run-custom-sql'),
-                              onPressed:
-                                  widget.runtime.dbPath == null ||
-                                      _customSqlController.text
-                                          .trim()
-                                          .isEmpty ||
-                                      _executingCustomSql
-                                  ? null
-                                  : _executeCustomSql,
+                              key: const ValueKey<String>('toggle-custom-sql'),
+                              onPressed: widget.onToggleCustomMode,
                               color: Theme.of(context).colorScheme.onSurface,
-                              tooltip: widget.catalog.text(
-                                'runtime.runCustomSql',
+                              tooltip: widget.catalog.text('runtime.customSql'),
+                              icon: const Icon(
+                                Icons.edit_note_rounded,
+                                size: 20,
                               ),
-                              icon: _executingCustomSql
-                                  ? const SizedBox.square(
-                                      dimension: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.play_arrow_rounded,
-                                      size: 21,
-                                    ),
-                            )
-                          else
-                            IconButton(
-                              key: const ValueKey('copy-sql-command'),
-                              onPressed: widget.sql.trim().isEmpty
-                                  ? null
-                                  : _copySqlToClipboard,
-                              color: Theme.of(context).colorScheme.onSurface,
-                              tooltip: widget.catalog.text('runtime.copySql'),
-                              icon: const Icon(Icons.copy_rounded, size: 19),
                             ),
+                          IconButton(
+                            key: const ValueKey('copy-sql-command'),
+                            onPressed: widget.sql.trim().isEmpty
+                                ? null
+                                : _copySqlToClipboard,
+                            color: Theme.of(context).colorScheme.onSurface,
+                            tooltip: widget.catalog.text('runtime.copySql'),
+                            icon: const Icon(Icons.copy_rounded, size: 19),
+                          ),
                         ],
                       ),
                     ),
                     Expanded(
-                      child: _showCustomSql
-                          ? Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: TextField(
-                                key: const ValueKey<String>('custom-sql-input'),
-                                controller: _customSqlController,
-                                onChanged: (_) => setState(() {}),
-                                expands: true,
-                                minLines: null,
-                                maxLines: null,
-                                keyboardType: TextInputType.multiline,
-                                textInputAction: TextInputAction.newline,
-                                autocorrect: false,
-                                enableSuggestions: false,
-                                smartDashesType: SmartDashesType.disabled,
-                                smartQuotesType: SmartQuotesType.disabled,
-                                style: TextStyle(
-                                  fontFamily: 'monospace',
-                                  color: workbenchColors.sqlText,
-                                  height: 1.35,
-                                ),
-                                decoration: InputDecoration(
-                                  alignLabelWithHint: true,
-                                  hintText: widget.catalog.text(
-                                    'runtime.customSqlHint',
-                                  ),
-                                  border: InputBorder.none,
-                                ),
-                              ),
-                            )
-                          : SingleChildScrollView(
-                              padding: const EdgeInsets.all(12),
-                              child: Align(
-                                alignment: AlignmentDirectional.topStart,
-                                child: SelectionArea(
-                                  child: Text(
-                                    sql,
-                                    style: TextStyle(
-                                      fontFamily: 'monospace',
-                                      color: workbenchColors.sqlText,
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                ),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(12),
+                        child: Align(
+                          alignment: AlignmentDirectional.topStart,
+                          child: SelectionArea(
+                            child: Text(
+                              sql,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: workbenchColors.sqlText,
+                                height: 1.35,
                               ),
                             ),
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

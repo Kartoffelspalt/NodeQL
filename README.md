@@ -62,9 +62,16 @@ Additional screenshots and contribution guidance are available in
 ## Features
 
 - Visual SQLite blocks with snapping, editing, compilation, and execution.
+- Interactive [NodeQL learning workshop](docs/sql-workshop.html) with twelve
+  lessons, guided exercises, knowledge checks, and saved browser progress.
+- Isolated workshop mode with sixteen practical workspace missions: a large
+  toolbar button transforms the app into a dedicated learning area where
+  learners drag and connect real nodes, see generated SQLite live, receive
+  structural feedback, resume saved paths, and learn through Simple or
+  Advanced Mode without changing the active project workspace.
 - Local SQLite database access without a separate system CLI.
-- Graphical table creation in the hidden database browser's Simple Mode and
-  direct `CREATE TABLE` editing in Advanced Mode.
+- Graphical table creation in the database browser's Simple Mode and direct
+  `CREATE TABLE` editing in Advanced Mode.
 - Versioned JSON project files, recent projects, per-project autosave, and
   guided upgrades of supported legacy project files with automatic backups.
 - Declarative Plugin SDK v2 with visual blocks, external data-source adapters,
@@ -132,11 +139,12 @@ Use `windows` or `linux` instead of `macos` on the corresponding platform.
 ## Community
 
 - [Contributing](CONTRIBUTING.md)
+- [Interactive learning workshop](docs/sql-workshop.html)
 - [Plugin SDK](docs/plugins/README.md)
 - [Translation guide](docs/localization/README.md)
 - [AI agent guide](docs/ai/README.md)
 - [Release process](docs/RELEASING.md)
-- [0.3.6 release notes](docs/releases/v0.3.6.md)
+- [0.3.3 release notes](docs/releases/v0.3.3.md)
 - [Changelog](CHANGELOG.md)
 - [Trademark policy](TRADEMARKS.md)
 

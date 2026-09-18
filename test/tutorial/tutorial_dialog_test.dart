@@ -5,76 +5,79 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
+import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 
 void main() {
-  testWidgets('requires the correct exercise answer before continuing', (
+  testWidgets('launches a practical path directly in the real workspace', (
     tester,
   ) async {
-    var completed = false;
-    final catalog = _englishCatalog();
+    TutorialKnowledgeMode? startedMode;
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData.dark(useMaterial3: true),
         home: TutorialDialog(
-          catalog: catalog,
-          onComplete: () async => completed = true,
+          catalog: _englishCatalog(),
+          onStartPractice: (mode) async => startedMode = mode,
+          onComplete: () async {},
         ),
       ),
     );
 
-    expect(
-      find.text('Build SQLite without losing sight of SQLite'),
-      findsOneWidget,
-    );
+    expect(find.text('Choose a practical learning path'), findsOneWidget);
+    expect(find.text('About 15 min'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tutorial-answer-1-0')), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('tutorial-next')));
+    final beginner = find.byKey(const ValueKey('tutorial-lesson-beginner'));
+    await tester.ensureVisible(beginner);
+    await tester.tap(beginner);
     await tester.pumpAndSettle();
 
-    expect(find.text('Three areas, one workflow'), findsOneWidget);
-    final nextButton = tester.widget<FilledButton>(
-      find.byKey(const ValueKey('tutorial-next')),
-    );
-    expect(nextButton.onPressed, isNull);
-
-    final wrongAnswer = find.byKey(const ValueKey('tutorial-answer-1-0'));
-    await tester.ensureVisible(wrongAnswer);
-    await tester.tap(wrongAnswer);
-    await tester.pump();
-    expect(find.text('Not quite. Try another answer.'), findsOneWidget);
-
-    final correctAnswer = find.byKey(const ValueKey('tutorial-answer-1-1'));
-    await tester.ensureVisible(correctAnswer);
-    await tester.tap(correctAnswer);
-    await tester.pump();
-    expect(find.text('Correct. You can continue.'), findsOneWidget);
-
-    final enabledNext = tester.widget<FilledButton>(
-      find.byKey(const ValueKey('tutorial-next')),
-    );
-    expect(enabledNext.onPressed, isNotNull);
-
-    await tester.tap(find.byKey(const ValueKey('tutorial-skip')));
-    await tester.pumpAndSettle();
-    expect(completed, isTrue);
+    expect(startedMode, TutorialKnowledgeMode.beginner);
+    expect(find.byType(TutorialDialog), findsNothing);
   });
 
-  testWidgets('uses readable theme colors in White Mode', (tester) async {
-    final catalog = _englishCatalog();
-    final lightTheme = themeFor(NodeQlTheme.light);
+  testWidgets('shows mission progress instead of quiz progress', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: TutorialDialog(
+          catalog: _englishCatalog(),
+          initialProgress: const {
+            TutorialKnowledgeMode.beginnerSyntax: TutorialLessonProgress(
+              completedPracticeSteps: {0, 1},
+            ),
+          },
+          onStartPractice: (mode) async {},
+          onComplete: () async {},
+        ),
+      ),
+    );
 
+    expect(find.text('2 of 3 workspace missions'), findsOneWidget);
+    expect(find.text('Continue in workspace'), findsOneWidget);
+  });
+
+  testWidgets('uses readable workshop colors in White Mode', (tester) async {
+    final lightTheme = themeFor(NodeQlTheme.light);
     await tester.pumpWidget(
       MaterialApp(
         theme: lightTheme,
-        home: TutorialDialog(catalog: catalog, onComplete: () async {}),
+        home: TutorialDialog(
+          catalog: _englishCatalog(),
+          onStartPractice: (mode) async {},
+          onComplete: () async {},
+        ),
       ),
     );
 
     final body = tester.widget<Text>(
       find.text(
-        'NodeQL combines visual blocks with real SQLite output. You can '
-        'learn query structure, experiment locally and inspect every '
-        'generated statement.',
+        'Every path opens a real query tab. Drag, connect and configure '
+        'NodeQL nodes yourself while the workshop validates the graph and '
+        'shows the generated SQLite live — no quiz questions.',
       ),
     );
     final colors = lightTheme.extension<NodeQlWorkbenchColors>()!;
@@ -85,6 +88,31 @@ void main() {
       Brightness.light,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the fallback lesson view contains no answer buttons', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: TutorialDialog(
+          catalog: _englishCatalog(),
+          startOnOverview: false,
+          onComplete: () async {},
+        ),
+      ),
+    );
+
+    expect(
+      find.text('Build SQLite without losing sight of SQLite'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('tutorial-answer-0-0')), findsNothing);
+    final next = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('tutorial-next')),
+    );
+    expect(next.onPressed, isNotNull);
   });
 }
 

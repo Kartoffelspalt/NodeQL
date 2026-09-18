@@ -274,7 +274,8 @@ const builtInMessages = <String, Map<String, String>>{
     'toolbar.connectColumns': 'Spaltenquellen verbinden',
     'toolbar.simple': 'Einfach',
     'toolbar.advanced': 'Erweitert',
-    'toolbar.tutorial': 'Tutorial öffnen',
+    'toolbar.tutorial': 'Workshop öffnen',
+    'toolbar.workshop': 'Workshop',
     'workspace.disconnectColumns': 'Spaltenverbindung entfernen',
     'workspace.rope.title': 'Ausgewählte Rope',
     'workspace.rope.source': 'Quelle',
@@ -295,7 +296,7 @@ const builtInMessages = <String, Map<String, String>>{
         'Der letzte Workspace kann nicht gelöscht werden.',
     'settings.title': 'Einstellungen',
     'settings.languages': 'Sprachen verwalten',
-    'settings.tutorial': 'Interaktives Tutorial starten',
+    'settings.tutorial': 'NodeQL-Workshop öffnen',
     'settings.about': 'Über NodeQL und Lizenzen',
     'plugins.installedTab': 'Installiert',
     'plugins.repositoriesTab': 'Repositories',
@@ -318,9 +319,11 @@ const builtInMessages = <String, Map<String, String>>{
     'palette.rail.ddl': 'Struktur',
     'palette.rail.dcl': 'Berechtigungen',
     'palette.rail.txn': 'Transaktionen',
+    'palette.rail.database': 'Datenbankwerkzeuge',
     'palette.rail.plugins': 'Erweiterungen',
     'palette.category.queryLanguage': 'Query Language',
     'palette.category.dataTypes': 'SQLite-Datentypen',
+    'palette.category.database': 'Datenbank & Diagnose',
     'project.untitled': 'Unbenannt',
     'project.new.title': 'Neues Projekt',
     'project.new.reset': 'Aktuelle Arbeitsfläche zurücksetzen?',
@@ -344,9 +347,311 @@ const builtInMessages = <String, Map<String, String>>{
     'project.upgrade.unsupportedMessage':
         'Diese Projektdatei wird von dieser NodeQL-Version nicht unterstützt: {error}',
     'project.upgrade.close': 'Schließen',
-    'tutorial.title': 'NodeQL lernen',
+    'tutorial.title': 'NodeQL-Workshop',
+    'tutorial.window.title': 'NodeQL-Workshop',
+    'tutorial.window.subtitle':
+        'Abgekoppelter Lernbereich · echte Nodes · Live-SQLite',
+    'tutorial.window.paths': 'Lernpfade',
+    'tutorial.window.close': 'Workshop verlassen',
+    'tutorial.window.emptyTitle': 'Wähle zum Start einen Lernpfad',
+    'tutorial.window.emptyBody':
+        'Dieser Lernbereich ist von deinen Projekten getrennt. Alle hier erstellten Nodes gehören nur zur aktuellen Workshop-Sitzung.',
+    'tutorial.window.guide.pick': '1 · Lernpfad wählen',
+    'tutorial.window.guide.build': '2 · Nodes ziehen und verbinden',
+    'tutorial.window.guide.check': '3 · Lösung prüfen',
     'tutorial.progress': 'Schritt {current} von {total}',
     'tutorial.skip': 'Einführung überspringen',
+    'tutorial.close': 'Workshop schließen',
+    'tutorial.lessons': 'Alle Lektionen',
+    'tutorial.overview.eyebrow': 'NODEQL-WORKSHOP',
+    'tutorial.overview.title': 'Wähle einen praktischen Lernpfad',
+    'tutorial.overview.body':
+        'Jeder Lernpfad öffnet einen echten Abfrage-Tab. Ziehe, verbinde und konfiguriere NodeQL-Nodes selbst, während der Workshop den Graphen prüft und das erzeugte SQLite live zeigt – ohne Quizfragen.',
+    'tutorial.overview.progress':
+        '{completed} von {total} Lektionen abgeschlossen',
+    'tutorial.overview.saved': 'Dein Fortschritt wird automatisch gespeichert.',
+    'tutorial.overview.allDone':
+        'Workshop abgeschlossen – du kannst jede Lektion jederzeit wiederholen.',
+    'tutorial.lesson.exercises': '{solved} von {total} Workspace-Missionen',
+    'tutorial.lesson.duration': 'Ca. {minutes} Min.',
+    'tutorial.lesson.start': 'Im Workspace starten',
+    'tutorial.lesson.resume': 'Im Workspace fortsetzen',
+    'tutorial.lesson.repeat': 'Im Workspace wiederholen',
+    'tutorial.lesson.finish': 'Lektion abschließen',
+    'tutorial.lesson.completed': 'Abgeschlossen',
+    'tutorial.lesson.recommended': 'Empfohlen',
+    'tutorial.lesson.practiceDone': 'Workspace-Aufgabe gelöst',
+    'tutorial.lesson.beginner.description':
+        'Ein geführter 15-Minuten-Kurs im Simple Mode: Node-Formen, Labels, Wert-Reporter und eine vollständige SELECT-Abfrage verstehen.',
+    'tutorial.lesson.beginnerSyntax.description':
+        'Lerne die Klauselreihenfolge mit einzelnen SELECT-, FROM-, WHERE- und AND-Nodes samt Live-Syntaxvorschau.',
+    'tutorial.lesson.intermediate.description':
+        'Verbinde Tabellen, gruppiere Ergebnisse und filtere Aggregatgruppen direkt im Workspace.',
+    'tutorial.lesson.expert.description':
+        'Kombiniere Ergebnismengen mit UNION und sortiere und begrenze anschließend das finale SQLite-Ergebnis.',
+    'tutorial.practice.start': 'Mit echten Nodes üben',
+    'tutorial.practice.success':
+        'Gelöst – dieser Arbeitsbereich enthält die benötigten verbundenen Nodes.',
+    'tutorial.practice.otherTab':
+        'Die Übung befindet sich in einem anderen Abfrage-Tab.',
+    'tutorial.practice.incomplete':
+        'Die Node-Kette ist noch nicht vollständig. Nutze die Checkliste oder blende einen Hinweis ein.',
+    'tutorial.practice.resume': 'Übungs-Tab öffnen',
+    'tutorial.practice.hint': 'Hinweis zeigen',
+    'tutorial.practice.check': 'Nodes prüfen',
+    'tutorial.practice.close': 'Übungsbegleitung schließen',
+    'tutorial.practice.beginner.title': 'Praxis: Erste Abfrage bauen',
+    'tutorial.practice.beginner.instruction':
+        'Ziehe einen SELECT-Node unter ABFRAGE AUSFÜHREN. Stelle Spalten und Tabelle direkt im Node ein.',
+    'tutorial.practice.beginner.hint':
+        'Du findest SELECT links in der Palette unter Query Language. Ziehe ihn an den hervorgehobenen Anschluss unter dem Starter-Node.',
+    'tutorial.practice.beginner.tab': 'Workshop · Erste Abfrage',
+    'tutorial.practice.beginner.check.selectConnected': 'SELECT ist verbunden',
+    'tutorial.practice.beginnerSyntax.title': 'Praxis: Zeilen filtern',
+    'tutorial.practice.beginnerSyntax.instruction':
+        'Erweitere die vorbereitete SELECT-Abfrage um einen WHERE-Node und stelle Spalte, Operator und Wert ein.',
+    'tutorial.practice.beginnerSyntax.hint':
+        'Setze WHERE unter SELECT. Eine einfache Bedingung wie id = 1 reicht aus.',
+    'tutorial.practice.beginnerSyntax.tab': 'Workshop · WHERE-Filter',
+    'tutorial.practice.beginnerSyntax.check.whereConnected':
+        'WHERE ist verbunden',
+    'tutorial.practice.beginnerSyntax.check.whereConfigured':
+        'Bedingung ist eingestellt',
+    'tutorial.practice.intermediate.title': 'Praxis: Zwei Tabellen verbinden',
+    'tutorial.practice.intermediate.instruction':
+        'Setze nach FROM einen JOIN ein und stelle die zweite Tabelle sowie ihre Schlüsselbeziehung ein.',
+    'tutorial.practice.intermediate.hint':
+        'Nutze INNER JOIN. Verbinde customers.id mit orders.customer_id oder stelle eine andere vollständige ON-Bedingung ein.',
+    'tutorial.practice.intermediate.tab': 'Workshop · JOIN',
+    'tutorial.practice.intermediate.check.joinConnected': 'JOIN ist verbunden',
+    'tutorial.practice.intermediate.check.joinConfigured':
+        'Tabelle und Schlüssel sind eingestellt',
+    'tutorial.practice.expert.title': 'Praxis: Aggregierte Gruppen filtern',
+    'tutorial.practice.expert.instruction':
+        'Erweitere die vorbereitete Abfrage zuerst um GROUP BY und danach um HAVING.',
+    'tutorial.practice.expert.hint':
+        'Gruppiere zuerst nach customer_id. Ergänze dann HAVING mit einer Aggregatbedingung wie COUNT(*) > 0.',
+    'tutorial.practice.expert.tab': 'Workshop · GROUP BY & HAVING',
+    'tutorial.practice.expert.check.groupByConnected': 'GROUP BY ist verbunden',
+    'tutorial.practice.expert.check.havingConnected': 'HAVING ist verbunden',
+    'tutorial.practice.expert.check.groupBeforeHaving':
+        'Klauselreihenfolge stimmt',
+    'tutorial.practice.mode.simple': 'Simple Mode',
+    'tutorial.practice.mode.advanced': 'Advanced Mode',
+    'tutorial.practice.modeHelp.simple':
+        'Im Simple Mode tragen die Nodes verständliche Bezeichnungen. Beobachte die Live-SQL-Vorschau, um die Syntax dahinter zu lernen.',
+    'tutorial.practice.modeHelp.advanced':
+        'Im Advanced Mode entsprechen die Node-Beschriftungen direkt den SQLite-Schlüsselwörtern und zeigen alle wichtigen Felder.',
+    'tutorial.practice.stepProgress': 'Mission {current} von {total}',
+    'tutorial.practice.syntaxGoal': 'Zielsyntax',
+    'tutorial.practice.syntaxLive': 'Live erzeugt',
+    'tutorial.practice.syntaxEmpty':
+        'Verbinde einen Node, um SQLite zu erzeugen …',
+    'tutorial.practice.checkNodes': 'Lösung prüfen',
+    'tutorial.practice.requirements':
+        '{done} von {total} Anforderungen erfüllt',
+    'tutorial.practice.nextRequirement': 'Als Nächstes: {requirement}',
+    'tutorial.practice.estimatedTime': 'ca. {minutes} Min.',
+    'tutorial.practice.nodeFocus': 'Diese Nodes verstehen',
+    'tutorial.practice.label.simple': 'Simple-Mode-Label',
+    'tutorial.practice.label.advanced': 'SQLite-Label',
+    'tutorial.practice.nextMission': 'Nächste Mission',
+    'tutorial.practice.finish': 'Lernpfad abschließen',
+    'tutorial.practice.check.selectConnected':
+        'SELECT ist mit ABFRAGE AUSFÜHREN verbunden',
+    'tutorial.practice.check.selectConfigured':
+        'Spalten und Tabelle sind eingestellt',
+    'tutorial.practice.check.fromConnected': 'FROM ist verbunden',
+    'tutorial.practice.check.fromConfigured': 'Quelltabelle ist eingestellt',
+    'tutorial.practice.check.selectBeforeFrom': 'SELECT steht vor FROM',
+    'tutorial.practice.check.whereConnected': 'WHERE ist verbunden',
+    'tutorial.practice.check.whereConfigured':
+        'Filterbedingung ist eingestellt',
+    'tutorial.practice.check.andConnected': 'AND ist verbunden',
+    'tutorial.practice.check.andConfigured': 'Zweite Bedingung ist eingestellt',
+    'tutorial.practice.check.whereBeforeAnd': 'WHERE steht vor AND',
+    'tutorial.practice.check.joinConnected': 'JOIN ist verbunden',
+    'tutorial.practice.check.joinConfigured':
+        'Verknüpfte Tabelle und Schlüssel sind eingestellt',
+    'tutorial.practice.check.groupByConnected': 'GROUP BY ist verbunden',
+    'tutorial.practice.check.groupByConfigured':
+        'Gruppierungsspalte ist eingestellt',
+    'tutorial.practice.check.havingConnected': 'HAVING ist verbunden',
+    'tutorial.practice.check.havingConfigured':
+        'Aggregatfilter ist eingestellt',
+    'tutorial.practice.check.groupBeforeHaving': 'GROUP BY steht vor HAVING',
+    'tutorial.practice.check.unionConnected': 'UNION ist verbunden',
+    'tutorial.practice.check.unionConfigured': 'Zweite Abfrage ist eingestellt',
+    'tutorial.practice.check.unionBeforeOrder': 'UNION steht vor ORDER BY',
+    'tutorial.practice.check.orderByConnected': 'ORDER BY ist verbunden',
+    'tutorial.practice.check.orderByConfigured':
+        'Sortierspalte ist eingestellt',
+    'tutorial.practice.check.limitConnected': 'LIMIT ist verbunden',
+    'tutorial.practice.check.limitConfigured': 'Zeilenlimit ist eingestellt',
+    'tutorial.practice.check.orderBeforeLimit': 'ORDER BY steht vor LIMIT',
+    'tutorial.practice.check.selectColumnReporter':
+        'Ein SPALTE-Wert-Node steckt in SELECT',
+    'tutorial.practice.check.whereTextReporter':
+        'Ein TEXT-Wert-Node liefert den Filterwert',
+    'tutorial.practice.node.eventGreenFlag.title':
+        'ABFRAGE AUSFÜHREN · Start-Node',
+    'tutorial.practice.node.eventGreenFlag.body':
+        'Dieser hutförmige Node ist die Wurzel. Nur darunter eingerastete Nodes gehören zur ausführbaren Abfrage und zählen für die Mission.',
+    'tutorial.practice.node.sqlSelect.title':
+        'SELECT · Ergebnisspalten auswählen',
+    'tutorial.practice.node.sqlSelect.body':
+        'SELECT bestimmt, was das Ergebnis enthält. Im kompakten Einsteiger-Node kann außerdem direkt die Quelltabelle stehen.',
+    'tutorial.practice.node.sqlColumn.title': 'SPALTE · Wert-Reporter',
+    'tutorial.practice.node.sqlColumn.body':
+        'Runde Wert-Nodes verlängern nicht die senkrechte Abfragekette. Sie werden in ein passendes Eingabefeld gesteckt und liefern einen Spaltenausdruck.',
+    'tutorial.practice.node.sqlWhere.title': 'WHERE · Zeilen filtern',
+    'tutorial.practice.node.sqlWhere.body':
+        'WHERE behält nur Zeilen, die eine Bedingung aus Spalte, Vergleichsoperator und Wert erfüllen.',
+    'tutorial.practice.node.sqlText.title': 'TEXT · sicherer Textwert',
+    'tutorial.practice.node.sqlText.body':
+        'TEXT ist ein runder Wert-Node. In einem Wertefeld stellt NodeQL Text getrennt von der Bedingung dar und setzt ihn korrekt in Anführungszeichen.',
+    'tutorial.practice.node.sqlAnd.title':
+        'AND · eine weitere Bedingung verlangen',
+    'tutorial.practice.node.sqlAnd.body':
+        'AND erweitert einen vorhandenen WHERE-Filter. Eine Zeile bleibt nur erhalten, wenn die erste und die zusätzliche Bedingung wahr sind.',
+    'tutorial.practice.node.sqlOrderBy.title': 'ORDER BY · Ergebnis sortieren',
+    'tutorial.practice.node.sqlOrderBy.body':
+        'ORDER BY wählt die Sortierspalte. ASC sortiert aufsteigend, DESC kehrt die Reihenfolge um.',
+    'tutorial.practice.node.sqlLimit.title':
+        'LIMIT · Ergebnisgröße kontrollieren',
+    'tutorial.practice.node.sqlLimit.body':
+        'LIMIT steht nahe dem Ende einer Abfrage und gibt höchstens eine positive Anzahl von Zeilen zurück.',
+    'tutorial.practice.beginner.step.1.title': 'Verbinde dein erstes SELECT',
+    'tutorial.practice.beginner.step.1.instruction':
+        'Ziehe einen SELECT-Node aus Query Language an den Anschluss unter ABFRAGE AUSFÜHREN. Stelle customers als Tabelle ein.',
+    'tutorial.practice.beginner.step.1.hint':
+        'Die obere Kerbe von SELECT muss am unteren Anschluss von ABFRAGE AUSFÜHREN einrasten. Ein frei liegender Node zählt nicht.',
+    'tutorial.practice.beginner.step.1.example': 'SELECT * FROM customers;',
+    'tutorial.practice.beginner.step.1.concept':
+        'Eine Abfrage ist ein verbundener Graph, kein Haufen Nodes. Der Start-Node markiert die ausführbare Wurzel; SELECT ist die erste Anweisung dieses Lernpfads.',
+    'tutorial.practice.beginner.step.2.title':
+        'Stecke einen SPALTE-Wert-Node ein',
+    'tutorial.practice.beginner.step.2.instruction':
+        'Ziehe SPALTE in das runde Spaltenfeld des vorbereiteten SELECT und wähle name.',
+    'tutorial.practice.beginner.step.2.hint':
+        'SPALTE ist ein runder Reporter. Lege ihn in das Spaltenfeld von SELECT statt unter die Abfragekette.',
+    'tutorial.practice.beginner.step.2.example': 'SELECT name FROM customers;',
+    'tutorial.practice.beginner.step.2.concept':
+        'Anweisungs-Nodes bilden die senkrechte Abfrage. Runde Reporter-Nodes liefern Werte innerhalb dieser Anweisungen. Dieser Unterschied ist zentral für NodeQL.',
+    'tutorial.practice.beginner.step.3.title': 'Filtere Zeilen mit WHERE',
+    'tutorial.practice.beginner.step.3.instruction':
+        'Raste WHERE unter SELECT ein. Wähle city, den Gleichheitsoperator und Berlin als Vergleichswert.',
+    'tutorial.practice.beginner.step.3.hint':
+        'WHERE gehört hinter SELECT. Alle drei Teile – Spalte, Operator und Wert – müssen eine vollständige Bedingung bilden.',
+    'tutorial.practice.beginner.step.3.example':
+        "SELECT name FROM customers WHERE city = 'Berlin';",
+    'tutorial.practice.beginner.step.3.concept':
+        'SQLite verarbeitet WHERE als Zeilenfilter. Zeilen, für die die Bedingung nicht wahr ist, verschwinden vor der Ausgabe.',
+    'tutorial.practice.beginner.step.4.title':
+        'Nutze TEXT als eingesteckten Wert',
+    'tutorial.practice.beginner.step.4.instruction':
+        'Ersetze den direkten WHERE-Wert durch einen TEXT-Reporter und trage Berlin in diesem Node ein.',
+    'tutorial.practice.beginner.step.4.hint':
+        'Ziehe TEXT aus SQLite-Datentypen in das runde Wertefeld von WHERE. Der Reporter muss nicht leeren Text enthalten.',
+    'tutorial.practice.beginner.step.4.example': "… WHERE city = 'Berlin';",
+    'tutorial.practice.beginner.step.4.concept':
+        'Ein eigener Literal-Node macht den Datentyp sichtbar. NodeQL kann Text korrekt darstellen, während WHERE die Vergleichsstruktur behält.',
+    'tutorial.practice.beginner.step.5.title':
+        'Ergänze mit AND eine zweite Regel',
+    'tutorial.practice.beginner.step.5.instruction':
+        'Raste AND unter WHERE ein und konfiguriere eine weitere vollständige Bedingung, zum Beispiel active = 1.',
+    'tutorial.practice.beginner.step.5.hint':
+        'AND kann keinen Filter beginnen. Es erweitert die WHERE-Bedingung und gehört deshalb darunter.',
+    'tutorial.practice.beginner.step.5.example':
+        "… WHERE city = 'Berlin' AND active = 1;",
+    'tutorial.practice.beginner.step.5.concept':
+        'AND verbindet Bedingungen streng: Beide müssen wahr sein. Bei OR würde dagegen eine der beiden Bedingungen genügen.',
+    'tutorial.practice.beginner.step.6.title': 'Sortiere die passenden Zeilen',
+    'tutorial.practice.beginner.step.6.instruction':
+        'Verbinde ORDER BY nach den Filtern. Wähle name und eine gültige auf- oder absteigende Richtung.',
+    'tutorial.practice.beginner.step.6.hint':
+        'Nutze name mit ASC für eine alphabetische Sortierung von A bis Z. ORDER BY gehört hinter WHERE und AND.',
+    'tutorial.practice.beginner.step.6.example': '… ORDER BY name ASC;',
+    'tutorial.practice.beginner.step.6.concept':
+        'Eine Datenbank verspricht keine natürliche Zeilenreihenfolge. ORDER BY macht das Ergebnis für Menschen und weitere Verarbeitung eindeutig.',
+    'tutorial.practice.beginner.step.7.title': 'Schließe mit LIMIT ab',
+    'tutorial.practice.beginner.step.7.instruction':
+        'Raste LIMIT unter ORDER BY ein und trage eine positive Zeilenanzahl wie 5 ein.',
+    'tutorial.practice.beginner.step.7.hint':
+        'LIMIT ist der letzte Node dieser Abfrage. Null und negative Werte erfüllen die Mission nicht.',
+    'tutorial.practice.beginner.step.7.example': '… ORDER BY name ASC LIMIT 5;',
+    'tutorial.practice.beginner.step.7.concept':
+        'LIMIT verringert, wie viele sortierte Zeilen SQLite zurückgibt. Das ist praktisch für Vorschauen, Seiten und große Ergebnismengen.',
+    'tutorial.practice.beginnerSyntax.step.1.title':
+        'Baue SELECT und FROM als einzelne Nodes',
+    'tutorial.practice.beginnerSyntax.step.1.instruction':
+        'Ein SELECT-Node ist vorbereitet. Verbinde FROM darunter und wähle customers als Quelltabelle.',
+    'tutorial.practice.beginnerSyntax.step.1.hint':
+        'FROM gehört direkt hinter SELECT, wenn die Quelle als eigener Node dargestellt wird.',
+    'tutorial.practice.beginnerSyntax.step.1.example':
+        'SELECT name, city FROM customers;',
+    'tutorial.practice.beginnerSyntax.step.2.title':
+        'Hänge ein vollständiges Prädikat an',
+    'tutorial.practice.beginnerSyntax.step.2.instruction':
+        'Verbinde WHERE nach FROM und stelle Spalte, Vergleichsoperator und Wert ein.',
+    'tutorial.practice.beginnerSyntax.step.2.hint':
+        'Nutze country = DE. Die Live-Vorschau zeigt, wie NodeQL Text für SQLite maskiert.',
+    'tutorial.practice.beginnerSyntax.step.2.example':
+        "… FROM customers WHERE country = 'DE';",
+    'tutorial.practice.beginnerSyntax.step.3.title':
+        'Kombiniere Bedingungen mit AND',
+    'tutorial.practice.beginnerSyntax.step.3.instruction':
+        'Ergänze nach WHERE einen AND-Node und stelle selbst eine zweite Bedingung ein.',
+    'tutorial.practice.beginnerSyntax.step.3.hint':
+        'WHERE beginnt den Filter; AND kann ihn erst danach erweitern. Probiere city = Berlin.',
+    'tutorial.practice.beginnerSyntax.step.3.example':
+        "… WHERE country = 'DE' AND city = 'Berlin';",
+    'tutorial.practice.intermediate.step.1.title':
+        'Verbinde customers und orders',
+    'tutorial.practice.intermediate.step.1.instruction':
+        'Verbinde einen JOIN nach FROM. Stelle die zweite Tabelle ein und verknüpfe customers.id mit orders.customer_id.',
+    'tutorial.practice.intermediate.step.1.hint':
+        'INNER JOIN ist ein guter Standard. Die verknüpfte Tabelle und beide Schlüsselfelder müssen eingestellt sein.',
+    'tutorial.practice.intermediate.step.1.example':
+        '… FROM customers INNER JOIN orders ON customers.id = orders.customer_id;',
+    'tutorial.practice.intermediate.step.2.title':
+        'Gruppiere die verknüpften Zeilen',
+    'tutorial.practice.intermediate.step.2.instruction':
+        'Ergänze GROUP BY nach dem JOIN und wähle die Spalte, die eine Gruppe definiert.',
+    'tutorial.practice.intermediate.step.2.hint':
+        'Gruppiere nach customers.name, damit pro Kunde eine Ergebnisgruppe entsteht.',
+    'tutorial.practice.intermediate.step.2.example':
+        '… GROUP BY customers.name;',
+    'tutorial.practice.intermediate.step.3.title':
+        'Filtere aggregierte Gruppen',
+    'tutorial.practice.intermediate.step.3.instruction':
+        'Verbinde HAVING nach GROUP BY und stelle eine Aggregatbedingung ein.',
+    'tutorial.practice.intermediate.step.3.hint':
+        'HAVING filtert Gruppen statt einzelner Zeilen. COUNT(*) > 0 ist ein gültiges Beispiel.',
+    'tutorial.practice.intermediate.step.3.example':
+        '… GROUP BY customers.name HAVING COUNT(*) > 0;',
+    'tutorial.practice.expert.step.1.title': 'Kombiniere zwei Ergebnismengen',
+    'tutorial.practice.expert.step.1.instruction':
+        'Verbinde UNION mit dem vorbereiteten SELECT und trage eine kompatible zweite SELECT-Abfrage ein.',
+    'tutorial.practice.expert.step.1.hint':
+        'Beide SELECT-Abfragen sollten gleich viele Spalten liefern, zum Beispiel id und name.',
+    'tutorial.practice.expert.step.1.example':
+        'SELECT id, name FROM customers UNION SELECT id, name FROM archived_customers;',
+    'tutorial.practice.expert.step.2.title':
+        'Sortiere das kombinierte Ergebnis',
+    'tutorial.practice.expert.step.2.instruction':
+        'Verbinde ORDER BY nach UNION und wähle Ergebnisspalte und Richtung.',
+    'tutorial.practice.expert.step.2.hint':
+        'Die Sortierung gehört hinter die Mengenoperation. Probiere name aufsteigend.',
+    'tutorial.practice.expert.step.2.example': '… UNION … ORDER BY name ASC;',
+    'tutorial.practice.expert.step.3.title':
+        'Begrenze die finale Ergebnismenge',
+    'tutorial.practice.expert.step.3.instruction':
+        'Schließe die Kette mit LIMIT ab und stelle ein, wie viele kombinierte Zeilen SQLite liefern soll.',
+    'tutorial.practice.expert.step.3.hint':
+        'LIMIT ist die letzte Klausel. Verbinde sie unter ORDER BY und trage eine positive Zeilenzahl ein.',
+    'tutorial.practice.expert.step.3.example':
+        '… UNION … ORDER BY name ASC LIMIT 10;',
     'tutorial.back': 'Zurück',
     'tutorial.next': 'Weiter',
     'tutorial.finish': 'Jetzt loslegen',
@@ -820,6 +1125,12 @@ const builtInMessages = <String, Map<String, String>>{
     'runtime.customSql': 'Eigenes SQLite',
     'runtime.customSqlHint':
         'SQLite direkt schreiben, zum Beispiel:\nSELECT * FROM tabellenname LIMIT 100;',
+    'runtime.localCompletion': 'Lokale intelligente Vervollständigung',
+    'runtime.ideTitle': 'SQLite-Editor',
+    'runtime.ideSubtitle':
+        'SQLite mit lokaler Schema-Vervollständigung schreiben und ausführen',
+    'runtime.outputPreview': 'Ausgabevorschau',
+    'runtime.showNodeWorkspace': 'Visuelle Node-Arbeitsfläche anzeigen',
     'runtime.showGeneratedSql': 'Generiertes SQLite anzeigen',
     'runtime.runCustomSql': 'Eigenes SQLite ausführen',
     'runtime.copied': 'SQLite in Zwischenablage kopiert',

@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="NodeQL SQLite Workshop: an interactive tutorial for learning SQLite with visual NodeQL blocks.">
-  <title>NodeQL SQLite Workshop</title>
+  <meta name="description" content="Die vollständige NodeQL-Lernseite: SQLite visuell verstehen, Abfragen mit Nodes bauen und das Gelernte in interaktiven Lektionen üben.">
+  <title>NodeQL Lernwerkstatt – SQLite visuell lernen</title>
   <style>
     :root {
       color-scheme: light;
@@ -35,6 +35,10 @@
 
     html {
       scroll-behavior: smooth;
+    }
+
+    section[id] {
+      scroll-margin-top: 86px;
     }
 
     body {
@@ -373,6 +377,31 @@
       transition: width 0.25s ease;
     }
 
+    .progress-details {
+      display: flex;
+      gap: 18px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .progress-details strong {
+      color: var(--ink);
+    }
+
+    .completion-banner {
+      margin-top: 20px;
+      padding: 20px;
+      border: 1px solid rgba(24, 114, 90, 0.45);
+      border-radius: 8px;
+      background: linear-gradient(120deg, var(--mint), var(--blue-soft));
+    }
+
+    .completion-banner p {
+      margin-top: 6px;
+      color: #315044;
+    }
+
     .module-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -404,6 +433,21 @@
 
     .module p {
       color: var(--muted);
+    }
+
+    .module-progress {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .module-progress span:first-child {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .module button {
@@ -505,6 +549,84 @@
     .lesson-copy ul + p,
     .lesson-copy ol + p {
       margin-top: 14px;
+    }
+
+    .lesson-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 16px 0 4px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f7faf7;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .learning-goals {
+      margin: 20px 0;
+      padding: 16px 18px;
+      border-left: 4px solid var(--green);
+      background: #f5fbf7;
+    }
+
+    .learning-goals strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .lesson-check {
+      margin-top: 24px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8faf8;
+    }
+
+    .lesson-check h4 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+    }
+
+    .lesson-check-options {
+      display: grid;
+      gap: 8px;
+    }
+
+    .lesson-check-option {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      padding: 9px 11px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .lesson-check-option:hover,
+    .lesson-check-option:focus-visible {
+      border-color: var(--blue);
+      outline: 2px solid rgba(46, 107, 217, 0.18);
+    }
+
+    .lesson-check-option.correct {
+      border-color: var(--green);
+      background: var(--mint);
+    }
+
+    .lesson-check-option.incorrect {
+      border-color: var(--rose);
+      background: var(--rose-soft);
     }
 
     .node-stack {
@@ -696,6 +818,11 @@
       min-height: 350px;
     }
 
+    .exercise.done {
+      border-color: rgba(24, 114, 90, 0.45);
+      box-shadow: inset 0 4px 0 var(--green);
+    }
+
     .exercise p {
       color: var(--muted);
     }
@@ -707,6 +834,149 @@
       padding: 12px;
       resize: vertical;
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .concept-grid,
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .concept-card,
+    .project-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 22px;
+    }
+
+    .concept-card .number {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .concept-card p,
+    .project-card p {
+      margin-top: 10px;
+      color: var(--muted);
+    }
+
+    .concept-card code {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 7px 9px;
+      border-radius: 6px;
+      background: #edf1ed;
+    }
+
+    .curriculum {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      margin-top: 24px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--line);
+    }
+
+    .curriculum-step {
+      min-height: 130px;
+      padding: 18px;
+      background: #fff;
+    }
+
+    .curriculum-step small {
+      color: var(--green);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .curriculum-step strong {
+      display: block;
+      margin: 8px 0 5px;
+    }
+
+    .curriculum-step span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .project-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 320px;
+    }
+
+    .project-card ul {
+      padding-left: 20px;
+      color: #3f4b55;
+    }
+
+    .project-card .button {
+      margin-top: auto;
+    }
+
+    .reference-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .reference-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .reference-table th,
+    .reference-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .reference-table th {
+      background: #eef3ef;
+    }
+
+    .reference-table code {
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .faq-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .faq-list details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px 16px;
+    }
+
+    .faq-list summary {
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .faq-list details p {
+      margin-top: 10px;
+      color: var(--muted);
     }
 
     .workshop-split {
@@ -886,8 +1156,15 @@
       }
 
       .module-grid,
-      .exercise-grid {
+      .exercise-grid,
+      .concept-grid,
+      .project-grid,
+      .curriculum {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .reference-layout {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -911,6 +1188,9 @@
       .hero-strip,
       .module-grid,
       .exercise-grid,
+      .concept-grid,
+      .project-grid,
+      .curriculum,
       .screenshot-grid,
       .tab-list {
         grid-template-columns: 1fr;
@@ -950,24 +1230,38 @@
         page-break-inside: avoid;
       }
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
   <a class="skip-link" href="#workshop">Zum Workshop springen</a>
   <header class="site-header">
-    <nav class="nav" aria-label="Main navigation">
-      <a class="brand" href="#top" aria-label="NodeQL SQLite Workshop home">
+    <nav class="nav" aria-label="Hauptnavigation">
+      <a class="brand" href="#top" aria-label="Startseite der NodeQL Lernwerkstatt">
         <div>
           <img src="../assets/appicon/icon.png" width="32" height="32" alt="NodeQL Logo">
         </div>
-        <span>NodeQL SQLite Workshop</span>
+        <span>NodeQL Lernwerkstatt</span>
       </a>
       <div class="nav-links">
-        <a href="#pfad">Learning path</a>
-        <a href="#workshop">Workshop</a>
-        <a href="#uebungen">Exercises</a>
+        <a href="#grundlagen">Grundlagen</a>
+        <a href="#pfad">Lernpfad</a>
+        <a href="#workshop">Lektionen</a>
+        <a href="#uebungen">Übungen</a>
+        <a href="#referenz">Referenz</a>
         <a href="#quiz">Quiz</a>
-        <button type="button" id="resetProgress">Reset</button>
+        <button type="button" id="resetProgress">Fortschritt löschen</button>
       </div>
     </nav>
   </header>
@@ -976,61 +1270,125 @@
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-inner">
         <div>
-          <p class="eyebrow">Learn SQLite with real NodeQL workflows</p>
-          <h1 id="hero-title">Build SQLite visually, understand every line.</h1>
-          <p class="lead">A complete workshop for beginners and experienced learners: from tables through SELECT, WHERE, and JOIN to aggregations, debugging, and working with local SQLite databases in NodeQL.</p>
+          <p class="eyebrow">SQLite mit echten NodeQL-Abläufen lernen</p>
+          <h1 id="hero-title">Baue SQLite visuell. Verstehe jede Zeile.</h1>
+          <p class="lead">Die vollständige Lernwerkstatt für Einsteiger und Fortgeschrittene: von Tabellen, Nodes und SELECT über WHERE und JOIN bis zu Aggregationen, Schreiboperationen, Debugging und lokalen SQLite-Datenbanken.</p>
           <div class="hero-actions">
-            <a class="button" href="#workshop" aria-label="Start workshop">▶ Start workshop</a>
-            <a class="button secondary" href="#cheatsheet" aria-label="Open cheat sheet">▣ Cheat sheet</a>
+            <a class="button" href="#workshop" aria-label="Workshop starten">▶ Workshop starten</a>
+            <a class="button secondary" href="#referenz" aria-label="SQLite-Referenz öffnen">▣ Schnellreferenz</a>
           </div>
         </div>
         <div class="hero-visual">
           <div class="screenshot-frame">
             <img src="screenshots/darkmode-preview.png" alt="NodeQL workspace with visual SQLite blocks in dark mode">
           </div>
-          <div class="hero-strip" aria-label="Workshop metrics">
-            <div class="stat"><strong>8</strong><span>Module</span></div>
-            <div class="stat"><strong>14</strong><span>SQLite patterns</span></div>
-            <div class="stat"><strong>6</strong><span>Checks</span></div>
-            <div class="stat"><strong>100%</strong><span>practice locally</span></div>
+          <div class="hero-strip" aria-label="Umfang des Workshops">
+            <div class="stat"><strong>12</strong><span>Lektionen</span></div>
+            <div class="stat"><strong>30+</strong><span>SQLite-Muster</span></div>
+            <div class="stat"><strong>8</strong><span>Praxisaufgaben</span></div>
+            <div class="stat"><strong>100%</strong><span>lokal üben</span></div>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="pfad" class="section" aria-labelledby="path-title">
+    <section id="grundlagen" class="section" aria-labelledby="foundation-title">
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Learning path</p>
-            <h2 id="path-title">From the first block to a reliable query.</h2>
+            <p class="eyebrow">So lernst du mit NodeQL</p>
+            <h2 id="foundation-title">Vom Datenproblem zur verständlichen Abfrage.</h2>
           </div>
-          <div class="progress-shell" aria-live="polite">
-            <div class="progress-meta">
-              <span>Progress</span>
-              <strong id="progressText">0 of 8</strong>
-            </div>
-            <div class="progress-track" aria-hidden="true">
-              <div class="progress-fill" id="progressFill"></div>
-            </div>
-          </div>
+          <p>NodeQL macht SQLite sichtbar: Jeder Node übernimmt eine klar erkennbare Rolle, während die echte SQLite-Ausgabe jederzeit kontrollierbar bleibt.</p>
         </div>
-        <div class="module-grid" id="moduleGrid" aria-label="Workshop Module"></div>
+        <div class="concept-grid">
+          <article class="concept-card">
+            <span class="number">1</span>
+            <h3>Frage formulieren</h3>
+            <p>Beginne nicht mit Syntax, sondern mit einer konkreten Frage: „Welche bezahlten Bestellungen liegen über 100 Euro?“</p>
+            <code>Was möchte ich wissen?</code>
+          </article>
+          <article class="concept-card">
+            <span class="number">2</span>
+            <h3>Nodes verbinden</h3>
+            <p>Wähle Ausgabe, Quelle und Bedingungen. Formen und Slots zeigen, welche Bausteine zusammenpassen.</p>
+            <code>SELECT → FROM → WHERE</code>
+          </article>
+          <article class="concept-card">
+            <span class="number">3</span>
+            <h3>SQLite lesen</h3>
+            <p>Vergleiche deine Absicht mit der generierten Anweisung. So lernst du visuell und textuell zugleich.</p>
+            <code>SELECT … FROM …;</code>
+          </article>
+          <article class="concept-card">
+            <span class="number">4</span>
+            <h3>Lokal ausführen</h3>
+            <p>Führe die Abfrage gegen deine lokale SQLite-Datei aus und prüfe Spalten, Zeilen und Datentypen.</p>
+            <code>Ergebnis kontrollieren</code>
+          </article>
+          <article class="concept-card">
+            <span class="number">5</span>
+            <h3>Schrittweise erweitern</h3>
+            <p>Ergänze immer nur einen Node. Dadurch weißt du bei Fehlern genau, welche Änderung sie verursacht hat.</p>
+            <code>JOIN → GROUP BY → HAVING</code>
+          </article>
+          <article class="concept-card">
+            <span class="number">6</span>
+            <h3>Wissen festigen</h3>
+            <p>Löse den Wissenscheck jeder Lektion und übertrage das Muster anschließend auf eine Praxisaufgabe.</p>
+            <code>Verstehen → Anwenden</code>
+          </article>
+        </div>
+        <div class="curriculum" aria-label="Empfohlener Lernablauf">
+          <div class="curriculum-step"><small>Phase 1</small><strong>Orientieren</strong><span>Oberfläche, Nodes, Slots und Datenquellen verstehen.</span></div>
+          <div class="curriculum-step"><small>Phase 2</small><strong>Abfragen</strong><span>SELECT, WHERE, Sortierung und Begrenzung sicher einsetzen.</span></div>
+          <div class="curriculum-step"><small>Phase 3</small><strong>Analysieren</strong><span>Tabellen verbinden, gruppieren und Gruppen filtern.</span></div>
+          <div class="curriculum-step"><small>Phase 4</small><strong>Professionalisieren</strong><span>Daten ändern, Fehler untersuchen und Projekte strukturieren.</span></div>
+        </div>
       </div>
     </section>
 
-    <section id="workshop" class="section alt" aria-labelledby="workshop-title">
+    <section id="pfad" class="section alt" aria-labelledby="path-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Dein Lernpfad</p>
+            <h2 id="path-title">Vom ersten Node bis zum robusten Workflow.</h2>
+          </div>
+          <div class="progress-shell" aria-live="polite">
+            <div class="progress-meta">
+              <span>Abgeschlossene Lektionen</span>
+              <strong id="progressText">0 von 12</strong>
+            </div>
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="12" aria-valuenow="0">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-details">
+              <span><strong id="exerciseProgress">0/8</strong> Übungen</span>
+              <span><strong id="quizBest">0/10</strong> Quiz-Bestwert</span>
+            </div>
+          </div>
+        </div>
+        <div class="module-grid" id="moduleGrid" aria-label="Workshop-Lektionen"></div>
+        <div class="completion-banner" id="completionBanner" hidden>
+          <h3>Workshop abgeschlossen!</h3>
+          <p>Du hast alle zwölf Wissenschecks gelöst. Festige dein Können jetzt mit den Praxisaufgaben und Transferprojekten oder wiederhole einzelne Lektionen.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="workshop" class="section" aria-labelledby="workshop-title">
       <div class="wrap">
         <div class="section-head">
           <div>
             <p class="eyebrow">Workshop</p>
-            <h2 id="workshop-title">Eight modules, directly reflected in NodeQL.</h2>
+            <h2 id="workshop-title">Zwölf Lektionen, direkt in NodeQL gedacht.</h2>
           </div>
-          <p>Each module connects an SQLite concept with the NodeQL approach: read blocks from top to bottom, inspect the SQLite preview, then run it against a local SQLite database.</p>
+          <p>Jede Lektion verbindet ein SQLite-Konzept mit NodeQL: Erklärung lesen, Nodes nachvollziehen, SQLite prüfen und anschließend den Wissenscheck lösen.</p>
         </div>
 
         <div class="tabs">
-          <div class="tab-list" role="tablist" aria-label="Workshop Module" id="tabList"></div>
+          <div class="tab-list" role="tablist" aria-label="Workshop-Lektionen" id="tabList"></div>
           <div id="lessonPanels"></div>
         </div>
       </div>
@@ -1040,28 +1398,28 @@
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Query-Lab</p>
-            <h2 id="builder-title">Assemble blocks and read the SQLite.</h2>
+            <p class="eyebrow">Abfrage-Labor</p>
+            <h2 id="builder-title">Stelle Nodes zusammen und lies das SQLite.</h2>
           </div>
-          <p>This lab simulates the core of NodeQL: choose visual components and the SQLite preview appears immediately. Then check whether the clauses are in a meaningful order.</p>
+          <p>Dieses Labor simuliert den Kern von NodeQL: Wähle visuelle Bausteine und beobachte sofort die SQLite-Vorschau. Hinweise helfen dir, unpassende Kombinationen zu erkennen.</p>
         </div>
 
         <div class="workshop-split">
           <div class="data-browser">
-            <h3>Example database: learning shop</h3>
-            <p class="lead" style="font-size:1rem;margin-top:10px;">Three tables are enough for many SQLite fundamentals. In NodeQL, you would connect a local SQLite file for this.</p>
+            <h3>Beispieldatenbank: Lernshop</h3>
+            <p class="lead" style="font-size:1rem;margin-top:10px;">Drei Tabellen reichen für viele SQLite-Grundlagen. In NodeQL würdest du dafür eine lokale SQLite-Datei laden.</p>
             <div class="schema-list">
               <div class="schema-item">
                 <span><strong>customers</strong><br><small>id, name, city</small></span>
-                <button class="link-button" type="button" data-table="customers">show</button>
+                <button class="link-button" type="button" data-table="customers">anzeigen</button>
               </div>
               <div class="schema-item">
                 <span><strong>orders</strong><br><small>id, customer_id, total, status</small></span>
-                <button class="link-button" type="button" data-table="orders">show</button>
+                <button class="link-button" type="button" data-table="orders">anzeigen</button>
               </div>
               <div class="schema-item">
                 <span><strong>products</strong><br><small>id, name, category, price</small></span>
-                <button class="link-button" type="button" data-table="products">show</button>
+                <button class="link-button" type="button" data-table="products">anzeigen</button>
               </div>
             </div>
             <table class="mini-table" id="dataTable" aria-label="Table preview"></table>
@@ -1072,7 +1430,7 @@
               <div class="field">
                 <label for="builderSelect">SELECT</label>
                 <select id="builderSelect">
-                  <option value="*">all columns</option>
+                  <option value="*">alle Spalten</option>
                   <option value="name, city">name, city</option>
                   <option value="city, COUNT(*) AS customer_count">city, COUNT(*) AS customer_count</option>
                   <option value="customers.name, orders.total">customers.name, orders.total</option>
@@ -1089,14 +1447,14 @@
               <div class="field">
                 <label for="builderJoin">JOIN</label>
                 <select id="builderJoin">
-                  <option value="">no join</option>
+                  <option value="">kein Join</option>
                   <option value="INNER JOIN orders ON customers.id = orders.customer_id">INNER JOIN orders ON customers.id = orders.customer_id</option>
                 </select>
               </div>
               <div class="field">
                 <label for="builderWhere">WHERE</label>
                 <select id="builderWhere">
-                  <option value="">no filter</option>
+                  <option value="">kein Filter</option>
                   <option value="city = 'Berlin'">city = 'Berlin'</option>
                   <option value="total >= 100">total >= 100</option>
                   <option value="status = 'paid'">status = 'paid'</option>
@@ -1105,7 +1463,7 @@
               <div class="field">
                 <label for="builderGroup">GROUP BY</label>
                 <select id="builderGroup">
-                  <option value="">no grouping</option>
+                  <option value="">keine Gruppierung</option>
                   <option value="city">city</option>
                   <option value="status">status</option>
                 </select>
@@ -1113,7 +1471,7 @@
               <div class="field">
                 <label for="builderOrder">ORDER BY</label>
                 <select id="builderOrder">
-                  <option value="">no sorting</option>
+                  <option value="">keine Sortierung</option>
                   <option value="name ASC">name ASC</option>
                   <option value="total DESC">total DESC</option>
                   <option value="customer_count DESC">customer_count DESC</option>
@@ -1123,12 +1481,12 @@
             <div class="node-stack" aria-label="Visual NodeQL block sequence" id="builderNodes"></div>
             <div class="sql-window" style="margin-top:16px;">
               <div class="sql-titlebar">
-                <span>SQLite preview</span>
-                <button class="copy-sql" type="button" data-copy-target="builderSql">copy</button>
+                <span>SQLite-Vorschau</span>
+                <button class="copy-sql" type="button" data-copy-target="builderSql">kopieren</button>
               </div>
               <pre><code id="builderSql"></code></pre>
             </div>
-            <div class="feedback" id="builderFeedback">Choose components to inspect the SQLite structure.</div>
+            <div class="feedback" id="builderFeedback" role="status" aria-live="polite">Wähle Bausteine aus und untersuche die SQLite-Struktur.</div>
           </div>
         </div>
       </div>
@@ -1138,33 +1496,122 @@
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Exercises</p>
-            <h2 id="exercise-title">Write SQLite, then think of it as blocks.</h2>
+            <p class="eyebrow">Geführte Übungen</p>
+            <h2 id="exercise-title">Schreibe SQLite und denke dabei in Nodes.</h2>
           </div>
-          <p>The checks are intentionally tolerant: they look for the essential SQLite building blocks. In NodeQL, you would assemble the same building blocks from the palette.</p>
+          <p>Die Prüfungen achten auf die wesentlichen SQLite-Bausteine. Nutze bei Bedarf einen Hinweis, löse die Aufgabe selbst und vergleiche erst danach mit der Musterlösung.</p>
         </div>
         <div class="exercise-grid" id="exerciseGrid"></div>
       </div>
     </section>
 
-    <section class="section" aria-labelledby="visual-title">
+    <section id="projekte" class="section" aria-labelledby="projects-title">
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">NodeQL orientation</p>
-            <h2 id="visual-title">The app remains the common thread.</h2>
+            <p class="eyebrow">Transferprojekte</p>
+            <h2 id="projects-title">Wende mehrere Lektionen gemeinsam an.</h2>
           </div>
-          <p>The workshop intentionally refers to the real app: workspace, SQLite output, interactive tutorial, and plugin blocks.</p>
+          <p>Diese offenen Projekte haben bewusst keine Ein-Klick-Lösung. Plane zuerst die Datenfrage, baue dann eine kleine Abfrage und erweitere sie kontrolliert.</p>
+        </div>
+        <div class="project-grid">
+          <article class="project-card">
+            <div class="lesson-meta"><span class="pill">Einsteiger</span><span class="pill">20–30 Minuten</span></div>
+            <h3>Stadt-Dashboard</h3>
+            <p>Erstelle eine Auswertung, die Kunden pro Stadt zählt und die größten Gruppen zuerst zeigt.</p>
+            <ul>
+              <li>Beginne mit einer einfachen Kundenliste.</li>
+              <li>Ergänze COUNT(*) und GROUP BY.</li>
+              <li>Sortiere nach dem Alias absteigend.</li>
+              <li>Erkläre jede SQLite-Zeile in eigenen Worten.</li>
+            </ul>
+            <a class="button secondary" href="#workshop" data-project-lesson="6">Passende Lektion öffnen</a>
+          </article>
+          <article class="project-card">
+            <div class="lesson-meta"><span class="pill">Mittel</span><span class="pill">30–45 Minuten</span></div>
+            <h3>Bestellungsanalyse</h3>
+            <p>Verbinde Kunden und Bestellungen und finde zahlende Kunden mit hohen Gesamtumsätzen.</p>
+            <ul>
+              <li>Verbinde customers und orders über ihre Schlüssel.</li>
+              <li>Filtere bezahlte Bestellungen.</li>
+              <li>Gruppiere nach Kunde und nutze SUM(total).</li>
+              <li>Filtere Gruppen mit HAVING.</li>
+            </ul>
+            <a class="button secondary" href="#workshop" data-project-lesson="7">Passende Lektion öffnen</a>
+          </article>
+          <article class="project-card">
+            <div class="lesson-meta"><span class="pill">Fortgeschritten</span><span class="pill">45–60 Minuten</span></div>
+            <h3>Sicheres Daten-Update</h3>
+            <p>Plane eine nachvollziehbare Änderung an Bestellungen, ohne versehentlich andere Zeilen zu verändern.</p>
+            <ul>
+              <li>Prüfe die Zielzeilen zuerst mit SELECT.</li>
+              <li>Starte eine Transaktion.</li>
+              <li>Führe UPDATE mit präzisem WHERE aus.</li>
+              <li>Kontrolliere das Ergebnis vor COMMIT.</li>
+            </ul>
+            <a class="button secondary" href="#workshop" data-project-lesson="9">Passende Lektion öffnen</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt" aria-labelledby="visual-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Orientierung in NodeQL</p>
+            <h2 id="visual-title">Die echte App bleibt der rote Faden.</h2>
+          </div>
+          <p>Die Lernseite bezieht sich bewusst auf die echte App: Arbeitsbereich, SQLite-Ausgabe, integrierter Workshop und erweiterbare Plugin-Nodes.</p>
         </div>
         <div class="screenshot-grid">
           <figure class="figure">
             <img src="screenshots/NodeQL-Einfuehrung.png" alt="NodeQL interactive introduction tutorial">
-            <figcaption>The built-in tutorial explains the interface. This workshop then develops the SQLite concepts further.</figcaption>
+            <figcaption>Der integrierte Workshop erklärt Oberfläche und Node-Syntax. Diese Lernseite liefert zusätzliche Tiefe und Übung.</figcaption>
           </figure>
           <figure class="figure">
             <img src="screenshots/Plugins.png" alt="NodeQL plugin blocks in the workspace">
-            <figcaption>Plugin blocks can extend SQLite. The core rule remains the same: check block order, read the SQLite preview, and run locally.</figcaption>
+            <figcaption>Plugin-Nodes erweitern NodeQL. Die Grundregel bleibt: Reihenfolge prüfen, SQLite lesen und lokal ausführen.</figcaption>
           </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="referenz" class="section" aria-labelledby="reference-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Schnellreferenz</p>
+            <h2 id="reference-title">Die wichtigsten SQLite-Bausteine auf einen Blick.</h2>
+          </div>
+          <p>Nutze die Tabelle beim Üben als Gedächtnisstütze. Versuche trotzdem, vor dem Nachschlagen selbst zu formulieren, was der nächste Node leisten soll.</p>
+        </div>
+        <div class="reference-layout">
+          <div style="overflow-x:auto;">
+            <table class="reference-table">
+              <thead><tr><th>Baustein</th><th>Aufgabe</th><th>Beispiel</th><th>NodeQL-Denkmuster</th></tr></thead>
+              <tbody>
+                <tr><td><strong>SELECT</strong></td><td>Ausgabespalten wählen</td><td><code>SELECT name, city</code></td><td>Was soll sichtbar sein?</td></tr>
+                <tr><td><strong>FROM</strong></td><td>Quelle festlegen</td><td><code>FROM customers</code></td><td>Woher kommen die Zeilen?</td></tr>
+                <tr><td><strong>JOIN</strong></td><td>Tabellen verbinden</td><td><code>JOIN orders ON …</code></td><td>Welche Schlüssel passen zusammen?</td></tr>
+                <tr><td><strong>WHERE</strong></td><td>Einzelne Zeilen filtern</td><td><code>WHERE total &gt;= 100</code></td><td>Welche Zeilen dürfen weiter?</td></tr>
+                <tr><td><strong>GROUP BY</strong></td><td>Zeilen gruppieren</td><td><code>GROUP BY city</code></td><td>Was bildet eine Gruppe?</td></tr>
+                <tr><td><strong>HAVING</strong></td><td>Gruppen filtern</td><td><code>HAVING COUNT(*) &gt; 2</code></td><td>Welche berechneten Gruppen bleiben?</td></tr>
+                <tr><td><strong>ORDER BY</strong></td><td>Ergebnis sortieren</td><td><code>ORDER BY total DESC</code></td><td>In welcher Reihenfolge lesen?</td></tr>
+                <tr><td><strong>LIMIT</strong></td><td>Ergebnis begrenzen</td><td><code>LIMIT 20</code></td><td>Wie viele Zeilen brauche ich?</td></tr>
+                <tr><td><strong>WITH</strong></td><td>Teilabfrage benennen</td><td><code>WITH paid AS (…)</code></td><td>Welchen Zwischenschritt möchte ich erklären?</td></tr>
+                <tr><td><strong>TRANSACTION</strong></td><td>Änderungen absichern</td><td><code>BEGIN … COMMIT</code></td><td>Kann ich die Änderung noch prüfen?</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="faq-list">
+            <details open><summary>Warum zeigt NodeQL echtes SQLite?</summary><p>Die Vorschau verbindet visuelles Denken mit übertragbarem Wissen. Du kannst jede Node-Kette lesen, prüfen und später auch als Text verstehen.</p></details>
+            <details><summary>Warum funktioniert ein Node nicht an jeder Stelle?</summary><p>Node-Formen und Slots bilden die SQLite-Grammatik ab. Ein Wert-Node gehört in einen Wert-Slot, eine Klausel dagegen in die Anweisungskette.</p></details>
+            <details><summary>WHERE oder HAVING?</summary><p>WHERE filtert einzelne Zeilen vor der Gruppierung. HAVING filtert bereits berechnete Gruppen nach GROUP BY.</p></details>
+            <details><summary>Wann brauche ich einen JOIN?</summary><p>Wenn die benötigten Informationen in mehreren Tabellen liegen und über passende Schlüssel zusammengeführt werden müssen.</p></details>
+            <details><summary>Wie debugge ich systematisch?</summary><p>Lies Fehlermeldung und SQLite-Vorschau, entferne die letzte Erweiterung und teste die kleinste funktionierende Abfrage erneut.</p></details>
+            <details><summary>Sind meine Daten lokal?</summary><p>NodeQL arbeitet local-first mit SQLite-Dateien auf deinem Gerät. Prüfe bei Plugins zusätzlich deren deklarierte Datenquellen und Netzwerkberechtigungen.</p></details>
+          </div>
         </div>
       </div>
     </section>
@@ -1173,35 +1620,35 @@
       <div class="wrap">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Finish</p>
-            <h2 id="quiz-title">Test whether the structure is clear.</h2>
+            <p class="eyebrow">Abschlussquiz</p>
+            <h2 id="quiz-title">Prüfe dein Verständnis des gesamten Lernpfads.</h2>
           </div>
-          <p>A quick check of the key decisions: which clause does what, when do you need JOIN, and why is the SQLite preview so valuable?</p>
+          <p>Zehn Fragen zu Node-Syntax, Abfragereihenfolge, Joins, Aggregationen, sicheren Änderungen und dem lokalen NodeQL-Workflow.</p>
         </div>
         <div class="quiz">
           <div class="quiz-panel">
-            <h3 id="quizQuestion">Question is loading</h3>
+            <h3 id="quizQuestion">Frage wird geladen</h3>
             <div class="quiz-options" id="quizOptions"></div>
-            <div class="feedback" id="quizFeedback">Choose an answer.</div>
+            <div class="feedback" id="quizFeedback" role="status" aria-live="polite">Wähle eine Antwort.</div>
             <div class="button-row">
-              <button class="button" type="button" id="nextQuestion">Next question</button>
-              <button class="button ghost" type="button" id="restartQuiz">Restart</button>
+              <button class="button" type="button" id="nextQuestion">Nächste Frage</button>
+              <button class="button ghost" type="button" id="restartQuiz">Neu starten</button>
             </div>
           </div>
           <div class="cheat-panel" id="cheatsheet">
-            <h3>NodeQL SQLite Cheat-Sheet</h3>
+            <h3>NodeQL SQLite-Merkblatt</h3>
             <div class="cheat-list">
-              <div class="cheat-item"><strong>SELECT</strong><code>SELECT name, city</code> chooses the visible columns.</div>
-              <div class="cheat-item"><strong>FROM</strong><code>FROM customers</code> identifies the table.</div>
-              <div class="cheat-item"><strong>WHERE</strong><code>WHERE city = 'Berlin'</code> filters individual rows.</div>
-              <div class="cheat-item"><strong>JOIN</strong><code>INNER JOIN orders ON customers.id = orders.customer_id</code> connects tables through keys.</div>
-              <div class="cheat-item"><strong>GROUP BY</strong><code>GROUP BY city</code> creates groups for <code>COUNT</code>, <code>SUM</code>, or <code>AVG</code>.</div>
-              <div class="cheat-item"><strong>ORDER BY</strong><code>ORDER BY total DESC</code> sorts the result.</div>
-              <div class="cheat-item"><strong>NodeQL rule</strong>When blocks look logical, still read the SQLite output before running it.</div>
+              <div class="cheat-item"><strong>SELECT</strong><code>SELECT name, city</code> wählt die sichtbaren Spalten.</div>
+              <div class="cheat-item"><strong>FROM</strong><code>FROM customers</code> legt die Tabelle fest.</div>
+              <div class="cheat-item"><strong>WHERE</strong><code>WHERE city = 'Berlin'</code> filtert einzelne Zeilen.</div>
+              <div class="cheat-item"><strong>JOIN</strong><code>INNER JOIN orders ON customers.id = orders.customer_id</code> verbindet Tabellen über Schlüssel.</div>
+              <div class="cheat-item"><strong>GROUP BY</strong><code>GROUP BY city</code> bildet Gruppen für <code>COUNT</code>, <code>SUM</code> oder <code>AVG</code>.</div>
+              <div class="cheat-item"><strong>HAVING</strong><code>HAVING SUM(total) &gt; 200</code> filtert berechnete Gruppen.</div>
+              <div class="cheat-item"><strong>NodeQL-Regel</strong>Auch wenn die Nodes logisch aussehen: Lies vor dem Ausführen immer die SQLite-Ausgabe.</div>
             </div>
             <div class="button-row">
-              <button class="button secondary" type="button" onclick="window.print()">Print</button>
-              <a class="button ghost" href="https://kartoffelspalt.github.io/nodeql-example-plugins/repository.catalog.json">Plugin example repository</a>
+              <button class="button secondary" type="button" onclick="window.print()">Merkblatt drucken</button>
+              <a class="button ghost" href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">NodeQL-Dokumentation</a>
             </div>
           </div>
         </div>
@@ -1211,168 +1658,339 @@
 
   <footer class="footer">
     <div class="wrap">
-      <p><strong>NodeQL SQLite Workshop</strong><br>Local learning with visual blocks, SQLite, and inspectable SQLite output.</p>
-      <p><a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">README</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/plugins/README.md">Plugin SDK</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/RELEASING.md">Release notes</a></p>
+      <p><strong>NodeQL Lernwerkstatt</strong><br>Visuell lernen, echtes SQLite verstehen und lokal üben.</p>
+      <p><a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">README</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/plugins/README.md">Plugin-SDK</a> · <a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/RELEASING.md">Veröffentlichungen</a></p>
     </div>
   </footer>
 
   <script>
     const modules = [
       {
-        title: "Orientation",
-        tag: "Module 1",
-        summary: "Understand the palette, workspace, and SQLite output.",
+        title: "NodeQL kennenlernen",
+        tag: "Lektion 1",
+        level: "Einsteiger",
+        duration: "8 Min.",
+        summary: "Palette, Arbeitsbereich und SQLite-Ausgabe verstehen.",
+        goals: ["Die drei Arbeitsbereiche benennen", "Eine Node-Kette von oben nach unten lesen", "Die SQLite-Vorschau als Kontrolle nutzen"],
         sql: "SELECT name, city\nFROM customers;",
         nodes: [
-          ["select", "SELECT name, city", "Which columns should be visible?"],
-          ["from", "FROM customers", "Which table supplies the data?"]
+          ["select", "SELECT name, city", "Welche Spalten sollen sichtbar sein?"],
+          ["from", "FROM customers", "Welche Tabelle liefert die Daten?"]
         ],
         body: [
-          "NodeQL is not a replacement for understanding SQLite; it is a learning interface: build a query with blocks while seeing the real SQLite statement alongside it.",
-          "Read a query in NodeQL from top to bottom. The start block triggers execution, followed by SQLite clauses in the order SQLite expects."
+          "NodeQL ersetzt das Verständnis von SQLite nicht, sondern macht es zugänglich: Du baust eine Abfrage aus visuellen Nodes und siehst daneben jederzeit die echte SQLite-Anweisung.",
+          "Lies eine Abfrage von oben nach unten. Ein Starter-Node löst die Ausführung aus, danach folgen Klausel-Nodes in der Reihenfolge, die SQLite erwartet."
         ],
-        tips: ["Start every exercise with SELECT and FROM.", "Use the SQLite preview as a check before you run it."]
+        tips: ["Beginne mit einer klaren Datenfrage.", "Prüfe vor jeder Ausführung die SQLite-Vorschau."],
+        challenge: { question: "Wo setzt du in NodeQL die Abfrage aus Nodes zusammen?", options: ["Im Arbeitsbereich", "In der Ergebnistabelle", "In den Spracheinstellungen"], answer: 0, note: "Richtig: Der Arbeitsbereich ist die visuelle Baufläche; rechts kontrollierst du SQLite und Ergebnisse." }
       },
       {
-        title: "Tables & Columns",
-        tag: "Module 2",
-        summary: "Select data deliberately instead of always querying everything.",
-        sql: "SELECT name, city\nFROM customers\nORDER BY name ASC;",
+        title: "Node-Typen & Slots",
+        tag: "Lektion 2",
+        level: "Einsteiger",
+        duration: "10 Min.",
+        summary: "Starter, Anweisungen, Werte und Eingabe-Slots unterscheiden.",
+        goals: ["Node-Formen nach ihrer Aufgabe unterscheiden", "Reporter-Nodes in Wert-Slots einsetzen", "Ungültige Verbindungen erkennen"],
+        sql: "SELECT UPPER(name) AS display_name\nFROM customers;",
         nodes: [
-          ["select", "SELECT name, city", "Choose only the columns you need."],
-          ["from", "FROM customers", "A clear source."],
-          ["where", "ORDER BY name ASC", "Readable sorting."]
+          ["select", "SELECT …", "Anweisungs-Node in der Abfragekette."],
+          ["join", "UPPER(name)", "Reporter-Node im Spalten-Slot."],
+          ["from", "FROM customers", "Anweisungs-Node für die Quelle."]
         ],
         body: [
-          "SELECT * is convenient, but it is rarely the best learning habit. When you choose columns deliberately, you understand more quickly which data truly supports your result.",
-          "In NodeQL, this is a SELECT block with editable column values. Change a column and observe how the SQLite preview changes."
+          "Starter-Nodes beginnen einen Ablauf, Anweisungs-Nodes bilden die vertikale SQLite-Kette und Wert- oder Reporter-Nodes füllen Slots innerhalb einer Anweisung.",
+          "Ein Slot ist ein typisierter Platzhalter. Dort kann beispielsweise ein Tabellenname, eine Spalte, eine Zahl, Text oder ein berechneter Reporter-Wert eingesetzt werden."
         ],
-        tips: ["Use descriptive column names.", "Sort early examples so results are easier to verify."]
+        tips: ["Die Form verrät die syntaktische Rolle.", "Ein Reporter wie COUNT(*) läuft nicht allein."],
+        challenge: { question: "Wohin gehört ein Reporter-Node wie UPPER(name)?", options: ["In einen passenden Wert-Slot", "Direkt unter den Starter ohne SELECT", "Außerhalb des Arbeitsbereichs"], answer: 0, note: "Reporter geben Werte zurück und werden deshalb in kompatible Wert-Slots eingesetzt." }
       },
       {
-        title: "Filter with WHERE",
-        tag: "Module 3",
-        summary: "Reduce rows with conditions.",
-        sql: "SELECT name, city\nFROM customers\nWHERE city = 'Berlin';",
+        title: "Tabellen & Spalten",
+        tag: "Lektion 3",
+        level: "Einsteiger",
+        duration: "12 Min.",
+        summary: "Datenquellen verstehen und Ausgabespalten bewusst wählen.",
+        goals: ["SELECT und FROM sicher einsetzen", "SELECT * bewusst bewerten", "Aliasse für lesbare Ergebnisse verwenden"],
+        sql: "SELECT name AS kundenname, city AS stadt\nFROM customers\nORDER BY name ASC;",
         nodes: [
-          ["select", "SELECT name, city", "Set the output."],
-          ["from", "FROM customers", "Choose a table."],
-          ["where", "WHERE city = 'Berlin'", "Keep only matching rows."]
+          ["select", "SELECT name, city", "Nur benötigte Spalten wählen."],
+          ["from", "FROM customers", "Eine eindeutige Quelle."],
+          ["where", "ORDER BY name ASC", "Lesbare Sortierung."]
         ],
         body: [
-          "WHERE determines which rows remain in the result. Text values use single quotes; numbers usually do not.",
-          "In NodeQL, the block shape helps keep condition, operator, and value separate. That reduces common syntax errors."
+          "SELECT * ist bequem, aber selten die beste Lerngewohnheit. Wenn du Spalten bewusst auswählst, erkennst du schneller, welche Daten dein Ergebnis tatsächlich stützen.",
+          "FROM legt die Quelle fest. Ein Alias mit AS benennt Spalten oder Tabellen für die Ausgabe um, ohne die gespeicherten Daten zu verändern."
         ],
-        tips: ["Text: 'Berlin'. Number: 100.", "Check operators such as =, >=, LIKE, and IN deliberately."]
+        tips: ["Wähle nur Spalten, die die Frage beantworten.", "Nutze eindeutige, kurze Aliasse."],
+        challenge: { question: "Welche Klausel wählt die Tabelle aus, aus der Zeilen gelesen werden?", options: ["SELECT", "FROM", "ORDER BY"], answer: 1, note: "FROM bezeichnet die Datenquelle; SELECT legt anschließend die sichtbaren Werte fest." }
       },
       {
-        title: "Sort & Limit",
-        tag: "Module 4",
-        summary: "Make results readable and inspectable.",
+        title: "Filtern mit WHERE",
+        tag: "Lektion 4",
+        level: "Einsteiger",
+        duration: "14 Min.",
+        summary: "Zeilen mit Vergleichen und logischen Bedingungen eingrenzen.",
+        goals: ["Text- und Zahlenwerte korrekt vergleichen", "AND und OR bewusst kombinieren", "NULL mit IS NULL prüfen"],
+        sql: "SELECT name, city\nFROM customers\nWHERE city = 'Berlin' AND name LIKE 'A%';",
+        nodes: [
+          ["select", "SELECT name, city", "Ausgabe festlegen."],
+          ["from", "FROM customers", "Tabelle wählen."],
+          ["where", "WHERE city = 'Berlin'", "Nur passende Städte."],
+          ["where", "AND name LIKE 'A%'", "Zweite Bedingung ergänzen."]
+        ],
+        body: [
+          "WHERE bestimmt, welche einzelnen Zeilen im Ergebnis bleiben. Textwerte stehen in einfachen Anführungszeichen; Zahlen normalerweise nicht.",
+          "AND verlangt, dass beide Bedingungen wahr sind. OR lässt eine Zeile passieren, sobald mindestens eine Bedingung stimmt. Klammern machen gemischte Logik eindeutig."
+        ],
+        tips: ["NULL wird mit IS NULL geprüft, nicht mit = NULL.", "Setze bei AND und OR lieber eine Klammer zu viel als zu wenig."],
+        challenge: { question: "Welche Bedingung findet fehlende Werte korrekt?", options: ["city = NULL", "city IS NULL", "city LIKE NULL"], answer: 1, note: "NULL steht für einen unbekannten Wert und wird mit IS NULL oder IS NOT NULL geprüft." }
+      },
+      {
+        title: "Sortieren & Begrenzen",
+        tag: "Lektion 5",
+        level: "Einsteiger",
+        duration: "10 Min.",
+        summary: "Ergebnisse lesbar sortieren und sicher untersuchen.",
+        goals: ["ASC und DESC unterscheiden", "Nach mehreren Spalten sortieren", "LIMIT beim Erkunden einsetzen"],
         sql: "SELECT id, total, status\nFROM orders\nWHERE status = 'paid'\nORDER BY total DESC\nLIMIT 5;",
         nodes: [
-          ["select", "SELECT id, total, status", "Show the most important values."],
-          ["from", "FROM orders", "Orders as the source."],
-          ["where", "WHERE status = 'paid'", "Only paid orders."],
-          ["where", "ORDER BY total DESC", "Highest amounts first."]
+          ["select", "SELECT id, total, status", "Wichtige Werte anzeigen."],
+          ["from", "FROM orders", "Bestellungen als Quelle."],
+          ["where", "WHERE status = 'paid'", "Bezahlte Bestellungen."],
+          ["where", "ORDER BY total DESC", "Höchste Beträge zuerst."],
+          ["where", "LIMIT 5", "Ergebnis begrenzen."]
         ],
         body: [
-          "ORDER BY does not change the data, only its order in the result. DESC means descending and ASC means ascending.",
-          "LIMIT is ideal for learning: you get a small, inspectable result set and can see more quickly whether your logic is correct."
+          "ORDER BY verändert nicht die Daten, sondern nur die Reihenfolge der Ergebniszeilen. DESC bedeutet absteigend, ASC aufsteigend.",
+          "LIMIT ist beim Lernen ideal: Du erhältst eine kleine, prüfbare Ergebnismenge und erkennst schneller, ob deine Logik stimmt."
         ],
-        tips: ["Sort by the column that answers your question.", "Use LIMIT while experimenting with large tables."]
+        tips: ["Sortiere nach der Kennzahl, die deine Frage beantwortet.", "Kombiniere LIMIT für reproduzierbare Ergebnisse mit ORDER BY."],
+        challenge: { question: "Was bewirkt ORDER BY total DESC?", options: ["Es löscht kleine Beträge", "Es zeigt hohe Beträge zuerst", "Es begrenzt das Ergebnis auf eine Zeile"], answer: 1, note: "DESC sortiert absteigend. Die vorhandenen Zeilen bleiben dabei unverändert." }
       },
       {
-        title: "Understand JOIN",
-        tag: "Module 5",
-        summary: "Connect tables through keys.",
+        title: "Tabellen mit JOIN verbinden",
+        tag: "Lektion 6",
+        level: "Mittel",
+        duration: "18 Min.",
+        summary: "Verteilte Informationen über Schlüssel zusammenführen.",
+        goals: ["Primär- und Fremdschlüssel zuordnen", "INNER und LEFT JOIN unterscheiden", "Mehrdeutige Spalten qualifizieren"],
         sql: "SELECT customers.name, orders.total\nFROM customers\nINNER JOIN orders ON customers.id = orders.customer_id\nWHERE orders.total >= 100;",
         nodes: [
-          ["select", "SELECT customers.name, orders.total", "Columns from two tables."],
-          ["from", "FROM customers", "Starting table."],
-          ["join", "INNER JOIN orders", "Connect orders."],
-          ["where", "ON customers.id = orders.customer_id", "Key relationship."],
-          ["where", "WHERE orders.total >= 100", "Filter the result."]
+          ["select", "SELECT customers.name, orders.total", "Spalten aus zwei Tabellen."],
+          ["from", "FROM customers", "Starttabelle."],
+          ["join", "INNER JOIN orders", "Bestellungen verbinden."],
+          ["where", "ON customers.id = orders.customer_id", "Schlüsselbeziehung."],
+          ["where", "WHERE orders.total >= 100", "Gemeinsames Ergebnis filtern."]
         ],
         body: [
-          "JOIN is where SQLite becomes especially useful. You connect tables that are stored separately but belong together conceptually.",
-          "The ON condition is not an extra detail. It is the bridge between the primary key and foreign key. Without it, incorrect combinations result."
+          "JOIN verbindet Tabellen, die getrennt gespeichert sind, fachlich aber zusammengehören. Die ON-Bedingung ist die Brücke zwischen Primär- und Fremdschlüssel.",
+          "INNER JOIN liefert nur passende Paare. LEFT JOIN behält dagegen jede Zeile der linken Tabelle – auch dann, wenn rechts kein Treffer existiert."
         ],
-        tips: ["Qualify columns with table names when names occur more than once.", "INNER JOIN shows only matching pairs."]
+        tips: ["Qualifiziere doppelte Spaltennamen mit dem Tabellennamen.", "Prüfe die JOIN-Bedingung zuerst mit wenigen Zeilen."],
+        challenge: { question: "Welcher JOIN behält alle Kunden, auch ohne Bestellung?", options: ["INNER JOIN orders", "LEFT JOIN orders", "CROSS JOIN orders"], answer: 1, note: "LEFT JOIN erhält alle Zeilen der linken Tabelle und ergänzt fehlende rechte Werte mit NULL." }
       },
       {
-        title: "Group Data",
-        tag: "Module 6",
-        summary: "Count, sum, and aggregate data.",
+        title: "Gruppieren & aggregieren",
+        tag: "Lektion 7",
+        level: "Mittel",
+        duration: "18 Min.",
+        summary: "Daten mit COUNT, SUM, AVG, MIN und MAX verdichten.",
+        goals: ["Aggregatfunktionen passend auswählen", "GROUP BY fachlich erklären", "Ergebnisaliasse zum Sortieren nutzen"],
         sql: "SELECT city, COUNT(*) AS customer_count\nFROM customers\nGROUP BY city\nORDER BY customer_count DESC;",
         nodes: [
-          ["select", "SELECT city, COUNT(*) AS customer_count", "Group value plus metric."],
-          ["from", "FROM customers", "Customer table."],
-          ["group", "GROUP BY city", "One group per city."],
-          ["where", "ORDER BY customer_count DESC", "Largest groups first."]
+          ["select", "SELECT city, COUNT(*) AS customer_count", "Gruppenwert plus Kennzahl."],
+          ["from", "FROM customers", "Kundentabelle."],
+          ["group", "GROUP BY city", "Eine Gruppe pro Stadt."],
+          ["where", "ORDER BY customer_count DESC", "Größte Gruppen zuerst."]
         ],
         body: [
-          "GROUP BY turns many rows into groups. Aggregate functions such as COUNT, SUM, and AVG then calculate values per group.",
-          "The most important rule: everything in SELECT is either grouped or aggregated. This keeps results semantically sound."
+          "GROUP BY macht aus vielen Zeilen Gruppen. Aggregatfunktionen berechnen anschließend eine Kennzahl pro Gruppe: COUNT zählt, SUM addiert und AVG bildet einen Mittelwert.",
+          "Eine hilfreiche Regel lautet: Jede ausgewählte Spalte ist entweder gruppiert oder aggregiert. So bleibt das Ergebnis fachlich eindeutig."
         ],
-        tips: ["COUNT(*) counts rows.", "SUM(total) adds amounts.", "AVG(price) calculates averages."]
+        tips: ["COUNT(*) zählt Zeilen.", "SUM(total) addiert Beträge; AVG(price) berechnet Mittelwerte."],
+        challenge: { question: "Was legt GROUP BY city fest?", options: ["Eine Ergebnisgruppe pro Stadt", "Die alphabetische Sortierung", "Die maximale Zeilenzahl"], answer: 0, note: "Alle Zeilen mit demselben Stadtwert bilden eine Gruppe, über die Aggregate berechnet werden können." }
       },
       {
-        title: "Read Errors",
-        tag: "Module 7",
-        summary: "Use error messages as debugging help.",
-        sql: "SELECT name city\nFROM customers\nWHERE city = Berlin;",
+        title: "Gruppen mit HAVING filtern",
+        tag: "Lektion 8",
+        level: "Mittel",
+        duration: "14 Min.",
+        summary: "WHERE und HAVING korrekt in Aggregatabfragen einsetzen.",
+        goals: ["Zeilen- und Gruppenfilter unterscheiden", "HAVING mit Aggregaten formulieren", "Die logische Verarbeitungsreihenfolge verstehen"],
+        sql: "SELECT customer_id, SUM(total) AS revenue\nFROM orders\nWHERE status = 'paid'\nGROUP BY customer_id\nHAVING SUM(total) >= 200\nORDER BY revenue DESC;",
         nodes: [
-          ["select", "SELECT name city", "Comma is missing."],
-          ["from", "FROM customers", "Source is correct."],
-          ["where", "WHERE city = Berlin", "A text value needs quotation marks."],
+          ["select", "SELECT customer_id, SUM(total)", "Kunde plus Umsatz."],
+          ["from", "FROM orders", "Bestellungen als Quelle."],
+          ["where", "WHERE status = 'paid'", "Zeilen vorab filtern."],
+          ["group", "GROUP BY customer_id", "Pro Kunde gruppieren."],
+          ["group", "HAVING SUM(total) >= 200", "Berechnete Gruppen filtern."]
         ],
         body: [
-          "Errors are normal when learning SQLite. NodeQL helps because you can inspect the block structure and generated SQLite line side by side.",
-          "First look for simple causes: missing commas, incorrect quotation marks, swapped clauses, or columns that do not exist in the table."
+          "WHERE filtert einzelne Zeilen, bevor Gruppen entstehen. HAVING prüft das bereits gruppierte Ergebnis und kann deshalb Bedingungen mit SUM, COUNT oder AVG verwenden.",
+          "In NodeQL bleibt diese Reihenfolge sichtbar: FROM, WHERE, GROUP BY, HAVING. SELECT beschreibt, was am Ende ausgegeben wird."
         ],
-        tips: ["Compare the block and SQLite line.", "Reduce the query until the smallest part works again."]
+        tips: ["Nutze WHERE für Rohdaten und HAVING für Aggregate.", "Verwende denselben Aggregatausdruck in SELECT und HAVING."],
+        challenge: { question: "Welche Klausel filtert Gruppen nach SUM(total)?", options: ["WHERE", "HAVING", "LIMIT"], answer: 1, note: "HAVING wird nach der Gruppierung ausgewertet und kann daher aggregierte Gruppen filtern." }
       },
       {
-        title: "Local Workflow",
-        tag: "Module 8",
-        summary: "Work with SQLite files in a traceable way.",
+        title: "Unterabfragen & CTEs",
+        tag: "Lektion 9",
+        level: "Fortgeschritten",
+        duration: "20 Min.",
+        summary: "Komplexe Logik in verständliche Zwischenschritte zerlegen.",
+        goals: ["Eine Unterabfrage erkennen", "WITH für benannte Teilergebnisse nutzen", "Komplexität durch kleine Schritte reduzieren"],
+        sql: "WITH paid_orders AS (\n  SELECT customer_id, total\n  FROM orders\n  WHERE status = 'paid'\n)\nSELECT customer_id, SUM(total) AS revenue\nFROM paid_orders\nGROUP BY customer_id;",
+        nodes: [
+          ["join", "WITH paid_orders AS (…) ", "Benannter Zwischenschritt."],
+          ["select", "SELECT customer_id, SUM(total)", "Zwischenergebnis auswerten."],
+          ["from", "FROM paid_orders", "CTE wie eine Tabelle lesen."],
+          ["group", "GROUP BY customer_id", "Umsatz pro Kunde."]
+        ],
+        body: [
+          "Eine Common Table Expression beginnt mit WITH und gibt einer Teilabfrage einen Namen. Das macht lange Anweisungen leichter lesbar und besser prüfbar.",
+          "Unterabfragen sind besonders hilfreich, wenn ein Ergebnis erst berechnet und danach erneut gefiltert, gruppiert oder verbunden werden soll."
+        ],
+        tips: ["Benenne CTEs nach ihrem fachlichen Inhalt.", "Teste jede Teilabfrage einzeln, bevor du sie zusammensetzt."],
+        challenge: { question: "Was ist der wichtigste Vorteil einer CTE?", options: ["Sie verschlüsselt die Datenbank", "Sie benennt und strukturiert einen Zwischenschritt", "Sie ersetzt jede JOIN-Bedingung"], answer: 1, note: "WITH macht Teilergebnisse explizit und verbessert Lesbarkeit sowie Debugging." }
+      },
+      {
+        title: "Daten sicher verändern",
+        tag: "Lektion 10",
+        level: "Fortgeschritten",
+        duration: "22 Min.",
+        summary: "INSERT, UPDATE und DELETE kontrolliert ausführen.",
+        goals: ["Schreiboperationen von Abfragen unterscheiden", "WHERE vor UPDATE und DELETE prüfen", "Transaktionen für sichere Änderungen nutzen"],
+        sql: "BEGIN;\nUPDATE orders\nSET status = 'archived'\nWHERE status = 'paid' AND total < 50;\nSELECT changes();\nCOMMIT;",
+        nodes: [
+          ["join", "BEGIN", "Transaktion starten."],
+          ["group", "UPDATE orders SET …", "Daten gezielt ändern."],
+          ["where", "WHERE status = 'paid' AND total < 50", "Zielzeilen begrenzen."],
+          ["select", "SELECT changes()", "Anzahl prüfen."],
+          ["join", "COMMIT", "Geprüfte Änderung bestätigen."]
+        ],
+        body: [
+          "Schreiboperationen verändern die Datenbank. Formuliere dieselbe WHERE-Bedingung deshalb zuerst als SELECT und kontrolliere exakt, welche Zeilen betroffen wären.",
+          "Eine Transaktion bündelt Änderungen. Vor COMMIT kannst du prüfen und bei einem Problem mit ROLLBACK zum Ausgangszustand zurückkehren."
+        ],
+        tips: ["UPDATE oder DELETE ohne WHERE betrifft alle Zeilen.", "Erstelle vor riskanten Experimenten eine Kopie der SQLite-Datei."],
+        challenge: { question: "Was solltest du vor einem UPDATE als Erstes tun?", options: ["Die WHERE-Bedingung mit SELECT prüfen", "Sofort COMMIT ausführen", "Alle Indizes löschen"], answer: 0, note: "Ein SELECT mit derselben WHERE-Bedingung zeigt gefahrlos, welche Zeilen geändert würden." }
+      },
+      {
+        title: "Fehler & Abfragepläne lesen",
+        tag: "Lektion 11",
+        level: "Fortgeschritten",
+        duration: "18 Min.",
+        summary: "Syntaxfehler eingrenzen und langsame Abfragen untersuchen.",
+        goals: ["Fehlermeldungen mit der Vorschau abgleichen", "Abfragen systematisch verkleinern", "EXPLAIN QUERY PLAN grundlegend lesen"],
+        sql: "EXPLAIN QUERY PLAN\nSELECT customers.name, orders.total\nFROM customers\nJOIN orders ON customers.id = orders.customer_id\nWHERE orders.status = 'paid';",
+        nodes: [
+          ["join", "EXPLAIN QUERY PLAN", "Ausführung untersuchen."],
+          ["select", "SELECT customers.name, orders.total", "Gewünschte Ausgabe."],
+          ["join", "JOIN orders ON …", "Beziehung kontrollieren."],
+          ["where", "WHERE orders.status = 'paid'", "Selektiver Filter."]
+        ],
+        body: [
+          "Fehler sind normale Rückmeldungen des Datenbanksystems. Lies zuerst die genaue Meldung, markiere die genannte Stelle in der SQLite-Vorschau und entferne die letzte Erweiterung.",
+          "EXPLAIN QUERY PLAN zeigt vereinfacht, ob SQLite eine Tabelle vollständig durchsucht oder einen Index verwendet. Optimiere erst, wenn das Ergebnis fachlich korrekt ist."
+        ],
+        tips: ["Teste die kleinste funktionierende Abfrage.", "Ändere beim Debugging immer nur einen Baustein."],
+        challenge: { question: "Was ist der beste erste Schritt nach einem SQLite-Fehler?", options: ["Das ganze Projekt löschen", "Fehlermeldung und generiertes SQLite vergleichen", "Mehrere neue Nodes ergänzen"], answer: 1, note: "Der direkte Vergleich grenzt Syntax-, Tabellen- und Spaltenfehler am schnellsten ein." }
+      },
+      {
+        title: "Robuster NodeQL-Workflow",
+        tag: "Lektion 12",
+        level: "Fortgeschritten",
+        duration: "15 Min.",
+        summary: "Lokale Projekte, Plugins und wiederverwendbare Abfragen organisieren.",
+        goals: ["Einen reproduzierbaren Arbeitsablauf anwenden", "Plugin-Nodes anhand ihres Vertrags bewerten", "Gute Abfragen als Lernbausteine sichern"],
         sql: "SELECT products.category, AVG(products.price) AS avg_price\nFROM products\nGROUP BY products.category\nORDER BY avg_price DESC;",
         nodes: [
-          ["select", "SELECT category, AVG(price)", "Category plus average."],
-          ["from", "FROM products", "Local product table."],
-          ["group", "GROUP BY category", "One group per category."],
-          ["where", "ORDER BY avg_price DESC", "Most expensive categories first."]
+          ["select", "SELECT category, AVG(price)", "Kategorie plus Mittelwert."],
+          ["from", "FROM products", "Lokale Produkttabelle."],
+          ["group", "GROUP BY category", "Eine Gruppe pro Kategorie."],
+          ["where", "ORDER BY avg_price DESC", "Teuerste Kategorien zuerst."]
         ],
         body: [
-          "NodeQL is local-first: projects, settings, plugins, and databases remain on the device. This suits learning because you can experiment without a cloud dependency.",
-          "The professional workflow is simple: formulate a question, build blocks, read the SQLite, run it locally, inspect the result, then extend it step by step."
+          "NodeQL arbeitet local-first: Projekte, Einstellungen, Plugins und Datenbanken bleiben auf deinem Gerät. Das eignet sich zum Lernen, weil du ohne Cloud-Abhängigkeit experimentieren kannst.",
+          "Der robuste Ablauf lautet: Frage formulieren, Nodes bauen, SQLite lesen, lokal ausführen, Ergebnis prüfen und erst danach schrittweise erweitern. Plugin-Nodes folgen dabei denselben Form- und Slot-Regeln."
         ],
-        tips: ["Save learning projects by topic.", "Document good queries as examples for later projects."]
+        tips: ["Speichere Lernprojekte nach Themen.", "Prüfe bei Plugins Berechtigungen, Datenquellen und erwartete Eingaben."],
+        challenge: { question: "Welche Reihenfolge beschreibt einen robusten NodeQL-Ablauf?", options: ["Ausführen, dann Frage überlegen", "Frage, Nodes, SQLite prüfen, ausführen, Ergebnis kontrollieren", "Plugin installieren, Datenbank löschen, neu beginnen"], answer: 1, note: "Die schrittweise Kontrolle macht Abfragen nachvollziehbar und Fehler leicht lokalisierbar." }
       }
     ];
 
     const exercises = [
       {
-        title: "1. Customers from Berlin",
-        task: "Show name and city from customers, but only for Berlin.",
+        title: "1. Kunden aus Berlin",
+        task: "Zeige Name und Stadt aller Kunden aus Berlin.",
         starter: "SELECT \nFROM \nWHERE ;",
         checks: [/select\s+name\s*,\s*city/i, /from\s+customers/i, /where\s+city\s*=\s*'berlin'/i],
-        ok: "Correct. You combined column selection, table, and text filter properly."
+        hint: "Du brauchst SELECT name, city, die Tabelle customers und einen Textvergleich in WHERE.",
+        solution: "SELECT name, city\nFROM customers\nWHERE city = 'Berlin';",
+        ok: "Richtig. Du hast Spaltenauswahl, Tabelle und Textfilter korrekt verbunden."
       },
       {
-        title: "2. Large orders",
-        task: "Show id and total from orders for paid orders of at least 100, highest first.",
+        title: "2. Große Bestellungen",
+        task: "Zeige ID und Betrag bezahlter Bestellungen ab 100, den höchsten Betrag zuerst.",
         starter: "SELECT id, total\nFROM orders\nWHERE \nORDER BY ;",
         checks: [/select\s+id\s*,\s*total/i, /from\s+orders/i, /status\s*=\s*'paid'/i, /total\s*>=\s*100/i, /order\s+by\s+total\s+desc/i],
-        ok: "Good. This is exactly how you would extend the WHERE block step by step."
+        hint: "Verbinde zwei Bedingungen mit AND und sortiere total mit DESC.",
+        solution: "SELECT id, total\nFROM orders\nWHERE status = 'paid' AND total >= 100\nORDER BY total DESC;",
+        ok: "Gut. Genau so würdest du den WHERE-Node Schritt für Schritt erweitern."
       },
       {
-        title: "3. Count cities",
-        task: "Count customers per city and sort the largest group first.",
+        title: "3. Kunden pro Stadt",
+        task: "Zähle Kunden pro Stadt und sortiere die größte Gruppe zuerst.",
         starter: "SELECT city, COUNT(*) AS customer_count\nFROM customers\nGROUP BY \nORDER BY ;",
         checks: [/select\s+city\s*,\s*count\s*\(\s*\*\s*\)/i, /from\s+customers/i, /group\s+by\s+city/i, /order\s+by\s+customer_count\s+desc/i],
-        ok: "Correct. SELECT contains the group value and the aggregation."
+        hint: "Gruppiere nach city und sortiere den Alias customer_count absteigend.",
+        solution: "SELECT city, COUNT(*) AS customer_count\nFROM customers\nGROUP BY city\nORDER BY customer_count DESC;",
+        ok: "Richtig. SELECT enthält Gruppenwert und Aggregation."
+      },
+      {
+        title: "4. Kunden und Bestellungen",
+        task: "Zeige Kundenname und Betrag jeder Bestellung durch einen INNER JOIN.",
+        starter: "SELECT customers.name, orders.total\nFROM customers\nINNER JOIN orders ON ;",
+        checks: [/select\s+customers\.name\s*,\s*orders\.total/i, /from\s+customers/i, /join\s+orders/i, /customers\.id\s*=\s*orders\.customer_id/i],
+        hint: "Verbinde customers.id mit orders.customer_id.",
+        solution: "SELECT customers.name, orders.total\nFROM customers\nINNER JOIN orders ON customers.id = orders.customer_id;",
+        ok: "Richtig. Primär- und Fremdschlüssel bilden eine eindeutige JOIN-Bedingung."
+      },
+      {
+        title: "5. Kunden ohne Bestellung",
+        task: "Zeige alle Kunden und – falls vorhanden – ihre Bestellungs-ID.",
+        starter: "SELECT customers.name, orders.id\nFROM customers\n JOIN orders ON customers.id = orders.customer_id;",
+        checks: [/select\s+customers\.name\s*,\s*orders\.id/i, /from\s+customers/i, /left\s+join\s+orders/i, /customers\.id\s*=\s*orders\.customer_id/i],
+        hint: "Die linke Tabelle soll vollständig erhalten bleiben. Welcher JOIN leistet das?",
+        solution: "SELECT customers.name, orders.id\nFROM customers\nLEFT JOIN orders ON customers.id = orders.customer_id;",
+        ok: "Richtig. LEFT JOIN behält auch Kunden ohne passende Bestellung."
+      },
+      {
+        title: "6. Umsatzstarke Kunden",
+        task: "Summiere bezahlte Bestellungen pro Kunde und behalte nur Umsätze ab 200.",
+        starter: "SELECT customer_id, SUM(total) AS revenue\nFROM orders\nWHERE \nGROUP BY \nHAVING ;",
+        checks: [/sum\s*\(\s*total\s*\)/i, /where\s+status\s*=\s*'paid'/i, /group\s+by\s+customer_id/i, /having\s+sum\s*\(\s*total\s*\)\s*>=\s*200/i],
+        hint: "WHERE filtert den Status vorab; HAVING prüft die berechnete Summe.",
+        solution: "SELECT customer_id, SUM(total) AS revenue\nFROM orders\nWHERE status = 'paid'\nGROUP BY customer_id\nHAVING SUM(total) >= 200;",
+        ok: "Sehr gut. Du hast Zeilenfilter und Gruppenfilter korrekt getrennt."
+      },
+      {
+        title: "7. Benannter Zwischenschritt",
+        task: "Erstelle eine CTE paid_orders und lies anschließend alle Zeilen daraus.",
+        starter: "WITH paid_orders AS (\n  SELECT * FROM orders WHERE \n)\nSELECT * FROM ;",
+        checks: [/with\s+paid_orders\s+as/i, /where\s+status\s*=\s*'paid'/i, /select\s+\*\s+from\s+paid_orders/i],
+        hint: "Der CTE-Name steht nach WITH und wird später wie eine Tabelle in FROM verwendet.",
+        solution: "WITH paid_orders AS (\n  SELECT * FROM orders WHERE status = 'paid'\n)\nSELECT * FROM paid_orders;",
+        ok: "Richtig. Der benannte Zwischenschritt kann nun wie eine Datenquelle gelesen werden."
+      },
+      {
+        title: "8. Sicheres Update",
+        task: "Setze kleine bezahlte Bestellungen in einer Transaktion auf archived.",
+        starter: "BEGIN;\nUPDATE orders\nSET \nWHERE ;\nCOMMIT;",
+        checks: [/begin/i, /update\s+orders/i, /set\s+status\s*=\s*'archived'/i, /where[\s\S]*status\s*=\s*'paid'/i, /total\s*<\s*50/i, /commit/i],
+        hint: "Die Änderung braucht SET status = 'archived' und eine sehr genaue WHERE-Bedingung.",
+        solution: "BEGIN;\nUPDATE orders\nSET status = 'archived'\nWHERE status = 'paid' AND total < 50;\nCOMMIT;",
+        ok: "Richtig. Transaktion und präziser Filter machen die Änderung nachvollziehbar."
       }
     ];
 
@@ -1399,46 +2017,129 @@
 
     const quiz = [
       {
-        question: "Which clause determines which table the data comes from?",
+        question: "Welche Klausel bestimmt, aus welcher Tabelle die Daten kommen?",
         options: ["FROM", "WHERE", "ORDER BY"],
         answer: 0,
-        note: "FROM is the data source. SELECT then decides what becomes visible."
+        note: "FROM ist die Datenquelle. SELECT entscheidet, was davon sichtbar wird."
       },
       {
-        question: "Why is the SQLite preview important in NodeQL?",
-        options: ["It replaces every database.", "It shows the real query before you run it.", "It deletes invalid rows automatically."],
+        question: "Warum ist die SQLite-Vorschau in NodeQL wichtig?",
+        options: ["Sie ersetzt jede Datenbank.", "Sie zeigt die echte Abfrage vor der Ausführung.", "Sie löscht ungültige Zeilen automatisch."],
         answer: 1,
-        note: "The preview turns visual blocks into inspectable SQLite."
+        note: "Die Vorschau übersetzt die visuellen Nodes in kontrollierbares SQLite."
       },
       {
         question: "Wann brauchst du einen JOIN?",
-        options: ["When you want to query two conceptually related tables together.", "When you only want to see the first five rows.", "When you sort a table alphabetically."],
+        options: ["Wenn Informationen aus zusammengehörigen Tabellen benötigt werden.", "Wenn nur fünf Zeilen angezeigt werden sollen.", "Wenn eine Tabelle alphabetisch sortiert wird."],
         answer: 0,
-        note: "JOIN connects tables through matching keys."
+        note: "JOIN verbindet Tabellen über passende Schlüssel oder Bedingungen."
       },
       {
-        question: "What is especially important with GROUP BY?",
-        options: ["Every SELECT column is either grouped or aggregated.", "GROUP BY always comes before FROM.", "COUNT only works with text columns."],
+        question: "Welche Regel hilft bei GROUP BY?",
+        options: ["Jede SELECT-Spalte ist gruppiert oder aggregiert.", "GROUP BY steht immer vor FROM.", "COUNT funktioniert nur mit Textspalten."],
         answer: 0,
         note: "Diese Regel verhindert fachlich unklare Gruppenergebnisse."
+      },
+      {
+        question: "Was ist der Unterschied zwischen WHERE und HAVING?",
+        options: ["Es gibt keinen.", "WHERE filtert Zeilen, HAVING filtert Gruppen.", "HAVING sortiert und WHERE begrenzt."],
+        answer: 1,
+        note: "WHERE wirkt vor der Gruppierung auf Zeilen; HAVING prüft danach berechnete Gruppen."
+      },
+      {
+        question: "Welcher Node passt in einen Wert-Slot?",
+        options: ["Ein Reporter wie COUNT(*)", "Ein zweiter Starter-Node", "Die Ergebnistabelle"],
+        answer: 0,
+        note: "Reporter-Nodes geben einen Wert zurück und passen deshalb in kompatible Wert-Slots."
+      },
+      {
+        question: "Was bewirkt ein LEFT JOIN?",
+        options: ["Er behält alle Zeilen der linken Tabelle.", "Er löscht Zeilen ohne Treffer.", "Er sortiert nach der linken Spalte."],
+        answer: 0,
+        note: "Fehlende Treffer auf der rechten Seite werden mit NULL ergänzt."
+      },
+      {
+        question: "Warum ist UPDATE ohne WHERE gefährlich?",
+        options: ["Weil es keine Aliasse erlaubt.", "Weil alle Zeilen geändert werden können.", "Weil SQLite dabei immer abstürzt."],
+        answer: 1,
+        note: "Prüfe die Zielmenge zuerst mit SELECT und derselben WHERE-Bedingung."
+      },
+      {
+        question: "Wofür eignet sich eine CTE mit WITH?",
+        options: ["Zum Benennen eines verständlichen Zwischenschritts.", "Zum Ändern der App-Sprache.", "Zum automatischen Erstellen eines Plugins."],
+        answer: 0,
+        note: "Eine CTE strukturiert komplexe Abfragen in benannte, einzeln verständliche Teile."
+      },
+      {
+        question: "Wie gehst du nach einem Abfragefehler am besten vor?",
+        options: ["Viele Nodes gleichzeitig ändern.", "Fehlertext und SQLite vergleichen und die letzte Änderung zurücknehmen.", "Die Datenbank sofort löschen."],
+        answer: 1,
+        note: "Kleine, kontrollierte Schritte machen die Ursache eines Fehlers sichtbar."
       }
     ];
 
-    const progressKey = "nodeql-sql-workshop-progress";
-    let completed = new Set(JSON.parse(localStorage.getItem(progressKey) || "[]"));
-    let activeLesson = 0;
+    const progressKey = "nodeql-learning-workshop-v2";
+    const legacyProgressKey = "nodeql-sql-workshop-progress";
+
+    function loadLearningState() {
+      const fallback = { lessons: [], exercises: [], quizBest: 0, lastLesson: 0 };
+      try {
+        const saved = JSON.parse(localStorage.getItem(progressKey) || "null");
+        if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+          return {
+            lessons: Array.isArray(saved.lessons) ? saved.lessons : [],
+            exercises: Array.isArray(saved.exercises) ? saved.exercises : [],
+            quizBest: Number.isInteger(saved.quizBest) ? saved.quizBest : 0,
+            lastLesson: Number.isInteger(saved.lastLesson) ? saved.lastLesson : 0
+          };
+        }
+        const legacy = JSON.parse(localStorage.getItem(legacyProgressKey) || "[]");
+        if (Array.isArray(legacy)) fallback.lessons = legacy;
+      } catch (_) {
+        return fallback;
+      }
+      return fallback;
+    }
+
+    let learningState = loadLearningState();
+    let completed = new Set(learningState.lessons.map(Number).filter((index) => Number.isInteger(index) && index >= 0 && index < modules.length));
+    let completedExercises = new Set(learningState.exercises.map(Number).filter((index) => Number.isInteger(index) && index >= 0 && index < exercises.length));
+    let activeLesson = Math.min(Math.max(learningState.lastLesson, 0), modules.length - 1);
     let quizIndex = 0;
     let quizScore = 0;
+    let quizAnswered = false;
+    let quizFinished = false;
+
+    function persistState() {
+      try {
+        localStorage.setItem(progressKey, JSON.stringify(learningState));
+      } catch (_) {
+        // Die Lernseite bleibt auch dann nutzbar, wenn Browser-Speicher blockiert ist.
+      }
+    }
 
     function saveProgress() {
-      localStorage.setItem(progressKey, JSON.stringify([...completed]));
+      learningState = {
+        lessons: [...completed],
+        exercises: [...completedExercises],
+        quizBest: learningState.quizBest,
+        lastLesson: activeLesson
+      };
+      persistState();
       renderProgress();
+      renderModules();
     }
 
     function renderProgress() {
       const count = completed.size;
-      document.getElementById("progressText").textContent = `${count} of ${modules.length}`;
+      document.getElementById("progressText").textContent = `${count} von ${modules.length}`;
       document.getElementById("progressFill").style.width = `${(count / modules.length) * 100}%`;
+      const track = document.getElementById("progressFill").parentElement;
+      track.setAttribute("aria-valuenow", count);
+      track.setAttribute("aria-label", `${count} von ${modules.length} Lektionen abgeschlossen`);
+      document.getElementById("exerciseProgress").textContent = `${completedExercises.size}/${exercises.length}`;
+      document.getElementById("quizBest").textContent = `${learningState.quizBest}/${quiz.length}`;
+      document.getElementById("completionBanner").hidden = count !== modules.length;
       document.querySelectorAll("[data-module-card]").forEach((card) => {
         card.classList.toggle("done", completed.has(Number(card.dataset.moduleCard)));
       });
@@ -1447,11 +2148,15 @@
     function renderModules() {
       const grid = document.getElementById("moduleGrid");
       grid.innerHTML = modules.map((module, index) => `
-        <article class="module" data-module-card="${index}">
+        <article class="module ${completed.has(index) ? "done" : ""}" data-module-card="${index}">
           <small>${module.tag}</small>
           <h3>${module.title}</h3>
           <p>${module.summary}</p>
-          <button class="button secondary" type="button" data-open-module="${index}">open</button>
+          <div class="module-progress">
+            <span>${completed.has(index) ? "✓ Abgeschlossen" : "○ Wissenscheck offen"}</span>
+            <span>${module.duration}</span>
+          </div>
+          <button class="button secondary" type="button" data-open-module="${index}">${completed.has(index) ? "Wiederholen" : index === activeLesson ? "Fortsetzen" : "Öffnen"}</button>
         </article>
       `).join("");
 
@@ -1467,8 +2172,8 @@
       const tabList = document.getElementById("tabList");
       const panels = document.getElementById("lessonPanels");
       tabList.innerHTML = modules.map((module, index) => `
-        <button class="tab-button" id="tab-${index}" role="tab" aria-selected="${index === activeLesson}" aria-controls="lesson-${index}" type="button" data-tab="${index}">
-          <span>${index + 1}</span>
+        <button class="tab-button" id="tab-${index}" role="tab" aria-selected="${index === activeLesson}" aria-controls="lesson-${index}" tabindex="${index === activeLesson ? "0" : "-1"}" type="button" data-tab="${index}">
+          <span>${completed.has(index) ? "✓" : index + 1}</span>
           <span><strong>${module.title}</strong><br><small>${module.summary}</small></span>
         </button>
       `).join("");
@@ -1479,11 +2184,24 @@
             <div class="lesson-copy">
               <p class="eyebrow">${module.tag}</p>
               <h3>${module.title}</h3>
+              <div class="lesson-meta"><span class="pill">${module.level}</span><span class="pill">${module.duration}</span><span class="pill">${completed.has(index) ? "✓ Abgeschlossen" : "Wissenscheck offen"}</span></div>
+              <div class="learning-goals">
+                <strong>Nach dieser Lektion kannst du …</strong>
+                <ul>${module.goals.map((goal) => `<li>${goal}</li>`).join("")}</ul>
+              </div>
               ${module.body.map((paragraph) => `<p>${paragraph}</p>`).join("")}
+              <p><strong>Merke dir:</strong></p>
               <ul>${module.tips.map((tip) => `<li>${tip}</li>`).join("")}</ul>
+              <div class="lesson-check">
+                <h4>Wissenscheck: ${module.challenge.question}</h4>
+                <div class="lesson-check-options">
+                  ${module.challenge.options.map((option, optionIndex) => `<button class="lesson-check-option ${completed.has(index) && optionIndex === module.challenge.answer ? "correct" : ""}" type="button" data-lesson-answer="${index}" data-option="${optionIndex}" ${completed.has(index) ? "disabled" : ""}>${option}</button>`).join("")}
+                </div>
+                <div class="feedback ${completed.has(index) ? "ok" : ""}" id="lesson-feedback-${index}" role="status" aria-live="polite">${completed.has(index) ? module.challenge.note : "Wähle die richtige Antwort, um die Lektion abzuschließen."}</div>
+              </div>
               <div class="button-row">
-                <button class="button" type="button" data-complete="${index}">Modul erledigt</button>
-                <button class="button ghost" type="button" data-next="${index}">weiter</button>
+                ${index > 0 ? `<button class="button ghost" type="button" data-previous="${index}">← Zurück</button>` : ""}
+                <button class="button" type="button" data-next="${index}">${index === modules.length - 1 ? "Zum Abschlussquiz" : "Nächste Lektion →"}</button>
               </div>
             </div>
             <div class="lesson-lab">
@@ -1504,22 +2222,70 @@
 
       tabList.querySelectorAll("[data-tab]").forEach((button) => {
         button.addEventListener("click", () => openLesson(Number(button.dataset.tab)));
+        button.addEventListener("keydown", handleTabKeydown);
       });
-      panels.querySelectorAll("[data-complete]").forEach((button) => {
-        button.addEventListener("click", () => {
-          completed.add(Number(button.dataset.complete));
-          saveProgress();
-        });
+      panels.querySelectorAll("[data-lesson-answer]").forEach((button) => {
+        button.addEventListener("click", () => answerLessonCheck(Number(button.dataset.lessonAnswer), Number(button.dataset.option)));
+      });
+      panels.querySelectorAll("[data-previous]").forEach((button) => {
+        button.addEventListener("click", () => openLesson(Number(button.dataset.previous) - 1));
       });
       panels.querySelectorAll("[data-next]").forEach((button) => {
-        button.addEventListener("click", () => openLesson((Number(button.dataset.next) + 1) % modules.length));
+        button.addEventListener("click", () => {
+          const current = Number(button.dataset.next);
+          if (current === modules.length - 1) {
+            document.getElementById("quiz").scrollIntoView({ behavior: "smooth" });
+          } else {
+            openLesson(current + 1);
+          }
+        });
       });
       panels.querySelectorAll(".copy-sql").forEach(bindCopyButton);
     }
 
     function openLesson(index) {
       activeLesson = index;
+      learningState.lastLesson = index;
+      learningState.lessons = [...completed];
+      learningState.exercises = [...completedExercises];
+      persistState();
       renderLessons();
+      renderModules();
+    }
+
+    function answerLessonCheck(lessonIndex, answerIndex) {
+      const module = modules[lessonIndex];
+      const panel = document.getElementById(`lesson-${lessonIndex}`);
+      const options = panel.querySelectorAll("[data-lesson-answer]");
+      const feedback = document.getElementById(`lesson-feedback-${lessonIndex}`);
+      options.forEach((button) => {
+        const optionIndex = Number(button.dataset.option);
+        button.classList.toggle("correct", optionIndex === module.challenge.answer);
+        button.classList.toggle("incorrect", optionIndex === answerIndex && answerIndex !== module.challenge.answer);
+      });
+      if (answerIndex === module.challenge.answer) {
+        options.forEach((button) => button.disabled = true);
+        completed.add(lessonIndex);
+        feedback.className = "feedback ok";
+        feedback.textContent = module.challenge.note;
+        saveProgress();
+        document.getElementById(`tab-${lessonIndex}`).querySelector("span").textContent = "✓";
+      } else {
+        feedback.className = "feedback warn";
+        feedback.textContent = "Noch nicht. Lies das Beispiel erneut und vergleiche die Rolle jedes Nodes.";
+      }
+    }
+
+    function handleTabKeydown(event) {
+      if (!["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const current = Number(event.currentTarget.dataset.tab);
+      const next = event.key === "Home" ? 0
+        : event.key === "End" ? modules.length - 1
+        : ["ArrowDown", "ArrowRight"].includes(event.key) ? (current + 1) % modules.length
+        : (current - 1 + modules.length) % modules.length;
+      openLesson(next);
+      document.getElementById(`tab-${next}`).focus();
     }
 
     function renderTable(name) {
@@ -1555,13 +2321,13 @@
       const feedback = document.getElementById("builderFeedback");
       if (selected.includes("COUNT") && !group) {
         feedback.className = "feedback warn";
-        feedback.textContent = "COUNT without GROUP BY can be useful, but you need GROUP BY city for a metric per city.";
+        feedback.textContent = "COUNT ohne GROUP BY kann sinnvoll sein. Für eine Kennzahl pro Stadt brauchst du jedoch GROUP BY city.";
       } else if (join && from !== "customers") {
         feedback.className = "feedback warn";
-        feedback.textContent = "The selected JOIN starts at customers. Set FROM to customers so the ON condition is semantically correct.";
+        feedback.textContent = "Der gewählte JOIN beginnt bei customers. Setze FROM auf customers, damit die ON-Bedingung fachlich passt.";
       } else {
         feedback.className = "feedback ok";
-        feedback.textContent = "The clause order is correct. Now read the SQLite lines from top to bottom.";
+        feedback.textContent = "Die Klauselreihenfolge stimmt. Lies die SQLite-Zeilen jetzt von oben nach unten.";
       }
     }
 
@@ -1577,16 +2343,27 @@
     function renderExercises() {
       const grid = document.getElementById("exerciseGrid");
       grid.innerHTML = exercises.map((exercise, index) => `
-        <article class="exercise">
+        <article class="exercise ${completedExercises.has(index) ? "done" : ""}" data-exercise-card="${index}">
+          <div class="module-progress"><span>${completedExercises.has(index) ? "✓ Gelöst" : "○ Offen"}</span><span>Praxis</span></div>
           <h3>${exercise.title}</h3>
           <p>${exercise.task}</p>
-          <textarea aria-label="${exercise.title} SQLite Eingabe" spellcheck="false" id="exercise-${index}">${exercise.starter}</textarea>
-          <button class="button secondary" type="button" data-check-exercise="${index}">check</button>
-          <div class="feedback" id="exercise-feedback-${index}">Not checked yet.</div>
+          <textarea aria-label="${exercise.title}: SQLite-Eingabe" spellcheck="false" id="exercise-${index}">${exercise.starter}</textarea>
+          <div class="button-row" style="margin-top:0;">
+            <button class="button secondary" type="button" data-check-exercise="${index}">Prüfen</button>
+            <button class="button ghost" type="button" data-hint-exercise="${index}">Hinweis</button>
+            <button class="button ghost" type="button" data-solution-exercise="${index}">Lösung</button>
+          </div>
+          <div class="feedback ${completedExercises.has(index) ? "ok" : ""}" id="exercise-feedback-${index}" role="status" aria-live="polite">${completedExercises.has(index) ? exercise.ok : "Noch nicht geprüft."}</div>
         </article>
       `).join("");
       grid.querySelectorAll("[data-check-exercise]").forEach((button) => {
         button.addEventListener("click", () => checkExercise(Number(button.dataset.checkExercise)));
+      });
+      grid.querySelectorAll("[data-hint-exercise]").forEach((button) => {
+        button.addEventListener("click", () => showExerciseHelp(Number(button.dataset.hintExercise), false));
+      });
+      grid.querySelectorAll("[data-solution-exercise]").forEach((button) => {
+        button.addEventListener("click", () => showExerciseHelp(Number(button.dataset.solutionExercise), true));
       });
     }
 
@@ -1598,28 +2375,65 @@
       if (missing === 0) {
         feedback.className = "feedback ok";
         feedback.textContent = exercise.ok;
-        completed.add(Math.min(index + 2, modules.length - 1));
+        completedExercises.add(index);
         saveProgress();
+        const card = document.querySelector(`[data-exercise-card="${index}"]`);
+        card.classList.add("done");
+        card.querySelector(".module-progress span").textContent = "✓ Gelöst";
       } else {
         feedback.className = "feedback warn";
-        feedback.textContent = `${missing} essential building block is still missing. Check SELECT, FROM, WHERE, GROUP BY, or ORDER BY.`;
+        feedback.textContent = `${missing} wesentliche${missing === 1 ? "r Baustein fehlt" : " Bausteine fehlen"}. Prüfe Klauseln, Tabellen, Bedingungen und Reihenfolge.`;
       }
     }
 
+    function showExerciseHelp(index, showSolution) {
+      const exercise = exercises[index];
+      const feedback = document.getElementById(`exercise-feedback-${index}`);
+      feedback.className = "feedback";
+      feedback.textContent = showSolution ? `Musterlösung:\n${exercise.solution}` : `Hinweis: ${exercise.hint}`;
+      feedback.style.whiteSpace = showSolution ? "pre-wrap" : "normal";
+    }
+
     function renderQuiz() {
+      const question = document.getElementById("quizQuestion");
+      const options = document.getElementById("quizOptions");
+      const feedback = document.getElementById("quizFeedback");
+      const nextButton = document.getElementById("nextQuestion");
+      if (quizFinished) {
+        question.textContent = `Ergebnis: ${quizScore} von ${quiz.length} richtig`;
+        options.innerHTML = "";
+        feedback.className = quizScore >= 8 ? "feedback ok" : "feedback warn";
+        feedback.textContent = quizScore === quiz.length
+          ? "Perfekt. Du beherrschst die zentralen NodeQL- und SQLite-Konzepte."
+          : quizScore >= 8
+          ? "Sehr gut. Wiederhole einzelne Lektionen, um die letzten Unsicherheiten zu klären."
+          : "Ein guter Anfang. Wiederhole besonders JOIN, GROUP BY, HAVING und sichere Schreiboperationen.";
+        nextButton.disabled = true;
+        nextButton.textContent = "Quiz beendet";
+        learningState.quizBest = Math.max(learningState.quizBest, quizScore);
+        learningState.lessons = [...completed];
+        learningState.exercises = [...completedExercises];
+        persistState();
+        renderProgress();
+        return;
+      }
       const current = quiz[quizIndex];
-      document.getElementById("quizQuestion").textContent = current.question;
-      document.getElementById("quizFeedback").className = "feedback";
-      document.getElementById("quizFeedback").textContent = `Question ${quizIndex + 1} of ${quiz.length}. Score: ${quizScore}`;
-      document.getElementById("quizOptions").innerHTML = current.options.map((option, index) => `
+      question.textContent = current.question;
+      feedback.className = "feedback";
+      feedback.textContent = `Frage ${quizIndex + 1} von ${quiz.length} · Aktuell ${quizScore} richtig · Bestwert ${learningState.quizBest}`;
+      options.innerHTML = current.options.map((option, index) => `
         <button class="quiz-option" type="button" data-answer="${index}">${option}</button>
       `).join("");
+      nextButton.disabled = false;
+      nextButton.textContent = quizIndex === quiz.length - 1 ? "Ergebnis anzeigen" : "Nächste Frage";
       document.querySelectorAll("[data-answer]").forEach((button) => {
         button.addEventListener("click", () => answerQuiz(Number(button.dataset.answer)));
       });
     }
 
     function answerQuiz(answer) {
+      if (quizAnswered || quizFinished) return;
+      quizAnswered = true;
       const current = quiz[quizIndex];
       const buttons = document.querySelectorAll("[data-answer]");
       buttons.forEach((button) => {
@@ -1637,20 +2451,29 @@
         feedback.className = "feedback warn";
         feedback.textContent = current.note;
       }
-      if (quizScore >= quiz.length) {
-        completed = new Set(modules.map((_, index) => index));
-        saveProgress();
-      }
     }
 
     function nextQuiz() {
-      quizIndex = (quizIndex + 1) % quiz.length;
+      if (!quizAnswered) {
+        const feedback = document.getElementById("quizFeedback");
+        feedback.className = "feedback warn";
+        feedback.textContent = "Beantworte zuerst die aktuelle Frage.";
+        return;
+      }
+      if (quizIndex === quiz.length - 1) {
+        quizFinished = true;
+      } else {
+        quizIndex += 1;
+        quizAnswered = false;
+      }
       renderQuiz();
     }
 
     function restartQuiz() {
       quizIndex = 0;
       quizScore = 0;
+      quizAnswered = false;
+      quizFinished = false;
       renderQuiz();
     }
 
@@ -1691,6 +2514,9 @@
     document.querySelectorAll("[data-table]").forEach((button) => {
       button.addEventListener("click", () => renderTable(button.dataset.table));
     });
+    document.querySelectorAll("[data-project-lesson]").forEach((link) => {
+      link.addEventListener("click", () => openLesson(Number(link.dataset.projectLesson)));
+    });
     document.querySelectorAll("#builderSelect, #builderFrom, #builderJoin, #builderWhere, #builderGroup, #builderOrder").forEach((control) => {
       control.addEventListener("change", renderBuilder);
     });
@@ -1698,9 +2524,20 @@
     document.getElementById("nextQuestion").addEventListener("click", nextQuiz);
     document.getElementById("restartQuiz").addEventListener("click", restartQuiz);
     document.getElementById("resetProgress").addEventListener("click", () => {
+      if (!window.confirm("Möchtest du den gesamten Lernfortschritt wirklich löschen?")) return;
       completed = new Set();
-      localStorage.removeItem(progressKey);
+      completedExercises = new Set();
+      learningState = { lessons: [], exercises: [], quizBest: 0, lastLesson: 0 };
+      activeLesson = 0;
+      try {
+        localStorage.removeItem(progressKey);
+        localStorage.removeItem(legacyProgressKey);
+      } catch (_) {}
       renderProgress();
+      renderModules();
+      renderLessons();
+      renderExercises();
+      restartQuiz();
     });
   </script>
 </body>

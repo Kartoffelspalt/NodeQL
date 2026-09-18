@@ -14,6 +14,8 @@ enum BlockType {
   sqlAlias,
   sqlFrom,
   sqlWhere,
+  sqlAnd,
+  sqlOr,
   sqlJoin,
   sqlInnerJoin,
   sqlLeftJoin,
@@ -25,6 +27,7 @@ enum BlockType {
   sqlGroupBy,
   sqlHaving,
   sqlOrderBy,
+  sqlLimit,
   sqlUnion,
   sqlIntersect,
   sqlExcept,
@@ -60,19 +63,40 @@ enum BlockType {
   sqlCoalesce,
   sqlNullIf,
   sqlInsert,
+  sqlInsertOrReplace,
+  sqlUpsert,
   sqlUpdate,
   sqlDelete,
   sqlCreateTable,
+  sqlCreateIndex,
+  sqlDropIndex,
+  sqlCreateView,
+  sqlDropView,
+  sqlCreateTrigger,
+  sqlDropTrigger,
+  sqlCreateVirtualTable,
   sqlAlterTable,
   sqlTruncate,
   sqlDropTable,
   sqlGrant,
   sqlRevoke,
   sqlCommit,
+  sqlBeginTransaction,
+  sqlEndTransaction,
   sqlRollback,
   sqlSavepoint,
   sqlRollbackToSavepoint,
+  sqlReleaseSavepoint,
   sqlSetTransaction,
+  sqlPragma,
+  sqlAttachDatabase,
+  sqlDetachDatabase,
+  sqlVacuum,
+  sqlReindex,
+  sqlAnalyze,
+  sqlExplain,
+  sqlWith,
+  sqlValues,
   sqlLoop,
 }
 
@@ -134,6 +158,8 @@ abstract class BlockNode {
       case BlockType.motionMove:
       case BlockType.motionTurn:
       case BlockType.sqlWhere:
+      case BlockType.sqlAnd:
+      case BlockType.sqlOr:
       case BlockType.sqlOrderBy:
         node = MotionBlock(
           id: json['id'] as String,
@@ -165,6 +191,7 @@ abstract class BlockNode {
       case BlockType.sqlNaturalJoin:
       case BlockType.sqlGroupBy:
       case BlockType.sqlHaving:
+      case BlockType.sqlLimit:
       case BlockType.sqlUnion:
       case BlockType.sqlIntersect:
       case BlockType.sqlExcept:
@@ -200,19 +227,40 @@ abstract class BlockNode {
       case BlockType.sqlCoalesce:
       case BlockType.sqlNullIf:
       case BlockType.sqlInsert:
+      case BlockType.sqlInsertOrReplace:
+      case BlockType.sqlUpsert:
       case BlockType.sqlUpdate:
       case BlockType.sqlDelete:
       case BlockType.sqlCreateTable:
+      case BlockType.sqlCreateIndex:
+      case BlockType.sqlDropIndex:
+      case BlockType.sqlCreateView:
+      case BlockType.sqlDropView:
+      case BlockType.sqlCreateTrigger:
+      case BlockType.sqlDropTrigger:
+      case BlockType.sqlCreateVirtualTable:
       case BlockType.sqlAlterTable:
       case BlockType.sqlTruncate:
       case BlockType.sqlDropTable:
       case BlockType.sqlGrant:
       case BlockType.sqlRevoke:
       case BlockType.sqlCommit:
+      case BlockType.sqlBeginTransaction:
+      case BlockType.sqlEndTransaction:
       case BlockType.sqlRollback:
       case BlockType.sqlSavepoint:
       case BlockType.sqlRollbackToSavepoint:
+      case BlockType.sqlReleaseSavepoint:
       case BlockType.sqlSetTransaction:
+      case BlockType.sqlPragma:
+      case BlockType.sqlAttachDatabase:
+      case BlockType.sqlDetachDatabase:
+      case BlockType.sqlVacuum:
+      case BlockType.sqlReindex:
+      case BlockType.sqlAnalyze:
+      case BlockType.sqlExplain:
+      case BlockType.sqlWith:
+      case BlockType.sqlValues:
         node = OperatorBlock(
           id: json['id'] as String,
           position: offset,
