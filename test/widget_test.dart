@@ -9,8 +9,8 @@ import 'package:http/testing.dart';
 import 'package:nodeql/core/app/nodeql_app.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
-import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
@@ -23,6 +23,125 @@ import 'package:nodeql/localization/translation_controller.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  testWidgets('toolbar transforms the app into an isolated workshop mode', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer(
+      overrides: [
+        translationControllerProvider.overrideWith(
+          (_) => _ReadyTranslationController(),
+        ),
+        pluginPaletteProvider.overrideWith(
+          (_) => _ReadyPluginPaletteController(),
+        ),
+        sqlModeProvider.overrideWith(
+          (_) => SqlModeController.session(
+            initialMode: SqlAbstractionMode.advanced,
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const NodeQlApp()),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+    final normalWorkspace = container
+        .read(workspaceTabsProvider.notifier)
+        .toProjectJson();
+    final mainWorkspaceController = container.read(workspaceProvider.notifier);
+    final mainTabsController = container.read(workspaceTabsProvider.notifier);
+    final mainRuntimeController = container.read(sqlRuntimeProvider.notifier);
+    final normalCanUndo = mainWorkspaceController.canUndo;
+    final normalCanRedo = mainWorkspaceController.canRedo;
+
+    expect(find.byKey(const ValueKey('open-workshop')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('run-sqlite')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('open-workshop')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('workshop-choose-path')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('run-sqlite')), findsNothing);
+    expect(find.text('SQLite-Command Output'), findsOneWidget);
+    expect(find.text('Query 1'), findsOneWidget);
+    expect(find.text('1 · Choose a learning path'), findsOneWidget);
+    expect(find.text('2 · Drag and connect nodes'), findsOneWidget);
+    expect(find.text('3 · Check your solution'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('workspace-tab-add')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('toggle-custom-sql')),
+      findsNothing,
+    );
+    expect(find.byType(TextField), findsOneWidget);
+    final workshopContainer = ProviderScope.containerOf(
+      tester.element(find.byKey(const ValueKey('workshop-choose-path'))),
+    );
+    final workshopWorkspaceController = workshopContainer.read(
+      workspaceProvider.notifier,
+    );
+    expect(workshopWorkspaceController, isNot(same(mainWorkspaceController)));
+    expect(
+      workshopContainer.read(workspaceTabsProvider.notifier),
+      isNot(same(mainTabsController)),
+    );
+    expect(
+      workshopContainer.read(sqlRuntimeProvider.notifier),
+      isNot(same(mainRuntimeController)),
+    );
+    expect(workshopContainer.read(sqlRuntimeProvider).schemas, hasLength(3));
+    expect(container.read(sqlRuntimeProvider).schemas, isEmpty);
+    expect(workshopContainer.read(sqlModeProvider), SqlAbstractionMode.simple);
+    expect(container.read(sqlModeProvider), SqlAbstractionMode.advanced);
+
+    workshopWorkspaceController.addTemplate(
+      BlockType.sqlWhere,
+      const Offset(420, 300),
+    );
+    await tester.pump();
+    expect(
+      container.read(workspaceTabsProvider.notifier).toProjectJson(),
+      normalWorkspace,
+    );
+    expect(mainWorkspaceController.canUndo, normalCanUndo);
+    expect(mainWorkspaceController.canRedo, normalCanRedo);
+
+    await tester.tap(find.byKey(const ValueKey('workshop-mode-exit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('open-workshop')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('run-sqlite')), findsOneWidget);
+    expect(find.text('SQLite-Command Output'), findsOneWidget);
+    expect(container.read(sqlModeProvider), SqlAbstractionMode.advanced);
+    expect(
+      container.read(workspaceTabsProvider.notifier).toProjectJson(),
+      normalWorkspace,
+    );
+    expect(mainWorkspaceController.canUndo, normalCanUndo);
+    expect(mainWorkspaceController.canRedo, normalCanRedo);
+
+    await tester.tap(find.byKey(const ValueKey('open-workshop')));
+    await tester.pumpAndSettle();
+    final reopenedContainer = ProviderScope.containerOf(
+      tester.element(find.byKey(const ValueKey('workshop-choose-path'))),
+    );
+    final reopenedWorkspace = reopenedContainer.read(
+      workspaceProvider.notifier,
+    );
+    expect(reopenedWorkspace, isNot(same(workshopWorkspaceController)));
+    expect(
+      reopenedWorkspace.allBlocks().where(
+        (node) => node.type == BlockType.sqlWhere,
+      ),
+      isEmpty,
+    );
+  });
+
   testWidgets('renders localized workspace shell', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -507,7 +626,8 @@ void main() {
     );
     await tester.tap(find.text('Start interactive tutorial'));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(TutorialDialog), findsOneWidget);
+    expect(find.byKey(const ValueKey('workshop-choose-path')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('run-sqlite')), findsNothing);
   });
 
   testWidgets('deletes a workspace tab after confirmation', (tester) async {
@@ -606,6 +726,18 @@ class _ReadyTranslationController extends TranslationController {
       'toolbar.simple': 'Simple',
       'toolbar.advanced': 'Advanced',
       'toolbar.settings': 'Settings',
+      'toolbar.workshop': 'Workshop',
+      'tutorial.window.title': 'NodeQL Workshop',
+      'tutorial.window.subtitle':
+          'Isolated learning area · real nodes · live SQLite',
+      'tutorial.window.paths': 'Learning paths',
+      'tutorial.window.close': 'Leave workshop',
+      'tutorial.window.emptyTitle': 'Choose a learning path to begin',
+      'tutorial.window.emptyBody':
+          'This learning area is isolated from your projects.',
+      'tutorial.window.guide.pick': '1 · Choose a learning path',
+      'tutorial.window.guide.build': '2 · Drag and connect nodes',
+      'tutorial.window.guide.check': '3 · Check your solution',
       'workspace.rope.title': 'Selected rope',
       'workspace.rope.source': 'Source',
       'workspace.rope.target': 'Target',

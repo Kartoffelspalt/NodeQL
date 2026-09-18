@@ -26,6 +26,9 @@ import 'package:nodeql/features/workbench/presentation/widgets/database_browser_
 import 'package:nodeql/features/workbench/presentation/widgets/sql_code_editor.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
+import 'package:nodeql/features/tutorial/tutorial_models.dart';
+import 'package:nodeql/features/tutorial/tutorial_practice.dart';
+import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
@@ -411,11 +414,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   int _lastAutosaveRevision = -1;
   Timer? _autosaveDebounce;
   double _paletteWidth = 250;
-  bool _tutorialWasPresented = false;
   bool _blockDiagnosticsRunning = false;
   int _blockDiagnosticsRunToken = 0;
   Future<void>? _pendingSave;
-  ProviderSubscription<TutorialState>? _tutorialSubscription;
   bool _startupHintShown = false;
   int _neoCheatIndex = 0;
   DateTime? _neoCheatLastKeyAt;
@@ -424,6 +425,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   bool _executingCustomSql = false;
   DateTime? _databaseBrowserLastKeyAt;
   bool _databaseBrowserOpen = false;
+  bool _workshopMode = false;
   static const bool _showStartupHint = false;
 
   static const String _startupHintText =
@@ -443,19 +445,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showStartupHintOnce();
     });
-
-    _tutorialSubscription = ref.listenManual<TutorialState>(
-      tutorialControllerProvider,
-      (_, next) {
-        if (!next.loading && !next.completed && !_tutorialWasPresented) {
-          _tutorialWasPresented = true;
-          Future<void>.delayed(const Duration(milliseconds: 450), () {
-            if (mounted) _openTutorial(context);
-          });
-        }
-      },
-      fireImmediately: true,
-    );
   }
 
   Future<void> _showStartupHintOnce() async {
@@ -483,7 +472,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
     _menuChannel.setMethodCallHandler(null);
     _autosaveDebounce?.cancel();
-    _tutorialSubscription?.close();
     _workspaceFocus.dispose();
     _customSqlController.dispose();
     super.dispose();
@@ -491,6 +479,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   bool _handleGlobalKeyEvent(KeyEvent event) {
     if (!mounted || event is! KeyDownEvent) return false;
+    if (_workshopMode) return false;
     final keyboard = HardwareKeyboard.instance;
     final isSaveShortcut =
         event.logicalKey == LogicalKeyboardKey.keyS &&
@@ -610,6 +599,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final translationState = ref.watch(translationControllerProvider);
     final catalog = translationState.catalog;
     final locale = translationState.locale;
+    if (_workshopMode) {
+      return _WorkshopProviderScope(onExit: _exitWorkshop);
+    }
     final workspaceRevision = ref.watch(
       workspaceProvider.select((s) => s.revision),
     );
@@ -714,7 +706,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   onModeChanged: (next) =>
                       ref.read(sqlModeProvider.notifier).setMode(next),
                   onSettings: () => _openSettings(context),
-                  onTutorial: () => _openTutorial(context),
+                  onWorkshop: _enterWorkshop,
                   onDiagnostics: () => _openBlockDiagnostics(context),
                 ),
                 Expanded(
@@ -1428,7 +1420,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       case _SettingsAction.languages:
         await _openLanguageManager(this.context);
       case _SettingsAction.tutorial:
-        await _openTutorial(this.context);
+        _enterWorkshop();
       case _SettingsAction.about:
         await _openAbout(this.context);
     }
@@ -1581,18 +1573,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     await Future<void>.delayed(const Duration(milliseconds: 90));
   }
 
-  Future<void> _openTutorial(BuildContext context) async {
-    if (!mounted) return;
-    final catalog = ref.read(translationControllerProvider).catalog;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => TutorialDialog(
-        catalog: catalog,
-        onComplete: () =>
-            ref.read(tutorialControllerProvider.notifier).complete(),
-      ),
-    );
+  void _enterWorkshop() {
+    if (_workshopMode) return;
+    unawaited(ref.read(tutorialControllerProvider.notifier).initialize());
+    _autosaveDebounce?.cancel();
+    setState(() => _workshopMode = true);
+  }
+
+  void _exitWorkshop() {
+    if (!_workshopMode) return;
+    setState(() => _workshopMode = false);
   }
 
   Future<void> _openAbout(BuildContext context) async {
@@ -2148,6 +2138,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _handleNativeMenuAction(MethodCall call) async {
+    if (_workshopMode) return;
     switch (call.method) {
       case 'newProject':
         await _newProject(context);
@@ -2183,6 +2174,570 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 }
 
+const _workshopRuntimeState = SqlRuntimeState(
+  schemas: <TableSchema>[
+    TableSchema(
+      name: 'customers',
+      columns: <String>['id', 'name', 'city', 'country', 'active'],
+    ),
+    TableSchema(
+      name: 'orders',
+      columns: <String>['id', 'customer_id', 'total', 'created_at'],
+    ),
+    TableSchema(name: 'archived_customers', columns: <String>['id', 'name']),
+  ],
+);
+
+class _WorkshopProviderScope extends StatelessWidget {
+  const _WorkshopProviderScope({required this.onExit});
+
+  final VoidCallback onExit;
+
+  @override
+  Widget build(BuildContext context) => ProviderScope(
+    key: const ValueKey('workshop-provider-scope'),
+    overrides: [
+      workspaceProvider.overrideWith((ref) {
+        return WorkspaceController()
+          ..resetWithRoot(recordUndo: false, clearHistory: true);
+      }),
+      workspaceTabsProvider.overrideWith((ref) {
+        final workspace = ref.read(workspaceProvider.notifier);
+        return WorkspaceTabsController(
+          workspace,
+          initialWorkspaceJson: workspace.toJsonString(),
+        );
+      }),
+      sqlRuntimeProvider.overrideWith(
+        (ref) => SqlRuntimeController(initialState: _workshopRuntimeState),
+      ),
+      sqlModeProvider.overrideWith((ref) => SqlModeController.session()),
+    ],
+    child: _WorkshopWorkspaceView(onExit: onExit),
+  );
+}
+
+class _WorkshopWorkspaceView extends ConsumerStatefulWidget {
+  const _WorkshopWorkspaceView({required this.onExit});
+
+  final VoidCallback onExit;
+
+  @override
+  ConsumerState<_WorkshopWorkspaceView> createState() =>
+      _WorkshopWorkspaceViewState();
+}
+
+class _WorkshopWorkspaceViewState
+    extends ConsumerState<_WorkshopWorkspaceView> {
+  final TransformationController _transform = TransformationController();
+  final FocusNode _workspaceFocus = FocusNode();
+  final SqlCompiler _compiler = const SqlCompiler();
+  SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
+  double _paletteWidth = 250;
+  TutorialPracticeSession? _practice;
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    _workspaceFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final translationState = ref.watch(translationControllerProvider);
+    final catalog = translationState.catalog;
+    final localeCode = translationState.locale.languageCode;
+    final workspace = ref.watch(workspaceProvider);
+    final runtime = ref.watch(sqlRuntimeProvider);
+    final mode = ref.watch(sqlModeProvider);
+    final roots = workspace.roots;
+    final practice = _practice;
+    final definition = practice == null
+        ? null
+        : tutorialPracticeDefinitions[practice.mode];
+    final result = definition?.evaluate(roots, practice?.stepIndex ?? 0);
+    final compileResult = _compiler.compileWorkspace(roots);
+    final diagnostics = _nodeDiagnostics(
+      mode: mode,
+      roots: roots,
+      runtime: runtime,
+      compileResult: compileResult,
+    );
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _WorkshopModeTopBar(
+              catalog: catalog,
+              mode: mode,
+              onModeChanged: (next) =>
+                  unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
+              onLessons: () => _openTutorial(context),
+              onClose: widget.onExit,
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 1180;
+                  final paletteWidth = compact
+                      ? _paletteWidth.clamp(200.0, 280.0)
+                      : _paletteWidth;
+                  final outputWidth = compact ? 320.0 : 420.0;
+                  return Row(
+                    children: [
+                      _CategoryRail(
+                        active: _activeCategory,
+                        hasPlugins: false,
+                        catalog: catalog,
+                        onSelect: (next) =>
+                            setState(() => _activeCategory = next),
+                      ),
+                      _Palette(
+                        key: ValueKey<String>(
+                          'workshop-palette-'
+                          '${practice?.mode.name ?? 'overview'}-'
+                          '${practice?.stepIndex ?? 0}-${mode.name}',
+                        ),
+                        category: _activeCategory,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: localeCode,
+                        catalog: catalog,
+                        width: paletteWidth,
+                        pluginEntries: const <PluginPaletteEntry>[],
+                        onAdd: (type, defaults) {
+                          final controller = ref.read(
+                            workspaceProvider.notifier,
+                          );
+                          controller.addTemplate(
+                            type,
+                            controller.suggestedTemplatePosition(type),
+                            defaults: defaults,
+                          );
+                        },
+                      ),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (details) {
+                            setState(() {
+                              _paletteWidth = (_paletteWidth + details.delta.dx)
+                                  .clamp(200.0, 520.0);
+                            });
+                          },
+                          child: Container(
+                            width: 10,
+                            color: Colors.transparent,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 2,
+                              height: double.infinity,
+                              color: NodeQlWorkbenchColors.of(context).border,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            _WorkspaceTabsBar(catalog: catalog),
+                            if (practice != null &&
+                                definition != null &&
+                                result != null)
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 220),
+                                switchInCurve: Curves.easeOutCubic,
+                                child: TutorialPracticePanel(
+                                  key: ValueKey<String>(
+                                    'practice-${practice.mode.name}-'
+                                    '${practice.stepIndex}',
+                                  ),
+                                  catalog: catalog,
+                                  session: practice,
+                                  definition: definition,
+                                  result: result,
+                                  abstractionMode: mode,
+                                  localeCode: localeCode,
+                                  liveSql: compileResult.sql,
+                                  onCheck: () => _checkPractice(result),
+                                  onHint: _showHint,
+                                  onClose: _closePractice,
+                                ),
+                              )
+                            else
+                              _WorkshopEmptyCoach(
+                                catalog: catalog,
+                                onChoosePath: () => _openTutorial(context),
+                              ),
+                            Expanded(
+                              child: _WorkspaceCanvas(
+                                focusNode: _workspaceFocus,
+                                transform: _transform,
+                                paletteWidth: 72.0 + paletteWidth,
+                                diagnostics: diagnostics,
+                                onSaveProject: () async {},
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _SqlRuntimePane(
+                        sql: compileResult.sql,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: localeCode,
+                        catalog: catalog,
+                        width: outputWidth,
+                        customMode: false,
+                        showCustomModeToggle: false,
+                        onToggleCustomMode: () {},
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTutorial(BuildContext context) async {
+    final catalog = ref.read(translationControllerProvider).catalog;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => TutorialDialog(
+        catalog: catalog,
+        initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
+        onProgressChanged: (mode, progress) => ref
+            .read(tutorialControllerProvider.notifier)
+            .saveLessonProgress(mode, progress),
+        onStartPractice: _startPractice,
+        onComplete: () =>
+            ref.read(tutorialControllerProvider.notifier).complete(),
+      ),
+    );
+  }
+
+  Future<void> _startPractice(TutorialKnowledgeMode mode) async {
+    final definition = tutorialPracticeDefinitions[mode]!;
+    final abstractionMode = ref.read(sqlModeProvider);
+    final progress = ref.read(tutorialControllerProvider).progressFor(mode);
+    final completedSteps = progress.practiceCompleted
+        ? const <int>{}
+        : progress.completedPracticeSteps;
+    final stepIndex = definition.nextStep(completedSteps);
+    final workspace = ref.read(workspaceProvider.notifier)
+      ..resetWithRoot(recordUndo: false, clearHistory: true);
+    for (final seed in definition.starterFor(abstractionMode, stepIndex)) {
+      workspace.addTemplate(
+        seed.type,
+        workspace.suggestedTemplatePosition(seed.type),
+        defaults: seed.defaults,
+        recordUndo: false,
+      );
+    }
+    final catalog = ref.read(translationControllerProvider).catalog;
+    ref
+        .read(workspaceTabsProvider.notifier)
+        .resetToCurrentWorkspace(name: catalog.text('${definition.key}.tab'));
+    _transform.value = Matrix4.identity();
+    if (!mounted) return;
+    setState(() {
+      _activeCategory = _categoryForPracticeStep(definition.steps[stepIndex]);
+      _practice = TutorialPracticeSession(
+        mode: mode,
+        stepIndex: stepIndex,
+        completedSteps: completedSteps,
+      );
+    });
+  }
+
+  Future<void> _checkPractice(TutorialPracticeResult result) async {
+    final session = _practice;
+    if (session == null) return;
+    if (!result.complete) {
+      setState(() => _practice = session.copyWith(attempted: true));
+      return;
+    }
+
+    final tutorial = ref.read(tutorialControllerProvider);
+    final progress = tutorial.progressFor(session.mode);
+    final definition = tutorialPracticeDefinitions[session.mode]!;
+    final completedSteps = <int>{...session.completedSteps, session.stepIndex};
+    final finished = List<int>.generate(
+      definition.stepCount,
+      (index) => index,
+    ).every(completedSteps.contains);
+    final nextStepIndex = finished ? session.stepIndex : session.stepIndex + 1;
+    setState(() {
+      if (!finished) {
+        _activeCategory = _categoryForPracticeStep(
+          definition.steps[nextStepIndex],
+        );
+      }
+      _practice = session.copyWith(
+        stepIndex: nextStepIndex,
+        completedSteps: completedSteps,
+        showHint: false,
+        attempted: false,
+        completed: finished,
+      );
+    });
+    final persistedSteps = progress.practiceCompleted && !finished
+        ? progress.completedPracticeSteps
+        : completedSteps;
+    await ref
+        .read(tutorialControllerProvider.notifier)
+        .saveLessonProgress(
+          session.mode,
+          progress.copyWith(
+            completedPracticeSteps: persistedSteps,
+            completed: progress.completed || finished,
+            practiceCompleted: progress.practiceCompleted || finished,
+          ),
+        );
+  }
+
+  void _showHint() {
+    final session = _practice;
+    if (session == null) return;
+    setState(() => _practice = session.copyWith(showHint: true));
+  }
+
+  void _closePractice() => setState(() => _practice = null);
+
+  SqlPaletteCategory _categoryForPracticeStep(TutorialPracticeStep step) {
+    if (step.focusNodes.contains(BlockType.sqlText)) {
+      return SqlPaletteCategory.dataTypes;
+    }
+    return SqlPaletteCategory.queryLanguage;
+  }
+}
+
+class _WorkshopModeTopBar extends StatelessWidget {
+  const _WorkshopModeTopBar({
+    required this.catalog,
+    required this.mode,
+    required this.onModeChanged,
+    required this.onLessons,
+    required this.onClose,
+  });
+
+  final TranslationCatalog catalog;
+  final SqlAbstractionMode mode;
+  final ValueChanged<SqlAbstractionMode> onModeChanged;
+  final VoidCallback onLessons;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      decoration: BoxDecoration(
+        color: colors.topBar,
+        border: Border(bottom: BorderSide(color: colors.border)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: Image.asset(
+              _appIconAsset,
+              width: 36,
+              height: 36,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  catalog.text('tutorial.window.title'),
+                  style: TextStyle(
+                    color: colors.topBarForeground,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  catalog.text('tutorial.window.subtitle'),
+                  style: TextStyle(color: colors.muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          SegmentedButton<SqlAbstractionMode>(
+            segments: [
+              ButtonSegment(
+                value: SqlAbstractionMode.simple,
+                label: Text(catalog.text('toolbar.simple')),
+              ),
+              ButtonSegment(
+                value: SqlAbstractionMode.advanced,
+                label: Text(catalog.text('toolbar.advanced')),
+              ),
+            ],
+            selected: <SqlAbstractionMode>{mode},
+            onSelectionChanged: (selection) => onModeChanged(selection.first),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            key: const ValueKey('workshop-choose-path'),
+            onPressed: onLessons,
+            icon: const Icon(Icons.route_outlined),
+            label: Text(catalog.text('tutorial.window.paths')),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            key: const ValueKey('workshop-mode-exit'),
+            onPressed: onClose,
+            tooltip: catalog.text('tutorial.window.close'),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkshopEmptyCoach extends StatelessWidget {
+  const _WorkshopEmptyCoach({
+    required this.catalog,
+    required this.onChoosePath,
+  });
+
+  final TranslationCatalog catalog;
+  final VoidCallback onChoosePath;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.panelElevated,
+        border: Border(bottom: BorderSide(color: colors.border)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final introduction = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.school_outlined, color: Color(0xFF60A5FA)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      catalog.text('tutorial.window.emptyTitle'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      catalog.text('tutorial.window.emptyBody'),
+                      style: TextStyle(color: colors.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final guide = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _WorkshopGuideStep(
+                icon: Icons.route_outlined,
+                label: catalog.text('tutorial.window.guide.pick'),
+              ),
+              _WorkshopGuideStep(
+                icon: Icons.account_tree_outlined,
+                label: catalog.text('tutorial.window.guide.build'),
+              ),
+              _WorkshopGuideStep(
+                icon: Icons.task_alt_outlined,
+                label: catalog.text('tutorial.window.guide.check'),
+              ),
+            ],
+          );
+          final action = FilledButton.icon(
+            key: const ValueKey('workshop-empty-choose-path'),
+            onPressed: onChoosePath,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: Text(catalog.text('tutorial.window.paths')),
+          );
+          if (constraints.maxWidth < 760) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                introduction,
+                const SizedBox(height: 12),
+                guide,
+                const SizedBox(height: 12),
+                action,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [introduction, const SizedBox(height: 12), guide],
+                ),
+              ),
+              const SizedBox(width: 16),
+              action,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WorkshopGuideStep extends StatelessWidget {
+  const _WorkshopGuideStep({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 11)),
+        ],
+      ),
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.catalog,
@@ -2196,7 +2751,7 @@ class _TopBar extends StatelessWidget {
     required this.mode,
     required this.onModeChanged,
     required this.onSettings,
-    required this.onTutorial,
+    required this.onWorkshop,
     required this.onDiagnostics,
   });
 
@@ -2211,7 +2766,7 @@ class _TopBar extends StatelessWidget {
   final SqlAbstractionMode mode;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onSettings;
-  final VoidCallback onTutorial;
+  final VoidCallback onWorkshop;
   final VoidCallback onDiagnostics;
 
   @override
@@ -2341,14 +2896,6 @@ class _TopBar extends StatelessWidget {
                       if (v != null) onLocale(v);
                     },
                   ),
-                  const SizedBox(width: NodeQlDesign.space1),
-                  IconButton(
-                    key: const ValueKey('open-tutorial'),
-                    onPressed: onTutorial,
-                    tooltip: catalog.text('toolbar.tutorial'),
-                    color: workbenchColors.topBarForeground,
-                    icon: const Icon(Icons.school_outlined),
-                  ),
                   IconButton(
                     onPressed: onSettings,
                     tooltip: catalog.text('toolbar.settings'),
@@ -2357,6 +2904,24 @@ class _TopBar extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(width: NodeQlDesign.space3),
+          NodeQlBrutalPressable(
+            radius: surfaceStyle.radiusMedium,
+            child: FilledButton.icon(
+              key: const ValueKey('open-workshop'),
+              onPressed: onWorkshop,
+              style: _nodeQlFilledButtonCornerStyle(context).copyWith(
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                ),
+                textStyle: const WidgetStatePropertyAll(
+                  TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+              icon: const Icon(Icons.school_rounded, size: 22),
+              label: Text(catalog.text('toolbar.workshop')),
             ),
           ),
         ],
@@ -2731,6 +3296,7 @@ class _Palette extends StatefulWidget {
     required this.width,
     required this.pluginEntries,
     required this.onAdd,
+    super.key,
   });
 
   final SqlPaletteCategory category;
@@ -7621,6 +8187,7 @@ class _SqlRuntimePane extends StatefulWidget {
     required this.width,
     required this.customMode,
     required this.onToggleCustomMode,
+    this.showCustomModeToggle = true,
   });
 
   final String sql;
@@ -7631,6 +8198,7 @@ class _SqlRuntimePane extends StatefulWidget {
   final double width;
   final bool customMode;
   final VoidCallback onToggleCustomMode;
+  final bool showCustomModeToggle;
 
   @override
   State<_SqlRuntimePane> createState() => _SqlRuntimePaneState();
@@ -7707,12 +8275,13 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
-                IconButton(
-                  key: const ValueKey<String>('toggle-custom-sql'),
-                  onPressed: widget.onToggleCustomMode,
-                  tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
-                  icon: const Icon(Icons.account_tree_outlined, size: 20),
-                ),
+                if (widget.showCustomModeToggle)
+                  IconButton(
+                    key: const ValueKey<String>('toggle-custom-sql'),
+                    onPressed: widget.onToggleCustomMode,
+                    tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
+                    icon: const Icon(Icons.account_tree_outlined, size: 20),
+                  ),
               ],
             ),
           ),
@@ -7780,13 +8349,17 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                               ),
                             ),
                           ),
-                          IconButton(
-                            key: const ValueKey<String>('toggle-custom-sql'),
-                            onPressed: widget.onToggleCustomMode,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            tooltip: widget.catalog.text('runtime.customSql'),
-                            icon: const Icon(Icons.edit_note_rounded, size: 20),
-                          ),
+                          if (widget.showCustomModeToggle)
+                            IconButton(
+                              key: const ValueKey<String>('toggle-custom-sql'),
+                              onPressed: widget.onToggleCustomMode,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              tooltip: widget.catalog.text('runtime.customSql'),
+                              icon: const Icon(
+                                Icons.edit_note_rounded,
+                                size: 20,
+                              ),
+                            ),
                           IconButton(
                             key: const ValueKey('copy-sql-command'),
                             onPressed: widget.sql.trim().isEmpty

@@ -4,6 +4,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 
 void main() {
+  test('session mode changes do not write a persistent preference', () async {
+    final temp = await Directory.systemTemp.createTemp('nodeql_sql_mode_');
+    addTearDown(() => temp.delete(recursive: true));
+    final file = File('${temp.path}/sql_mode.json');
+    await file.writeAsString('{"mode":"simple"}');
+    final controller = SqlModeController.session();
+
+    await controller.setMode(SqlAbstractionMode.advanced);
+
+    expect(controller.state, SqlAbstractionMode.advanced);
+    expect(await file.readAsString(), contains('"mode":"simple"'));
+  });
+
   test('persists and restores the selected SQLite mode', () async {
     final temp = await Directory.systemTemp.createTemp('nodeql_sql_mode_');
     addTearDown(() => temp.delete(recursive: true));

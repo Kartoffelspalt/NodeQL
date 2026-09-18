@@ -2490,8 +2490,14 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _applySerializedWorkspace(source);
   }
 
-  void resetWithRoot({bool recordUndo = true}) {
+  void resetWithRoot({bool recordUndo = true, bool clearHistory = false}) {
     if (recordUndo) _pushUndoSnapshot();
+    if (clearHistory) {
+      _undoStack.clear();
+      _redoStack.clear();
+      _dragStartSnapshot = null;
+      _dragChanged = false;
+    }
     state = WorkspaceState(
       roots: <BlockNode>[
         EventBlock(id: 'event_root', position: const Offset(120, 120))

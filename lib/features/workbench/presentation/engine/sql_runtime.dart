@@ -71,7 +71,8 @@ final sqlRuntimeProvider =
     );
 
 class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
-  SqlRuntimeController() : super(const SqlRuntimeState());
+  SqlRuntimeController({SqlRuntimeState initialState = const SqlRuntimeState()})
+    : super(initialState);
   static const _securityChannel = MethodChannel('nodeql/security_scope');
   static const int _maxPreviewRows = 500;
 

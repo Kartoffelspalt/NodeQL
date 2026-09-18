@@ -18,17 +18,25 @@ class SqlModeController extends StateNotifier<SqlAbstractionMode> {
     initialize();
   }
 
-  final Future<File> Function() _storageFile;
+  SqlModeController.session({
+    SqlAbstractionMode initialMode = SqlAbstractionMode.simple,
+  }) : _storageFile = null,
+       super(initialMode);
+
+  final Future<File> Function()? _storageFile;
   Future<void>? _initialization;
 
-  Future<void> initialize() => _initialization ??= _restore();
+  Future<void> initialize() =>
+      _initialization ??= _storageFile == null ? Future.value() : _restore();
 
   Future<void> setMode(SqlAbstractionMode mode) async {
     await initialize();
     if (state == mode) return;
     state = mode;
+    final storageFile = _storageFile;
+    if (storageFile == null) return;
     try {
-      final file = await _storageFile();
+      final file = await storageFile();
       await file.parent.create(recursive: true);
       await file.writeAsString(
         jsonEncode({
@@ -41,8 +49,10 @@ class SqlModeController extends StateNotifier<SqlAbstractionMode> {
   }
 
   Future<void> _restore() async {
+    final storageFile = _storageFile;
+    if (storageFile == null) return;
     try {
-      final file = await _storageFile();
+      final file = await storageFile();
       if (!await file.exists()) return;
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is! Map) return;

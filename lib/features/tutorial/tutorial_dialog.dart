@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/tutorial/tutorial_models.dart';
+import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
-
-enum TutorialKnowledgeMode { beginner, beginnerSyntax, intermediate, expert }
 
 enum _TutorialVisualKind {
   welcome,
@@ -266,30 +266,57 @@ class TutorialDialog extends StatefulWidget {
   const TutorialDialog({
     required this.catalog,
     required this.onComplete,
+    this.initialProgress = const {},
+    this.onProgressChanged,
+    this.onStartPractice,
+    this.startOnOverview = true,
     super.key,
   });
 
   final TranslationCatalog catalog;
   final Future<void> Function() onComplete;
+  final Map<TutorialKnowledgeMode, TutorialLessonProgress> initialProgress;
+  final Future<void> Function(
+    TutorialKnowledgeMode mode,
+    TutorialLessonProgress progress,
+  )?
+  onProgressChanged;
+  final Future<void> Function(TutorialKnowledgeMode mode)? onStartPractice;
+  final bool startOnOverview;
 
   @override
   State<TutorialDialog> createState() => _TutorialDialogState();
 }
 
 class _TutorialDialogState extends State<TutorialDialog> {
-  static const _modes = TutorialKnowledgeMode.values;
   int _step = 0;
   int _furthestStep = 0;
   TutorialKnowledgeMode _mode = TutorialKnowledgeMode.beginner;
-  final Set<int> _solvedSteps = <int>{};
-  final Map<int, int> _answers = <int, int>{};
+  late bool _showOverview;
+  late Map<TutorialKnowledgeMode, TutorialLessonProgress> _progress;
+  final Map<TutorialKnowledgeMode, Map<int, int>> _answers = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _showOverview = widget.startOnOverview;
+    _progress = {
+      for (final mode in TutorialKnowledgeMode.values)
+        mode: widget.initialProgress[mode] ?? const TutorialLessonProgress(),
+    };
+    if (!_showOverview) _loadLesson(_mode);
+  }
 
   TranslationCatalog get catalog => widget.catalog;
   List<_TutorialStepData> get _steps => _tutorialSteps[_mode]!;
   int get _stepCount => _steps.length;
   _TutorialStepData get _currentStep => _steps[_step];
-  bool get _hasChallenge => _correctAnswer(_step) != null;
-  bool get _canContinue => !_hasChallenge || _solvedSteps.contains(_step);
+  TutorialLessonProgress get _lessonProgress => _progress[_mode]!;
+  Set<int> get _solvedSteps => _lessonProgress.solvedSteps;
+  Map<int, int> get _lessonAnswers =>
+      _answers.putIfAbsent(_mode, () => <int, int>{});
+  bool get _hasChallenge => false;
+  bool get _canContinue => true;
 
   @override
   Widget build(BuildContext context) {
@@ -310,17 +337,50 @@ class _TutorialDialogState extends State<TutorialDialog> {
               children: [
                 _TutorialHeader(
                   catalog: catalog,
-                  step: _step,
-                  stepCount: _stepCount,
-                  onSkip: _finish,
+                  progressText: _showOverview
+                      ? catalog.text('tutorial.overview.progress', {
+                          'completed': _completedLessonCount,
+                          'total': TutorialKnowledgeMode.values.length,
+                        })
+                      : catalog.text('tutorial.progress', {
+                          'current': _step + 1,
+                          'total': _stepCount,
+                        }),
+                  compact: compact,
+                  showOverviewAction: !_showOverview,
+                  onOverview: _openOverview,
+                  onClose: _finish,
                 ),
                 LinearProgressIndicator(
-                  value: (_step + 1) / _stepCount,
+                  value: _showOverview
+                      ? _completedLessonCount /
+                            TutorialKnowledgeMode.values.length
+                      : (_step + 1) / _stepCount,
                   minHeight: 4,
                   backgroundColor: workbenchColors.border,
                 ),
                 Expanded(
-                  child: compact
+                  child: _showOverview
+                      ? _LessonOverview(
+                          catalog: catalog,
+                          progress: _progress,
+                          challengeCounts: {
+                            for (final mode in TutorialKnowledgeMode.values)
+                              mode:
+                                  tutorialPracticeDefinitions[mode]
+                                      ?.stepCount ??
+                                  0,
+                          },
+                          estimatedMinutes: {
+                            for (final mode in TutorialKnowledgeMode.values)
+                              mode:
+                                  tutorialPracticeDefinitions[mode]
+                                      ?.estimatedMinutes ??
+                                  0,
+                          },
+                          onLesson: _openLesson,
+                        )
+                      : compact
                       ? _buildCompactContent()
                       : Row(
                           children: [
@@ -337,15 +397,18 @@ class _TutorialDialogState extends State<TutorialDialog> {
                           ],
                         ),
                 ),
-                _TutorialFooter(
-                  catalog: catalog,
-                  step: _step,
-                  stepCount: _stepCount,
-                  finishesOnLastStep: _mode != TutorialKnowledgeMode.beginner,
-                  canContinue: _canContinue,
-                  onBack: _step == 0 ? null : () => _goToStep(_step - 1),
-                  onNext: _next,
-                ),
+                if (!_showOverview)
+                  _TutorialFooter(
+                    catalog: catalog,
+                    step: _step,
+                    stepCount: _stepCount,
+                    finishesOnLastStep: true,
+                    canContinue: _canContinue,
+                    onBack: _step == 0
+                        ? _openOverview
+                        : () => _goToStep(_step - 1),
+                    onNext: _next,
+                  ),
               ],
             ),
           ),
@@ -402,12 +465,24 @@ class _TutorialDialogState extends State<TutorialDialog> {
             ),
           ),
           const SizedBox(height: 18),
-          _ModeSelector(
+          _LessonLabel(
             catalog: catalog,
             mode: _mode,
-            modes: _modes,
-            onMode: _setMode,
+            solved: _solvedSteps.length,
+            total: _challengeCount(_mode),
           ),
+          if (widget.onStartPractice != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                key: const ValueKey('tutorial-practice-start'),
+                onPressed: _startCurrentPractice,
+                icon: const Icon(Icons.play_lesson_outlined),
+                label: Text(catalog.text('tutorial.practice.start')),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           _TutorialVisual(visual: _currentStep.visual, catalog: catalog),
           if (_hasChallenge) ...[const SizedBox(height: 24), _buildChallenge()],
@@ -417,7 +492,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
   }
 
   Widget _buildChallenge() {
-    final answer = _answers[_step];
+    final answer = _lessonAnswers[_step];
     final correct = _correctAnswer(_step)!;
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Container(
@@ -499,39 +574,67 @@ class _TutorialDialogState extends State<TutorialDialog> {
 
   void _selectAnswer(int answer) {
     setState(() {
-      _answers[_step] = answer;
+      _lessonAnswers[_step] = answer;
       if (answer == _correctAnswer(_step)) {
-        _solvedSteps.add(_step);
+        _progress[_mode] = _lessonProgress.copyWith(
+          solvedSteps: {..._solvedSteps, _step},
+        );
       }
     });
+    _saveProgress();
   }
 
   void _goToStep(int step) {
-    setState(() => _step = step.clamp(0, _stepCount - 1));
+    final target = step.clamp(0, _stepCount - 1);
+    setState(() {
+      _step = target;
+      if (target > _furthestStep) {
+        _furthestStep = target;
+        _progress[_mode] = _lessonProgress.copyWith(currentStep: target);
+      }
+    });
+    _saveProgress();
   }
 
-  void _setMode(TutorialKnowledgeMode mode) {
-    if (_mode == mode) return;
+  int get _completedLessonCount =>
+      _progress.values.where((progress) => progress.practiceCompleted).length;
+
+  int _challengeCount(TutorialKnowledgeMode mode) =>
+      _tutorialSteps[mode]!.where((step) => step.correctAnswer != null).length;
+
+  void _loadLesson(TutorialKnowledgeMode mode) {
+    final steps = _tutorialSteps[mode]!;
+    final saved = _progress[mode] ?? const TutorialLessonProgress();
+    _mode = mode;
+    _furthestStep = saved.currentStep.clamp(0, steps.length - 1);
+    _step = saved.completed ? 0 : _furthestStep;
+  }
+
+  void _openLesson(TutorialKnowledgeMode mode) {
+    if (widget.onStartPractice != null) {
+      _startPractice(mode);
+      return;
+    }
     setState(() {
-      _mode = mode;
-      _step = 0;
-      _furthestStep = 0;
-      _solvedSteps.clear();
-      _answers.clear();
+      _loadLesson(mode);
+      _showOverview = false;
     });
+  }
+
+  void _openOverview() {
+    setState(() => _showOverview = true);
   }
 
   Future<void> _next() async {
     if (!_canContinue) return;
     if (_step == _stepCount - 1) {
-      if (_mode == TutorialKnowledgeMode.beginner) {
-        _setMode(TutorialKnowledgeMode.beginnerSyntax);
-        return;
-      }
-      await _finish();
+      setState(() {
+        _progress[_mode] = _lessonProgress.copyWith(completed: true);
+        _showOverview = true;
+      });
+      await _saveProgress();
       return;
     }
-    if (_step + 1 > _furthestStep) _furthestStep = _step + 1;
     _goToStep(_step + 1);
   }
 
@@ -539,20 +642,37 @@ class _TutorialDialogState extends State<TutorialDialog> {
     await widget.onComplete();
     if (mounted) Navigator.of(context).pop();
   }
+
+  Future<void> _startCurrentPractice() => _startPractice(_mode);
+
+  Future<void> _startPractice(TutorialKnowledgeMode mode) async {
+    final callback = widget.onStartPractice;
+    if (callback == null) return;
+    await callback(mode);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _saveProgress() async {
+    await widget.onProgressChanged?.call(_mode, _lessonProgress);
+  }
 }
 
 class _TutorialHeader extends StatelessWidget {
   const _TutorialHeader({
     required this.catalog,
-    required this.step,
-    required this.stepCount,
-    required this.onSkip,
+    required this.progressText,
+    required this.compact,
+    required this.showOverviewAction,
+    required this.onOverview,
+    required this.onClose,
   });
 
   final TranslationCatalog catalog;
-  final int step;
-  final int stepCount;
-  final VoidCallback onSkip;
+  final String progressText;
+  final bool compact;
+  final bool showOverviewAction;
+  final VoidCallback onOverview;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -583,19 +703,40 @@ class _TutorialHeader extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            catalog.text('tutorial.progress', {
-              'current': step + 1,
-              'total': stepCount,
-            }),
-            style: TextStyle(color: workbenchColors.muted),
-          ),
-          const SizedBox(width: 14),
-          TextButton(
-            key: const ValueKey('tutorial-skip'),
-            onPressed: onSkip,
-            child: Text(catalog.text('tutorial.skip')),
-          ),
+          if (!compact) ...[
+            Text(progressText, style: TextStyle(color: workbenchColors.muted)),
+            const SizedBox(width: 14),
+          ],
+          if (showOverviewAction) ...[
+            if (compact)
+              IconButton(
+                key: const ValueKey('tutorial-overview'),
+                onPressed: onOverview,
+                tooltip: catalog.text('tutorial.lessons'),
+                icon: const Icon(Icons.grid_view_outlined, size: 20),
+              )
+            else
+              TextButton.icon(
+                key: const ValueKey('tutorial-overview'),
+                onPressed: onOverview,
+                icon: const Icon(Icons.grid_view_outlined, size: 18),
+                label: Text(catalog.text('tutorial.lessons')),
+              ),
+            const SizedBox(width: 6),
+          ],
+          if (compact)
+            IconButton(
+              key: const ValueKey('tutorial-skip'),
+              onPressed: onClose,
+              tooltip: catalog.text('tutorial.close'),
+              icon: const Icon(Icons.close),
+            )
+          else
+            TextButton(
+              key: const ValueKey('tutorial-skip'),
+              onPressed: onClose,
+              child: Text(catalog.text('tutorial.close')),
+            ),
         ],
       ),
     );
@@ -630,7 +771,7 @@ class _StepRail extends StatelessWidget {
         itemCount: steps.length,
         itemBuilder: (context, index) {
           final active = index == currentStep;
-          final complete = index < currentStep || solvedSteps.contains(index);
+          final complete = index < furthestStep || solvedSteps.contains(index);
           final unlocked = index <= furthestStep;
           final avatarColor = Color.alphaBlend(
             colorScheme.primary.withValues(alpha: 0.26),
@@ -683,53 +824,368 @@ class _StepRail extends StatelessWidget {
   }
 }
 
-class _ModeSelector extends StatelessWidget {
-  const _ModeSelector({
+class _LessonLabel extends StatelessWidget {
+  const _LessonLabel({
     required this.catalog,
     required this.mode,
-    required this.modes,
-    required this.onMode,
+    required this.solved,
+    required this.total,
   });
 
   final TranslationCatalog catalog;
   final TutorialKnowledgeMode mode;
-  final List<TutorialKnowledgeMode> modes;
-  final ValueChanged<TutorialKnowledgeMode> onMode;
+  final int solved;
+  final int total;
 
   @override
   Widget build(BuildContext context) {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Align(
       alignment: Alignment.centerLeft,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SegmentedButton<TutorialKnowledgeMode>(
-          segments: [
-            for (final option in modes)
-              ButtonSegment(
-                value: option,
-                icon: Icon(_iconFor(option)),
-                label: Text(catalog.text('tutorial.mode.${option.name}')),
-              ),
-          ],
-          selected: {mode},
-          style: ButtonStyle(
-            side: WidgetStatePropertyAll(
-              BorderSide(color: workbenchColors.border),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: workbenchColors.panel,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: workbenchColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_lessonIcon(mode), size: 18),
+            const SizedBox(width: 8),
+            Text(
+              catalog.text('tutorial.mode.${mode.name}'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-          ),
-          onSelectionChanged: (selection) => onMode(selection.first),
+            const SizedBox(width: 10),
+            Text(
+              catalog.text('tutorial.lesson.exercises', {
+                'solved': solved,
+                'total': total,
+              }),
+              style: TextStyle(color: workbenchColors.muted, fontSize: 12),
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  IconData _iconFor(TutorialKnowledgeMode mode) => switch (mode) {
-    TutorialKnowledgeMode.beginner => Icons.school_outlined,
-    TutorialKnowledgeMode.beginnerSyntax => Icons.account_tree_outlined,
-    TutorialKnowledgeMode.intermediate => Icons.schema_outlined,
-    TutorialKnowledgeMode.expert => Icons.insights_outlined,
-  };
+IconData _lessonIcon(TutorialKnowledgeMode mode) => switch (mode) {
+  TutorialKnowledgeMode.beginner => Icons.school_outlined,
+  TutorialKnowledgeMode.beginnerSyntax => Icons.account_tree_outlined,
+  TutorialKnowledgeMode.intermediate => Icons.schema_outlined,
+  TutorialKnowledgeMode.expert => Icons.insights_outlined,
+};
+
+class _LessonOverview extends StatelessWidget {
+  const _LessonOverview({
+    required this.catalog,
+    required this.progress,
+    required this.challengeCounts,
+    required this.estimatedMinutes,
+    required this.onLesson,
+  });
+
+  final TranslationCatalog catalog;
+  final Map<TutorialKnowledgeMode, TutorialLessonProgress> progress;
+  final Map<TutorialKnowledgeMode, int> challengeCounts;
+  final Map<TutorialKnowledgeMode, int> estimatedMinutes;
+  final ValueChanged<TutorialKnowledgeMode> onLesson;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = progress.values
+        .where((item) => item.practiceCompleted)
+        .length;
+    return SingleChildScrollView(
+      key: const ValueKey('tutorial-lesson-overview'),
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            catalog.text('tutorial.overview.eyebrow'),
+            style: const TextStyle(
+              color: Color(0xFF60A5FA),
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            catalog.text('tutorial.overview.title'),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            catalog.text('tutorial.overview.body'),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _WorkshopSummary(catalog: catalog, completed: completed),
+          const SizedBox(height: 22),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final twoColumns = constraints.maxWidth >= 720;
+              final width = twoColumns
+                  ? (constraints.maxWidth - 16) / 2
+                  : constraints.maxWidth;
+              return Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  for (final mode in TutorialKnowledgeMode.values)
+                    SizedBox(
+                      width: width,
+                      child: _LessonCard(
+                        catalog: catalog,
+                        mode: mode,
+                        progress:
+                            progress[mode] ?? const TutorialLessonProgress(),
+                        exerciseCount: challengeCounts[mode] ?? 0,
+                        estimatedMinutes: estimatedMinutes[mode] ?? 0,
+                        onTap: () => onLesson(mode),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkshopSummary extends StatelessWidget {
+  const _WorkshopSummary({required this.catalog, required this.completed});
+
+  final TranslationCatalog catalog;
+  final int completed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final total = TutorialKnowledgeMode.values.length;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 52,
+            height: 52,
+            child: CircularProgressIndicator(
+              value: completed / total,
+              strokeWidth: 6,
+              backgroundColor: colors.border,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  catalog.text('tutorial.overview.progress', {
+                    'completed': completed,
+                    'total': total,
+                  }),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  completed == total
+                      ? catalog.text('tutorial.overview.allDone')
+                      : catalog.text('tutorial.overview.saved'),
+                  style: TextStyle(color: colors.muted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LessonCard extends StatelessWidget {
+  const _LessonCard({
+    required this.catalog,
+    required this.mode,
+    required this.progress,
+    required this.exerciseCount,
+    required this.estimatedMinutes,
+    required this.onTap,
+  });
+
+  final TranslationCatalog catalog;
+  final TutorialKnowledgeMode mode;
+  final TutorialLessonProgress progress;
+  final int exerciseCount;
+  final int estimatedMinutes;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final solved = progress.completedPracticeSteps.length.clamp(
+      0,
+      exerciseCount,
+    );
+    final started = solved > 0;
+    final actionKey = progress.practiceCompleted
+        ? 'tutorial.lesson.repeat'
+        : started
+        ? 'tutorial.lesson.resume'
+        : 'tutorial.lesson.start';
+    return Card(
+      margin: EdgeInsets.zero,
+      color: colors.panel,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: colors.border),
+      ),
+      child: InkWell(
+        key: ValueKey('tutorial-lesson-${mode.name}'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _lessonIcon(mode),
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (progress.practiceCompleted)
+                    Chip(
+                      avatar: const Icon(Icons.check_circle, size: 18),
+                      label: Text(catalog.text('tutorial.lesson.completed')),
+                    )
+                  else if (mode == TutorialKnowledgeMode.beginner)
+                    Chip(
+                      label: Text(catalog.text('tutorial.lesson.recommended')),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                catalog.text('tutorial.mode.${mode.name}'),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                catalog.text('tutorial.lesson.${mode.name}.description'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.muted, height: 1.4),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.schedule_outlined, size: 16, color: colors.muted),
+                  const SizedBox(width: 6),
+                  Text(
+                    catalog.text('tutorial.lesson.duration', {
+                      'minutes': estimatedMinutes,
+                    }),
+                    style: TextStyle(
+                      color: colors.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              if (progress.practiceCompleted) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.task_alt,
+                      size: 17,
+                      color: Color(0xFF22C55E),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      catalog.text('tutorial.lesson.practiceDone'),
+                      style: const TextStyle(
+                        color: Color(0xFF22C55E),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 18),
+              LinearProgressIndicator(
+                value: exerciseCount == 0 ? 0 : solved / exerciseCount,
+                minHeight: 5,
+                borderRadius: BorderRadius.circular(99),
+                backgroundColor: colors.border,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      catalog.text('tutorial.lesson.exercises', {
+                        'solved': solved,
+                        'total': exerciseCount,
+                      }),
+                      style: TextStyle(color: colors.muted, fontSize: 12),
+                    ),
+                  ),
+                  Text(
+                    catalog.text(actionKey),
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.arrow_forward,
+                    size: 17,
+                    color: colorScheme.primary,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _TutorialFooter extends StatelessWidget {
@@ -802,7 +1258,7 @@ class _TutorialFooter extends StatelessWidget {
               label: Text(
                 catalog.text(
                   step == stepCount - 1 && finishesOnLastStep
-                      ? 'tutorial.finish'
+                      ? 'tutorial.lesson.finish'
                       : 'tutorial.next',
                 ),
               ),
