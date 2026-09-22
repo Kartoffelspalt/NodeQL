@@ -366,7 +366,12 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.overview.eyebrow': 'NODEQL-WORKSHOP',
     'tutorial.overview.title': 'Wähle einen praktischen Lernpfad',
     'tutorial.overview.body':
-        'Jeder Lernpfad öffnet einen echten Abfrage-Tab. Ziehe, verbinde und konfiguriere NodeQL-Nodes selbst, während der Workshop den Graphen prüft und das erzeugte SQLite live zeigt – ohne Quizfragen.',
+        'Vier praktische Lernpfade, {missions} Workspace-Missionen und eine eigene SQLite-Übungsdatenbank. Baue jede Lösung mit echten Nodes, führe sie mit Beispieldaten aus und löse eigenständige Projekte – ohne Quizfragen.',
+    'tutorial.overview.datasetTitle': 'Deine private Übungsdatenbank',
+    'tutorial.overview.datasetBody':
+        'customers, orders und archived_customers enthalten Beispieldaten für Filter, JOINs, Aggregate und Mengenoperationen. Sie sind schreibgeschützt, von deinen Projekten getrennt und werden beim Verlassen zurückgesetzt.',
+    'tutorial.overview.curriculum': 'Wähle einen Lernpfad',
+    'tutorial.overview.datasetRows': '{count} Beispielzeilen',
     'tutorial.overview.progress':
         '{completed} von {total} Lektionen abgeschlossen',
     'tutorial.overview.saved': 'Dein Fortschritt wird automatisch gespeichert.',
@@ -384,11 +389,11 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.lesson.beginner.description':
         'Ein geführter 15-Minuten-Kurs im Simple Mode: Node-Formen, Labels, Wert-Reporter und eine vollständige SELECT-Abfrage verstehen.',
     'tutorial.lesson.beginnerSyntax.description':
-        'Lerne die Klauselreihenfolge mit einzelnen SELECT-, FROM-, WHERE- und AND-Nodes samt Live-Syntaxvorschau.',
+        'Baue SQLite Klausel für Klausel: FROM, WHERE, AND, OR, ORDER BY und LIMIT. Löse danach eine neue Abfrage selbstständig.',
     'tutorial.lesson.intermediate.description':
-        'Verbinde Tabellen, gruppiere Ergebnisse und filtere Aggregatgruppen direkt im Workspace.',
+        'Verknüpfe Tabellen, gruppiere Daten, nutze COUNT, filtere Gruppen und erstelle einen funktionsfähigen Bericht.',
     'tutorial.lesson.expert.description':
-        'Kombiniere Ergebnismengen mit UNION und sortiere und begrenze anschließend das finale SQLite-Ergebnis.',
+        'Erkunde UNION, INTERSECT, EXCEPT und UNION ALL und entwirf danach eine eigene Mengenabfrage.',
     'tutorial.practice.start': 'Mit echten Nodes üben',
     'tutorial.practice.success':
         'Gelöst – dieser Arbeitsbereich enthält die benötigten verbundenen Nodes.',
@@ -412,7 +417,7 @@ const builtInMessages = <String, Map<String, String>>{
         'Erweitere die vorbereitete SELECT-Abfrage um einen WHERE-Node und stelle Spalte, Operator und Wert ein.',
     'tutorial.practice.beginnerSyntax.hint':
         'Setze WHERE unter SELECT. Eine einfache Bedingung wie id = 1 reicht aus.',
-    'tutorial.practice.beginnerSyntax.tab': 'Workshop · WHERE-Filter',
+    'tutorial.practice.beginnerSyntax.tab': 'Workshop · Abfragesyntax',
     'tutorial.practice.beginnerSyntax.check.whereConnected':
         'WHERE ist verbunden',
     'tutorial.practice.beginnerSyntax.check.whereConfigured':
@@ -422,7 +427,7 @@ const builtInMessages = <String, Map<String, String>>{
         'Setze nach FROM einen JOIN ein und stelle die zweite Tabelle sowie ihre Schlüsselbeziehung ein.',
     'tutorial.practice.intermediate.hint':
         'Nutze INNER JOIN. Verbinde customers.id mit orders.customer_id oder stelle eine andere vollständige ON-Bedingung ein.',
-    'tutorial.practice.intermediate.tab': 'Workshop · JOIN',
+    'tutorial.practice.intermediate.tab': 'Workshop · JOIN & Berichte',
     'tutorial.practice.intermediate.check.joinConnected': 'JOIN ist verbunden',
     'tutorial.practice.intermediate.check.joinConfigured':
         'Tabelle und Schlüssel sind eingestellt',
@@ -431,7 +436,7 @@ const builtInMessages = <String, Map<String, String>>{
         'Erweitere die vorbereitete Abfrage zuerst um GROUP BY und danach um HAVING.',
     'tutorial.practice.expert.hint':
         'Gruppiere zuerst nach customer_id. Ergänze dann HAVING mit einer Aggregatbedingung wie COUNT(*) > 0.',
-    'tutorial.practice.expert.tab': 'Workshop · GROUP BY & HAVING',
+    'tutorial.practice.expert.tab': 'Workshop · Mengenoperationen',
     'tutorial.practice.expert.check.groupByConnected': 'GROUP BY ist verbunden',
     'tutorial.practice.expert.check.havingConnected': 'HAVING ist verbunden',
     'tutorial.practice.expert.check.groupBeforeHaving':
@@ -452,6 +457,8 @@ const builtInMessages = <String, Map<String, String>>{
         '{done} von {total} Anforderungen erfüllt',
     'tutorial.practice.nextRequirement': 'Als Nächstes: {requirement}',
     'tutorial.practice.estimatedTime': 'ca. {minutes} Min.',
+    'tutorial.practice.runHint':
+        'Abschlussprojekt: Klicke oben auf Run SQLite. Die Mission zählt erst, wenn genau diese Abfrage auf der Übungsdatenbank erfolgreich ausgeführt wurde.',
     'tutorial.practice.nodeFocus': 'Diese Nodes verstehen',
     'tutorial.practice.label.simple': 'Simple-Mode-Label',
     'tutorial.practice.label.advanced': 'SQLite-Label',
@@ -493,6 +500,25 @@ const builtInMessages = <String, Map<String, String>>{
         'Ein SPALTE-Wert-Node steckt in SELECT',
     'tutorial.practice.check.whereTextReporter':
         'Ein TEXT-Wert-Node liefert den Filterwert',
+    'tutorial.practice.check.orConnected': 'OR ist verbunden',
+    'tutorial.practice.check.orConfigured':
+        'Alternative Bedingung ist eingestellt',
+    'tutorial.practice.check.whereBeforeOr': 'WHERE steht vor OR',
+    'tutorial.practice.check.selectDistinct': 'SELECT entfernt doppelte Zeilen',
+    'tutorial.practice.check.selectAggregateReporter':
+        'Ein Aggregat-Wert-Node steckt in SELECT',
+    'tutorial.practice.check.selectAliasReporter':
+        'Ein ALIAS-Wert-Node steckt in SELECT',
+    'tutorial.practice.check.intersectConnected': 'INTERSECT ist verbunden',
+    'tutorial.practice.check.intersectConfigured':
+        'Zweite SELECT-Abfrage für INTERSECT ist eingestellt',
+    'tutorial.practice.check.exceptConnected': 'EXCEPT ist verbunden',
+    'tutorial.practice.check.exceptConfigured':
+        'Zweite SELECT-Abfrage für EXCEPT ist eingestellt',
+    'tutorial.practice.check.unionAllConfigured':
+        'UNION ALL behält doppelte Zeilen',
+    'tutorial.practice.check.queryExecuted':
+        'Genau diese Abfrage wurde auf der Übungsdatenbank erfolgreich ausgeführt',
     'tutorial.practice.node.eventGreenFlag.title':
         'ABFRAGE AUSFÜHREN · Start-Node',
     'tutorial.practice.node.eventGreenFlag.body':
@@ -521,6 +547,41 @@ const builtInMessages = <String, Map<String, String>>{
         'LIMIT · Ergebnisgröße kontrollieren',
     'tutorial.practice.node.sqlLimit.body':
         'LIMIT steht nahe dem Ende einer Abfrage und gibt höchstens eine positive Anzahl von Zeilen zurück.',
+    'tutorial.practice.node.sqlFrom.title': 'FROM · Quelltabelle auswählen',
+    'tutorial.practice.node.sqlFrom.body':
+        'FROM benennt die Tabelle, aus der Zeilen kommen. Im Advanced Mode steht es als eigene Klausel unter SELECT; im Simple Mode kann die Quelle auch direkt in SELECT stehen.',
+    'tutorial.practice.node.sqlOr.title': 'OR · Alternative zulassen',
+    'tutorial.practice.node.sqlOr.body':
+        'OR behält eine Zeile, wenn mindestens eine Bedingung wahr ist. Ohne Klammern wertet SQLite AND vor OR aus – kontrolliere deshalb das Ergebnis.',
+    'tutorial.practice.node.sqlInnerJoin.title':
+        'INNER JOIN · Tabellen verknüpfen',
+    'tutorial.practice.node.sqlInnerJoin.body':
+        'Ein INNER JOIN verbindet passende Zeilen über Schlüsselfelder, etwa customers.id und orders.customer_id. Zeilen ohne Partner fallen heraus.',
+    'tutorial.practice.node.sqlJoin.title': 'JOIN · Tabellen verknüpfen',
+    'tutorial.practice.node.sqlJoin.body':
+        'Wähle einen JOIN-Typ und verbinde passende Schlüsselfelder wie customers.id und orders.customer_id. INNER JOIN liefert Zeilen mit Partnern in beiden Tabellen.',
+    'tutorial.practice.node.sqlGroupBy.title': 'GROUP BY · Gruppen bilden',
+    'tutorial.practice.node.sqlGroupBy.body':
+        'GROUP BY fasst Zeilen anhand einer Spalte zu Gruppen zusammen. Mit einem Aggregat wie COUNT kannst du jede Gruppe auswerten.',
+    'tutorial.practice.node.sqlHaving.title': 'HAVING · Gruppen filtern',
+    'tutorial.practice.node.sqlHaving.body':
+        'WHERE filtert einzelne Zeilen vor dem Gruppieren; HAVING filtert anschließend Gruppen anhand einer Aggregatbedingung.',
+    'tutorial.practice.node.sqlCount.title': 'COUNT · passende Zeilen zählen',
+    'tutorial.practice.node.sqlCount.body':
+        'COUNT ist ein Wert-Reporter. Stecke ihn in SELECT und nutze *, um Zeilen pro Gruppe zu zählen. Er verlängert nicht die senkrechte Klauselkette.',
+    'tutorial.practice.node.sqlUnion.title': 'UNION · Ergebnismengen vereinen',
+    'tutorial.practice.node.sqlUnion.body':
+        'UNION vereint kompatible SELECT-Ergebnisse und entfernt Duplikate. Beide Seiten müssen gleich viele Spalten liefern.',
+    'tutorial.practice.node.sqlIntersect.title':
+        'INTERSECT · gemeinsame Zeilen finden',
+    'tutorial.practice.node.sqlIntersect.body':
+        'INTERSECT liefert nur Zeilen, die in beiden SELECT-Ergebnissen vorkommen. Spaltenzahl und Werte müssen zusammenpassen.',
+    'tutorial.practice.node.sqlExcept.title': 'EXCEPT · Zeilen abziehen',
+    'tutorial.practice.node.sqlExcept.body':
+        'EXCEPT behält Zeilen aus dem ersten SELECT, die im zweiten Ergebnis fehlen.',
+    'tutorial.practice.node.sqlAlias.title': 'ALIAS · Ausdruck benennen',
+    'tutorial.practice.node.sqlAlias.body':
+        'ALIAS umhüllt einen anderen Wert-Reporter wie SPALTE und gibt der Ergebnisspalte mit AS einen verständlichen Namen.',
     'tutorial.practice.beginner.step.1.title': 'Verbinde dein erstes SELECT',
     'tutorial.practice.beginner.step.1.instruction':
         'Ziehe einen SELECT-Node aus Query Language an den Anschluss unter ABFRAGE AUSFÜHREN. Stelle customers als Tabelle ein.',
@@ -652,6 +713,159 @@ const builtInMessages = <String, Map<String, String>>{
         'LIMIT ist die letzte Klausel. Verbinde sie unter ORDER BY und trage eine positive Zeilenzahl ein.',
     'tutorial.practice.expert.step.3.example':
         '… UNION … ORDER BY name ASC LIMIT 10;',
+    'tutorial.practice.beginnerSyntax.step.1.concept':
+        'SELECT bestimmt die Spalten, FROM nennt die Quelltabelle. Die senkrechte Verbindung entspricht der Reihenfolge einer geschriebenen SQLite-Abfrage.',
+    'tutorial.practice.beginnerSyntax.step.2.concept':
+        'Ein Prädikat vergleicht eine Spalte mit einem Wert. NodeQL setzt Textwerte im erzeugten SQL korrekt in Anführungszeichen.',
+    'tutorial.practice.beginnerSyntax.step.3.concept':
+        'AND schränkt das Ergebnis ein: Beide Bedingungen müssen wahr sein. Vergleiche Node-Reihenfolge und Live-SQL.',
+    'tutorial.practice.beginnerSyntax.step.4.title':
+        'Ergänze eine Alternative mit OR',
+    'tutorial.practice.beginnerSyntax.step.4.instruction':
+        'Verbinde OR nach dem Filter und stelle eine weitere vollständige Bedingung ein, etwa city = Berlin. Führe die Abfrage aus und beobachte das größere Ergebnis.',
+    'tutorial.practice.beginnerSyntax.step.4.hint':
+        'OR liegt in Query Language. Es braucht Spalte, Operator und Wert und muss hinter WHERE verbunden sein.',
+    'tutorial.practice.beginnerSyntax.step.4.example':
+        "… WHERE country = 'DE' AND active = 1 OR city = 'Berlin';",
+    'tutorial.practice.beginnerSyntax.step.4.concept':
+        'OR lässt eine Zeile zu, wenn eine Seite wahr ist. SQLite wertet AND vor OR aus; für eine andere Gruppierung brauchst du Klammern.',
+    'tutorial.practice.beginnerSyntax.step.5.title':
+        'Lege die Ergebnisreihenfolge fest',
+    'tutorial.practice.beginnerSyntax.step.5.instruction':
+        'Ergänze ORDER BY nach den Filtern. Sortiere nach name mit ASC oder DESC und vergleiche das Ergebnis mit der unsortierten Ausgabe.',
+    'tutorial.practice.beginnerSyntax.step.5.hint':
+        'ORDER BY steht unter der WHERE/AND/OR-Kette. Wähle eine echte Ergebnisspalte und ASC oder DESC.',
+    'tutorial.practice.beginnerSyntax.step.5.example': '… ORDER BY name ASC;',
+    'tutorial.practice.beginnerSyntax.step.5.concept':
+        'Ohne ORDER BY garantiert SQLite keine Zeilenreihenfolge. Die Sortierrichtung macht das Ergebnis vorhersagbar.',
+    'tutorial.practice.beginnerSyntax.step.6.title':
+        'Gib nur wenige Zeilen zurück',
+    'tutorial.practice.beginnerSyntax.step.6.instruction':
+        'Verbinde LIMIT nach ORDER BY und wähle eine positive Zeilenzahl. Führe die Abfrage aus und beobachte die kürzere Vorschau.',
+    'tutorial.practice.beginnerSyntax.step.6.hint':
+        'LIMIT steht am Schluss. Trage eine ganze Zahl größer als null ein, zum Beispiel 5.',
+    'tutorial.practice.beginnerSyntax.step.6.example':
+        '… ORDER BY name ASC LIMIT 5;',
+    'tutorial.practice.beginnerSyntax.step.6.concept':
+        'LIMIT wirkt nach der Sortierung. Wenn du zuerst sortierst, weißt du genau, welche Zeilen in der Vorschau landen.',
+    'tutorial.practice.beginnerSyntax.step.7.title':
+        'Projekt: Baue eine Kundensuche',
+    'tutorial.practice.beginnerSyntax.step.7.instruction':
+        'Verbinde auf einem frischen Canvas SELECT → FROM → WHERE → ORDER BY → LIMIT. Nutze customers, stelle alle Klauseln ein und führe das SQL erfolgreich aus.',
+    'tutorial.practice.beginnerSyntax.step.7.hint':
+        'Beginne mit SELECT und FROM. Nutze etwa active = 1 als WHERE-Bedingung, sortiere nach name und begrenze auf 5 Zeilen.',
+    'tutorial.practice.beginnerSyntax.step.7.example':
+        'SELECT name FROM customers WHERE active = 1 ORDER BY name ASC LIMIT 5;',
+    'tutorial.practice.beginnerSyntax.step.7.concept':
+        'Dieses eigenständige Projekt prüft den ganzen Abfragefluss. Ein Node-Graph ist erst dann nützlich, wenn das erzeugte SQLite auch auf echten Daten läuft.',
+    'tutorial.practice.intermediate.step.1.concept':
+        'Ein JOIN verbindet Zeilen über passende Schlüssel. customers.id identifiziert die Person; orders.customer_id verweist auf sie.',
+    'tutorial.practice.intermediate.step.2.concept':
+        'GROUP BY bildet eine Gruppe pro Kunde. Mit einem Aggregat in SELECT wird die Zusammenfassung im nächsten Schritt sichtbar.',
+    'tutorial.practice.intermediate.step.3.concept':
+        'WHERE filtert vor dem Gruppieren, HAVING danach. COUNT(*) > 0 behält Gruppen mit mindestens einer Bestellung.',
+    'tutorial.practice.intermediate.step.4.title':
+        'Zähle Bestellungen pro Kunde',
+    'tutorial.practice.intermediate.step.4.instruction':
+        'Stecke einen COUNT-Wert-Reporter in das Spaltenfeld von SELECT und stelle ihn auf Zeilen zählen. JOIN und GROUP BY bleiben verbunden.',
+    'tutorial.practice.intermediate.step.4.hint':
+        'COUNT ist rund: Lege ihn in SELECT ab, nicht unter HAVING. Mit * zählst du alle Zeilen pro Gruppe.',
+    'tutorial.practice.intermediate.step.4.example':
+        'SELECT COUNT(*) FROM customers INNER JOIN orders ON customers.id = orders.customer_id GROUP BY customers.name;',
+    'tutorial.practice.intermediate.step.4.concept':
+        'Ein Aggregat-Reporter macht aus jeder Gruppe einen Kennwert. COUNT(*) zählt verknüpfte Zeilen; mehr Bestellungen ergeben höhere Werte.',
+    'tutorial.practice.intermediate.step.5.title':
+        'Sortiere den Gruppenbericht',
+    'tutorial.practice.intermediate.step.5.instruction':
+        'Setze ORDER BY nach HAVING und wähle eine gültige Spalte und Richtung. Führe den Bericht aus und prüfe die Sortierung.',
+    'tutorial.practice.intermediate.step.5.hint':
+        'Für einen alphabetischen Bericht nutze customers.name ASC. ORDER BY folgt auf HAVING.',
+    'tutorial.practice.intermediate.step.5.example':
+        '… GROUP BY customers.name HAVING COUNT(*) > 0 ORDER BY customers.name ASC;',
+    'tutorial.practice.intermediate.step.5.concept':
+        'Die Sortierung macht gruppierte Ergebnisse reproduzierbar. Sie findet nach dem Gruppenfilter statt.',
+    'tutorial.practice.intermediate.step.6.title':
+        'Zeige nur den Anfang des Berichts',
+    'tutorial.practice.intermediate.step.6.instruction':
+        'Ergänze LIMIT unter ORDER BY und trage eine positive Anzahl ein. Vergleiche die Ausgabe vor und nach dem Ausführen.',
+    'tutorial.practice.intermediate.step.6.hint':
+        'LIMIT muss hinter ORDER BY stehen und eine Zahl größer als null enthalten.',
+    'tutorial.practice.intermediate.step.6.example':
+        '… ORDER BY customers.name ASC LIMIT 5;',
+    'tutorial.practice.intermediate.step.6.concept':
+        'Ein Bericht braucht oft nur die ersten Zeilen. Kombiniere LIMIT mit ORDER BY, wenn die Auswahl wichtig ist.',
+    'tutorial.practice.intermediate.step.7.title':
+        'Projekt: Liefere einen Bestellbericht',
+    'tutorial.practice.intermediate.step.7.instruction':
+        'Ergänze nach SELECT und FROM einen JOIN, GROUP BY, HAVING, ORDER BY und LIMIT. Stecke einen Aggregat-Reporter in SELECT und führe das fertige SQL aus.',
+    'tutorial.practice.intermediate.step.7.hint':
+        'Verbinde customers.id mit orders.customer_id, gruppiere nach customers.name, nutze COUNT(*) in SELECT und HAVING COUNT(*) > 0. Sortiere und begrenze danach.',
+    'tutorial.practice.intermediate.step.7.example':
+        'SELECT COUNT(*) FROM customers INNER JOIN orders ON customers.id = orders.customer_id GROUP BY customers.name HAVING COUNT(*) > 0 ORDER BY customers.name ASC LIMIT 5;',
+    'tutorial.practice.intermediate.step.7.concept':
+        'Dieses Projekt vereint Beziehungen, Aggregation und Darstellung. Geprüft werden der verbundene Graph und die ausführbare SQLite-Abfrage.',
+    'tutorial.practice.expert.step.1.concept':
+        'UNION vereint zwei SELECT-Ergebnisse und entfernt Duplikate. Anzahl und Bedeutung der Spalten müssen zusammenpassen.',
+    'tutorial.practice.expert.step.2.concept':
+        'Eine Sortierung nach einer Mengenoperation gehört hinter das zweite SELECT. Sie ordnet das kombinierte Ergebnis.',
+    'tutorial.practice.expert.step.3.concept':
+        'LIMIT nach UNION und ORDER BY begrenzt die gesamte kombinierte Menge. Eine andere Reihenfolge würde eine andere Frage beantworten.',
+    'tutorial.practice.expert.step.4.title': 'Finde Zeilen in beiden Mengen',
+    'tutorial.practice.expert.step.4.instruction':
+        'Verbinde INTERSECT mit dem frischen SELECT und trage SELECT id, name FROM archived_customers als zweite Abfrage ein. Führe sie aus und finde den gemeinsamen Datensatz.',
+    'tutorial.practice.expert.step.4.hint':
+        'INTERSECT braucht ein vollständiges zweites SELECT. Ada steht in beiden Beispieltabellen.',
+    'tutorial.practice.expert.step.4.example':
+        'SELECT id, name FROM customers INTERSECT SELECT id, name FROM archived_customers;',
+    'tutorial.practice.expert.step.4.concept':
+        'INTERSECT bildet die Schnittmenge. Beide Seiten brauchen kompatible Spalten; ausgegeben werden nur gemeinsame Zeilen.',
+    'tutorial.practice.expert.step.5.title': 'Ziehe archivierte Datensätze ab',
+    'tutorial.practice.expert.step.5.instruction':
+        'Verbinde auf einem frischen SELECT den EXCEPT-Node und trage ein vollständiges SELECT auf archived_customers ein. Führe es aus und prüfe die übrigen Zeilen.',
+    'tutorial.practice.expert.step.5.hint':
+        'Nutze SELECT id, name FROM archived_customers im EXCEPT-Feld. Vergleiche das Ergebnis mit INTERSECT.',
+    'tutorial.practice.expert.step.5.example':
+        'SELECT id, name FROM customers EXCEPT SELECT id, name FROM archived_customers;',
+    'tutorial.practice.expert.step.5.concept':
+        'EXCEPT zieht die zweite Menge von der ersten ab. Damit findest du Datensätze, die in einem Vergleichsbestand fehlen.',
+    'tutorial.practice.expert.step.6.title': 'Behalte Duplikate mit UNION ALL',
+    'tutorial.practice.expert.step.6.instruction':
+        'Verbinde UNION mit dem frischen SELECT, stelle ein zweites SELECT ein und aktiviere ALL. Führe die Abfrage aus und vergleiche Duplikate mit einfachem UNION.',
+    'tutorial.practice.expert.step.6.hint':
+        'Nutze archived_customers als zweite Tabelle und aktiviere ALL im UNION-Node. Ada sollte zweimal erscheinen.',
+    'tutorial.practice.expert.step.6.example':
+        'SELECT id, name FROM customers UNION ALL SELECT id, name FROM archived_customers;',
+    'tutorial.practice.expert.step.6.concept':
+        'UNION entfernt Duplikate, UNION ALL behält sie. ALL ist oft schneller, wenn keine Duplikatprüfung nötig ist.',
+    'tutorial.practice.expert.step.7.title':
+        'Wähle eindeutige Werte mit DISTINCT',
+    'tutorial.practice.expert.step.7.instruction':
+        'Stelle SELECT auf dem frischen Canvas auf DISTINCT. Führe die Abfrage aus und vergleiche die eindeutigen Werte mit den ursprünglichen Zeilen.',
+    'tutorial.practice.expert.step.7.hint':
+        'Der SELECT-Node hat eine ALL/DISTINCT-Auswahl. Stelle DISTINCT ein; country ist eine gute Ergebnisspalte.',
+    'tutorial.practice.expert.step.7.example':
+        'SELECT DISTINCT country FROM customers;',
+    'tutorial.practice.expert.step.7.concept':
+        'DISTINCT entfernt doppelte Ergebniszeilen innerhalb eines SELECT. Anders als UNION verbindet es keine zwei Abfragen.',
+    'tutorial.practice.expert.step.8.title': 'Benenne ein Ergebnis mit ALIAS',
+    'tutorial.practice.expert.step.8.instruction':
+        'Stecke einen ALIAS-Reporter in das Spaltenfeld von SELECT. Gib ihm einen echten Wert, etwa SPALTE mit country, und einen lesbaren Alias.',
+    'tutorial.practice.expert.step.8.hint':
+        'ALIAS ist ein runder Wert-Node. Stecke SPALTE in sein Wertefeld und trage zum Beispiel region als Alias ein.',
+    'tutorial.practice.expert.step.8.example':
+        'SELECT DISTINCT country AS region FROM customers;',
+    'tutorial.practice.expert.step.8.concept':
+        'AS ändert den angezeigten Spaltennamen, nicht die Quelldaten. ALIAS kann einen anderen Reporter umhüllen und zeigt verschachtelte Node-Komposition.',
+    'tutorial.practice.expert.step.9.title':
+        'Projekt: Veröffentliche ein kombiniertes Ergebnis',
+    'tutorial.practice.expert.step.9.instruction':
+        'Baue aus einer frischen Wurzel SELECT, UNION, ORDER BY und LIMIT. Stelle ein kompatibles zweites SELECT ein, führe SQLite aus und prüfe die kombinierten Zeilen.',
+    'tutorial.practice.expert.step.9.hint':
+        'Nutze SELECT id, name FROM customers, UNION SELECT id, name FROM archived_customers, dann ORDER BY name ASC und LIMIT 10.',
+    'tutorial.practice.expert.step.9.example':
+        'SELECT id, name FROM customers UNION SELECT id, name FROM archived_customers ORDER BY name ASC LIMIT 10;',
+    'tutorial.practice.expert.step.9.concept':
+        'Das Abschlussprojekt prüft kompatible Mengen, Klauselreihenfolge und erfolgreiche Ausführung. Ein gutes Ergebnis ist reproduzierbar und leicht zu prüfen.',
     'tutorial.back': 'Zurück',
     'tutorial.next': 'Weiter',
     'tutorial.finish': 'Jetzt loslegen',
@@ -1136,6 +1350,7 @@ const builtInMessages = <String, Map<String, String>>{
     'runtime.copied': 'SQLite in Zwischenablage kopiert',
     'databaseBrowser.title': 'SQLite-Tabellenbrowser',
     'databaseBrowser.refresh': 'Datenbank neu einlesen',
+    'databaseBrowser.backToDatabase': 'Zurück zur Datenbank',
     'databaseBrowser.objectCount': '{count} Objekt(e)',
     'databaseBrowser.objects': 'Datenbankobjekte',
     'databaseBrowser.search': 'Tabelle oder View suchen',
@@ -1199,13 +1414,16 @@ const builtInMessages = <String, Map<String, String>>{
     'databaseBrowser.sqlSuccess': 'SQLite-Befehl wurde erfolgreich ausgeführt.',
     'databaseBrowser.value': 'Vollständiger Wert',
     'databaseBrowser.openValue': 'Vollständigen Wert öffnen',
-    'databaseBrowser.simple.title': 'Datenbank ansehen',
+    'databaseBrowser.simple.title': 'Entdecke deine Daten',
     'databaseBrowser.simple.search': 'Tabelle suchen',
     'databaseBrowser.simple.clearSearch': 'Suche leeren',
     'databaseBrowser.simple.tables': 'Tabellen',
     'databaseBrowser.simple.views': 'Ansichten',
     'databaseBrowser.simple.noObjects':
         'Diese Datenbank enthält keine Tabellen.',
+    'databaseBrowser.simple.emptyTitle': 'Platz für deine Daten',
+    'databaseBrowser.simple.emptyHelp':
+        'Erstelle deine erste Tabelle und ordne Informationen in Zeilen und Spalten.',
     'databaseBrowser.simple.noMatches': 'Keine passende Tabelle gefunden.',
     'databaseBrowser.simple.databaseInfo': 'Dateiinformationen',
     'databaseBrowser.simple.encoding': 'Textformat',
@@ -1222,6 +1440,10 @@ const builtInMessages = <String, Map<String, String>>{
     'databaseBrowser.simple.previous': 'Zurück',
     'databaseBrowser.simple.next': 'Weiter',
     'databaseBrowser.simple.columns': 'Tabellenspalten',
+    'databaseBrowser.simple.columnsHelp':
+        'Jede Spalte speichert eine Art von Information für jeden Eintrag.',
+    'databaseBrowser.simple.anyType': 'Beliebiger Wert',
+    'databaseBrowser.simple.moreDetails': 'Weitere Details',
     'databaseBrowser.simple.column': 'Name',
     'databaseBrowser.simple.type': 'Datentyp',
     'databaseBrowser.simple.required': 'Pflichtfeld',

@@ -18,6 +18,10 @@ class TutorialPracticePanel extends StatelessWidget {
     required this.onCheck,
     required this.onHint,
     required this.onClose,
+    this.height,
+    this.minHeight,
+    this.maxHeight,
+    this.onHeightChanged,
     super.key,
   });
 
@@ -31,15 +35,26 @@ class TutorialPracticePanel extends StatelessWidget {
   final VoidCallback onCheck;
   final VoidCallback onHint;
   final VoidCallback onClose;
+  final double? height;
+  final double? minHeight;
+  final double? maxHeight;
+  final ValueChanged<double>? onHeightChanged;
 
   @override
   Widget build(BuildContext context) {
     final colors = NodeQlWorkbenchColors.of(context);
     final stepKey = definition.stepKey(session.stepIndex);
-    final maxHeight = (MediaQuery.sizeOf(context).height * .48).clamp(
-      280.0,
-      420.0,
-    );
+    final defaultHeight = (MediaQuery.sizeOf(context).height * .48)
+        .clamp(280.0, 420.0)
+        .toDouble();
+    final lowerBound = minHeight ?? 220.0;
+    final upperBound = (maxHeight ?? defaultHeight)
+        .clamp(lowerBound, double.infinity)
+        .toDouble();
+    final panelHeight = (height ?? defaultHeight)
+        .clamp(lowerBound, upperBound)
+        .toDouble();
+    final canResize = onHeightChanged != null && height != null;
     return Material(
       key: const ValueKey('tutorial-practice-panel'),
       color: session.completed
@@ -56,64 +71,127 @@ class TutorialPracticePanel extends StatelessWidget {
             ),
           ),
         ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final copy = _PracticeCopy(
-                catalog: catalog,
-                session: session,
-                definition: definition,
-                result: result,
-                abstractionMode: abstractionMode,
-                localeCode: localeCode,
-                stepKey: stepKey,
-                liveSql: liveSql,
-              );
-              final actions = _PracticeActions(
-                catalog: catalog,
-                session: session,
-                definition: definition,
-                result: result,
-                onCheck: onCheck,
-                onHint: onHint,
-                onClose: onClose,
-              );
-              if (constraints.maxWidth < 1000) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-                        child: copy,
+        child: SizedBox(
+          height: panelHeight,
+          child: Column(
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final copy = _PracticeCopy(
+                      catalog: catalog,
+                      session: session,
+                      definition: definition,
+                      result: result,
+                      abstractionMode: abstractionMode,
+                      localeCode: localeCode,
+                      stepKey: stepKey,
+                      liveSql: liveSql,
+                    );
+                    final actions = _PracticeActions(
+                      catalog: catalog,
+                      session: session,
+                      definition: definition,
+                      result: result,
+                      onCheck: onCheck,
+                      onHint: onHint,
+                      onClose: onClose,
+                    );
+                    if (constraints.maxWidth < 1000) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                12,
+                                14,
+                                10,
+                              ),
+                              child: copy,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                            decoration: BoxDecoration(
+                              color: colors.panelElevated,
+                              border: Border(
+                                top: BorderSide(color: colors.border),
+                              ),
+                            ),
+                            child: actions,
+                          ),
+                        ],
+                      );
+                    }
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _PracticeIcon(completed: session.completed),
+                          const SizedBox(width: 14),
+                          Expanded(child: copy),
+                          const SizedBox(width: 16),
+                          actions,
+                        ],
                       ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                      decoration: BoxDecoration(
-                        color: colors.panelElevated,
-                        border: Border(top: BorderSide(color: colors.border)),
-                      ),
-                      child: actions,
-                    ),
-                  ],
-                );
-              }
-              return SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _PracticeIcon(completed: session.completed),
-                    const SizedBox(width: 14),
-                    Expanded(child: copy),
-                    const SizedBox(width: 16),
-                    actions,
-                  ],
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+              if (canResize)
+                _PracticeResizeHandle(
+                  height: panelHeight,
+                  minHeight: lowerBound,
+                  maxHeight: upperBound,
+                  onHeightChanged: onHeightChanged!,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PracticeResizeHandle extends StatelessWidget {
+  const _PracticeResizeHandle({
+    required this.height,
+    required this.minHeight,
+    required this.maxHeight,
+    required this.onHeightChanged,
+  });
+
+  final double height;
+  final double minHeight;
+  final double maxHeight;
+  final ValueChanged<double> onHeightChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeUpDown,
+      child: GestureDetector(
+        key: const ValueKey('tutorial-practice-resize-handle'),
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragUpdate: (details) => onHeightChanged(
+          (height + details.delta.dy).clamp(minHeight, maxHeight).toDouble(),
+        ),
+        child: SizedBox(
+          height: 12,
+          width: double.infinity,
+          child: Center(
+            child: Container(
+              width: 44,
+              height: 3,
+              decoration: BoxDecoration(
+                color: colors.border,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
           ),
         ),
       ),
@@ -265,6 +343,31 @@ class _PracticeCopy extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
+          ),
+        ],
+        if (step.checks.contains(TutorialPracticeCheck.queryExecuted) &&
+            !session.completed) ...[
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.play_circle_outline_rounded,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  catalog.text('tutorial.practice.runHint'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
         if (step.focusNodes.isNotEmpty) ...[

@@ -3,9 +3,67 @@ import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 
 void main() {
+  test('every mission can restore a connected starter canvas', () {
+    for (final definition in tutorialPracticeDefinitions.values) {
+      for (final mode in SqlAbstractionMode.values) {
+        for (var step = 0; step < definition.stepCount; step++) {
+          final workspace = WorkspaceController()
+            ..resetWithRoot(recordUndo: false, clearHistory: true);
+          for (final seed in definition.starterFor(mode, step)) {
+            workspace.addTemplate(
+              seed.type,
+              workspace.suggestedTemplatePosition(seed.type),
+              defaults: seed.defaults,
+              recordUndo: false,
+            );
+          }
+          expect(
+            workspace.state.roots,
+            hasLength(1),
+            reason: '${definition.mode.name} ${mode.name} mission ${step + 1}',
+          );
+          expect(
+            () => const SqlCompiler().compileWorkspace(workspace.state.roots),
+            returnsNormally,
+            reason: '${definition.mode.name} ${mode.name} mission ${step + 1}',
+          );
+        }
+      }
+    }
+  });
+
+  test('course contains 30 practical missions with fresh final projects', () {
+    expect(
+      tutorialPracticeDefinitions.values.fold<int>(
+        0,
+        (total, definition) => total + definition.stepCount,
+      ),
+      30,
+    );
+    expect(
+      tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!
+          .estimatedMinutes,
+      15,
+    );
+    for (final mode in TutorialKnowledgeMode.values.skip(1)) {
+      final definition = tutorialPracticeDefinitions[mode]!;
+      expect(definition.steps.last.startFresh, isTrue);
+      expect(
+        definition.steps.last.checks,
+        contains(TutorialPracticeCheck.queryExecuted),
+      );
+    }
+    final syntax =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginnerSyntax]!;
+    expect(syntax.nextStep({0, 1, 2}), 3);
+    expect(syntax.starterFor(SqlAbstractionMode.simple, 6), isEmpty);
+  });
+
   test('beginner mission only accepts a configured connected SELECT', () {
     final definition =
         tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
@@ -20,6 +78,32 @@ void main() {
     expect(definition.evaluate([event, select], 0).complete, isFalse);
     event.next = select;
     expect(definition.evaluate([event], 0).complete, isTrue);
+  });
+
+  test('separate FROM supplies the table for a configured SELECT', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginnerSyntax]!;
+    final event = EventBlock(id: 'event', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: {'columns': 'name', 'table': 'table_name'},
+    );
+    final from = OperatorBlock(
+      id: 'from',
+      position: Offset.zero,
+      operatorType: BlockType.sqlFrom,
+      inputs: {'table': 'customers'},
+    );
+    event.next = select..next = from;
+    expect(definition.evaluate([event], 0).complete, isTrue);
+    expect(
+      tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!.evaluate([
+        event,
+      ], 0).complete,
+      isTrue,
+    );
   });
 
   test('syntax path checks WHERE before a configured AND', () {
@@ -45,6 +129,157 @@ void main() {
     event.next = where..next = and;
     and.next = null;
     expect(definition.evaluate([event], 2).complete, isTrue);
+  });
+
+  test('syntax path accepts a configured OR after WHERE', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginnerSyntax]!;
+    final event = EventBlock(id: 'event', position: Offset.zero);
+    final where = MotionBlock(
+      id: 'where',
+      position: Offset.zero,
+      motionType: BlockType.sqlWhere,
+      inputs: {'column': 'country', 'operator': '=', 'value': 'DE'},
+    );
+    final or = MotionBlock(
+      id: 'or',
+      position: Offset.zero,
+      motionType: BlockType.sqlOr,
+      inputs: {'column': 'city', 'operator': '=', 'value': 'Berlin'},
+    );
+    event.next = or..next = where;
+    expect(definition.evaluate([event], 3).complete, isFalse);
+    event.next = where..next = or;
+    or.next = null;
+    expect(definition.evaluate([event], 3).complete, isTrue);
+  });
+
+  test('expert missions distinguish set operators, DISTINCT and aliases', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.expert]!;
+    final event = EventBlock(id: 'event', position: Offset.zero);
+    final intersect = OperatorBlock(
+      id: 'intersect',
+      position: Offset.zero,
+      operatorType: BlockType.sqlIntersect,
+      inputs: {'sql': 'SELECT id, name FROM archived_customers'},
+    );
+    event.next = intersect;
+    expect(definition.evaluate([event], 3).complete, isTrue);
+    intersect.inputs['sql'] = 'DELETE FROM customers';
+    expect(definition.evaluate([event], 3).complete, isFalse);
+
+    final except = OperatorBlock(
+      id: 'except',
+      position: Offset.zero,
+      operatorType: BlockType.sqlExcept,
+      inputs: {'sql': 'SELECT id, name FROM archived_customers'},
+    );
+    event.next = except;
+    expect(definition.evaluate([event], 4).complete, isTrue);
+
+    final union = OperatorBlock(
+      id: 'union',
+      position: Offset.zero,
+      operatorType: BlockType.sqlUnion,
+      inputs: {'sql': 'SELECT id, name FROM archived_customers'},
+    );
+    event.next = union;
+    expect(definition.evaluate([event], 5).complete, isFalse);
+    union.inputs['all'] = true;
+    expect(definition.evaluate([event], 5).complete, isTrue);
+
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: {'columns': 'country', 'table': 'customers'},
+    );
+    event.next = select;
+    expect(definition.evaluate([event], 6).complete, isFalse);
+    select.inputs['select_mode'] = 'DISTINCT';
+    expect(definition.evaluate([event], 6).complete, isTrue);
+
+    final alias = OperatorBlock(
+      id: 'alias',
+      position: Offset.zero,
+      operatorType: BlockType.sqlAlias,
+      inputs: {'value': '', 'alias': 'region'},
+    );
+    setReporterForInput(
+      alias,
+      'value',
+      OperatorBlock(
+        id: 'country',
+        position: Offset.zero,
+        operatorType: BlockType.sqlColumn,
+        inputs: {'column': 'country'},
+      ),
+    );
+    setReporterForInput(select, 'columns', alias);
+    expect(definition.evaluate([event], 7).complete, isTrue);
+  });
+
+  test('final mission requires a successful run of the current SQL', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.expert]!;
+    final event = EventBlock(id: 'event', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: {'columns': 'id, name', 'table': 'customers'},
+    );
+    final union = OperatorBlock(
+      id: 'union',
+      position: Offset.zero,
+      operatorType: BlockType.sqlUnion,
+      inputs: {'sql': 'SELECT id, name FROM archived_customers'},
+    );
+    final order = MotionBlock(
+      id: 'order',
+      position: Offset.zero,
+      motionType: BlockType.sqlOrderBy,
+      inputs: {'column': 'name', 'order': 'ASC'},
+    );
+    final limit = OperatorBlock(
+      id: 'limit',
+      position: Offset.zero,
+      operatorType: BlockType.sqlLimit,
+      inputs: {'count': '10'},
+    );
+    event.next = select;
+    select.next = union;
+    union.next = order;
+    order.next = limit;
+    const sql =
+        'SELECT id, name FROM customers UNION '
+        'SELECT id, name FROM archived_customers ORDER BY name ASC LIMIT 10;';
+    expect(definition.evaluate([event], 8).complete, isFalse);
+    expect(
+      definition
+          .evaluate(
+            [event],
+            8,
+            currentSql: sql,
+            executedSql: 'SELECT * FROM customers;',
+            executionSucceeded: true,
+          )
+          .complete,
+      isFalse,
+    );
+    expect(
+      definition
+          .evaluate(
+            [event],
+            8,
+            currentSql: sql,
+            executedSql: sql,
+            executionSucceeded: true,
+          )
+          .complete,
+      isTrue,
+    );
   });
 
   test('intermediate path requires GROUP BY before configured HAVING', () {

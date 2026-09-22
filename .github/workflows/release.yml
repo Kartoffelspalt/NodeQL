@@ -111,7 +111,7 @@ jobs:
           Priority: optional
           Architecture: amd64
           Maintainer: NodeQL Team <nodeql-support@codespiresolutions.digital>
-          Depends: libc6, libstdc++6, libgtk-3-0, libsqlite3-0
+          Depends: libc6, libstdc++6, libgtk-3-0, libsqlite3-0, zenity | kdialog | qarma
           Homepage: https://github.com/${{ github.repository }}
           Description: Local-first visual SQL learning and development
           EOF

@@ -11,6 +11,7 @@ import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:nodeql/data/project/project_file_upgrade_service.dart';
+import 'package:nodeql/data/project/project_file_paths.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_backwards_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
@@ -29,6 +30,7 @@ import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
+import 'package:nodeql/features/tutorial/workshop_database.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
@@ -77,6 +79,18 @@ class _SimpleNodeDiagnostic {
 
 class _SaveProjectIntent extends Intent {
   const _SaveProjectIntent();
+}
+
+class _NewProjectIntent extends Intent {
+  const _NewProjectIntent();
+}
+
+class _OpenProjectIntent extends Intent {
+  const _OpenProjectIntent();
+}
+
+class _SaveProjectAsIntent extends Intent {
+  const _SaveProjectAsIntent();
 }
 
 enum _SettingsAction { plugins, languages, tutorial, about }
@@ -388,17 +402,12 @@ class WorkbenchPage extends ConsumerStatefulWidget {
 class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   static const _menuChannel = MethodChannel('nodeql/menu');
   static const _projectUpgradeService = ProjectFileUpgradeService();
-  static const _neoCheatKeys = <LogicalKeyboardKey>[
-    LogicalKeyboardKey.keyN,
-    LogicalKeyboardKey.keyE,
-    LogicalKeyboardKey.keyO,
-  ];
   static const _databaseBrowserKeys = <LogicalKeyboardKey>[
     LogicalKeyboardKey.keyD,
     LogicalKeyboardKey.keyB,
     LogicalKeyboardKey.keyB,
   ];
-  static const _neoCheatTimeout = Duration(seconds: 2);
+  static const _databaseBrowserKeyTimeout = Duration(seconds: 2);
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlHighlightingController _customSqlController =
@@ -418,8 +427,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   int _blockDiagnosticsRunToken = 0;
   Future<void>? _pendingSave;
   bool _startupHintShown = false;
-  int _neoCheatIndex = 0;
-  DateTime? _neoCheatLastKeyAt;
   int _databaseBrowserKeyIndex = 0;
   bool _showCustomSqlEditor = false;
   bool _executingCustomSql = false;
@@ -483,7 +490,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final keyboard = HardwareKeyboard.instance;
     final isSaveShortcut =
         event.logicalKey == LogicalKeyboardKey.keyS &&
-        (keyboard.isMetaPressed || keyboard.isControlPressed);
+        (keyboard.isMetaPressed || keyboard.isControlPressed) &&
+        !keyboard.isShiftPressed;
     if (isSaveShortcut) {
       unawaited(_saveProject(context));
       return true;
@@ -493,7 +501,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         keyboard.isMetaPressed ||
         keyboard.isControlPressed ||
         keyboard.isAltPressed) {
-      _resetNeoCheat();
       _resetDatabaseBrowserKeys();
       return false;
     }
@@ -503,29 +510,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       unawaited(_openDatabaseBrowser());
       return true;
     }
-    final lastKeyAt = _neoCheatLastKeyAt;
-    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
-      _resetNeoCheat();
-    }
-
-    final expectedKey = _neoCheatKeys[_neoCheatIndex];
-    if (event.logicalKey == expectedKey) {
-      _neoCheatIndex++;
-      _neoCheatLastKeyAt = now;
-      if (_neoCheatIndex == _neoCheatKeys.length) {
-        _resetNeoCheat();
-        unawaited(
-          ref
-              .read(nodeQlThemeProvider.notifier)
-              .setTheme(NodeQlTheme.neoBrutalism),
-        );
-        return true;
-      }
-      return false;
-    }
-
-    _neoCheatIndex = event.logicalKey == _neoCheatKeys.first ? 1 : 0;
-    _neoCheatLastKeyAt = _neoCheatIndex == 0 ? null : now;
     return false;
   }
 
@@ -536,14 +520,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         focusContext.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
-  void _resetNeoCheat() {
-    _neoCheatIndex = 0;
-    _neoCheatLastKeyAt = null;
-  }
-
   bool _advanceDatabaseBrowserKeys(LogicalKeyboardKey key, DateTime now) {
     final lastKeyAt = _databaseBrowserLastKeyAt;
-    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
+    if (lastKeyAt != null &&
+        now.difference(lastKeyAt) > _databaseBrowserKeyTimeout) {
       _resetDatabaseBrowserKeys();
     }
 
@@ -575,18 +555,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _databaseBrowserOpen = true;
     try {
       final catalog = ref.read(translationControllerProvider).catalog;
-      final mode = ref.read(sqlModeProvider);
       await showDialog<void>(
         context: context,
         builder: (_) => DatabaseBrowserDialog(
           databasePath: databasePath,
           catalog: catalog,
-          initialMode: mode,
+          initialMode: SqlAbstractionMode.simple,
           sqlExecutor: ref
               .read(sqlRuntimeProvider.notifier)
               .executeWithSnapshot,
-          onModeChanged: (next) =>
-              unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
         ),
       );
     } finally {
@@ -637,12 +614,42 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
             _SaveProjectIntent(),
         SingleActivator(LogicalKeyboardKey.keyS, control: true):
             _SaveProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, meta: true, shift: true):
+            _NewProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true):
+            _NewProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyO, meta: true, shift: true):
+            _OpenProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyO, control: true, shift: true):
+            _OpenProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true):
+            _SaveProjectAsIntent(),
+        SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true):
+            _SaveProjectAsIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
           _SaveProjectIntent: CallbackAction<_SaveProjectIntent>(
             onInvoke: (_) {
               unawaited(_saveProject(context));
+              return null;
+            },
+          ),
+          _NewProjectIntent: CallbackAction<_NewProjectIntent>(
+            onInvoke: (_) {
+              unawaited(_newProject(context));
+              return null;
+            },
+          ),
+          _OpenProjectIntent: CallbackAction<_OpenProjectIntent>(
+            onInvoke: (_) {
+              unawaited(_openProject(context));
+              return null;
+            },
+          ),
+          _SaveProjectAsIntent: CallbackAction<_SaveProjectAsIntent>(
+            onInvoke: (_) {
+              unawaited(_saveProjectAs(context));
               return null;
             },
           ),
@@ -668,6 +675,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       .setLocaleTag(code),
                   onPickDb: () =>
                       ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
+                  canBrowseDb: runtime.dbPath != null,
+                  onBrowseDb: () => unawaited(_openDatabaseBrowser()),
                   onExecuteGuarded: () {
                     if (compileResult.sql.trim().isEmpty) {
                       ref
@@ -854,7 +863,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _autosaveDebounce = Timer(const Duration(milliseconds: 550), () async {
       final support = await getApplicationSupportDirectory();
       final autosave = File(
-        '${support.path}/nodeql_autosave_$_activeProjectId.nodeql',
+        p.join(support.path, 'nodeql_autosave_$_activeProjectId.nodeql'),
       );
       await autosave.writeAsString(jsonEncode(_projectEnvelope()), flush: true);
     });
@@ -883,16 +892,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
     final support = await getApplicationSupportDirectory();
     final autosave = File(
-      '${support.path}/nodeql_autosave_$_activeProjectId.nodeql',
+      p.join(support.path, 'nodeql_autosave_$_activeProjectId.nodeql'),
     );
     final legacySqpAutosave = File(
-      '${support.path}/nodeql_autosave_$_activeProjectId.sqp',
+      p.join(support.path, 'nodeql_autosave_$_activeProjectId.sqp'),
     );
     final legacyScratchQlAutosave = File(
-      '${support.path}/scratchql_autosave_$_activeProjectId.scratchql',
+      p.join(support.path, 'scratchql_autosave_$_activeProjectId.scratchql'),
     );
     final legacyScratchQlSqpAutosave = File(
-      '${support.path}/scratchql_autosave_$_activeProjectId.sqp',
+      p.join(support.path, 'scratchql_autosave_$_activeProjectId.sqp'),
     );
     final sourceFile = await autosave.exists()
         ? autosave
@@ -1896,8 +1905,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   String _projectNameFromPath(String path) {
-    final chunks = path.split(Platform.pathSeparator);
-    final file = chunks.isEmpty ? path : chunks.last;
+    final file = p.basename(path);
     if (file.endsWith('.nodeql')) {
       return file.substring(0, file.length - '.nodeql'.length);
     }
@@ -1944,11 +1952,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   String? _relativePathIfInsideProject(String dbPath, String projectPath) {
-    final projectDir = p.dirname(projectPath);
-    if (!p.isWithin(projectDir, dbPath) && p.normalize(dbPath) != projectDir) {
-      return null;
-    }
-    return p.relative(dbPath, from: projectDir);
+    return ProjectFilePaths.relativeDatabasePath(dbPath, projectPath);
   }
 
   Future<void> _loadProjectPayload(String source, {String? projectPath}) async {
@@ -1995,12 +1999,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     String? dbRelativePath,
     String? projectPath,
   ) {
-    if (projectPath != null &&
-        dbRelativePath != null &&
-        dbRelativePath.trim().isNotEmpty) {
-      return p.normalize(p.join(p.dirname(projectPath), dbRelativePath));
-    }
-    return dbPath;
+    return ProjectFilePaths.resolveDatabasePath(
+      dbPath,
+      dbRelativePath,
+      projectPath,
+    );
   }
 
   bool _isProjectEnvelopeFormat(Object? format) {
@@ -2026,7 +2029,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<File> _registryFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/nodeql_projects.json');
+    return File(p.join(support.path, 'nodeql_projects.json'));
   }
 
   Future<String> _availableProjectPath(Directory directory, String name) async {
@@ -2174,20 +2177,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 }
 
-const _workshopRuntimeState = SqlRuntimeState(
-  schemas: <TableSchema>[
-    TableSchema(
-      name: 'customers',
-      columns: <String>['id', 'name', 'city', 'country', 'active'],
-    ),
-    TableSchema(
-      name: 'orders',
-      columns: <String>['id', 'customer_id', 'total', 'created_at'],
-    ),
-    TableSchema(name: 'archived_customers', columns: <String>['id', 'name']),
-  ],
-);
-
 class _WorkshopProviderScope extends StatelessWidget {
   const _WorkshopProviderScope({required this.onExit});
 
@@ -2208,9 +2197,14 @@ class _WorkshopProviderScope extends StatelessWidget {
           initialWorkspaceJson: workspace.toJsonString(),
         );
       }),
-      sqlRuntimeProvider.overrideWith(
-        (ref) => SqlRuntimeController(initialState: _workshopRuntimeState),
-      ),
+      sqlRuntimeProvider.overrideWith((ref) {
+        final database = WorkshopDatabase.create();
+        ref.onDispose(database.dispose);
+        return SqlRuntimeController(
+          initialState: database.initialState,
+          readOnly: true,
+        );
+      }),
       sqlModeProvider.overrideWith((ref) => SqlModeController.session()),
     ],
     child: _WorkshopWorkspaceView(onExit: onExit),
@@ -2234,7 +2228,9 @@ class _WorkshopWorkspaceViewState
   final SqlCompiler _compiler = const SqlCompiler();
   SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
   double _paletteWidth = 250;
+  double? _practicePanelHeight;
   TutorialPracticeSession? _practice;
+  bool _runningSql = false;
 
   @override
   void dispose() {
@@ -2256,8 +2252,14 @@ class _WorkshopWorkspaceViewState
     final definition = practice == null
         ? null
         : tutorialPracticeDefinitions[practice.mode];
-    final result = definition?.evaluate(roots, practice?.stepIndex ?? 0);
     final compileResult = _compiler.compileWorkspace(roots);
+    final result = definition?.evaluate(
+      roots,
+      practice?.stepIndex ?? 0,
+      currentSql: compileResult.sql,
+      executedSql: runtime.lastSql,
+      executionSucceeded: runtime.lastMessage?.startsWith('OK') == true,
+    );
     final diagnostics = _nodeDiagnostics(
       mode: mode,
       roots: roots,
@@ -2273,6 +2275,8 @@ class _WorkshopWorkspaceViewState
             _WorkshopModeTopBar(
               catalog: catalog,
               mode: mode,
+              running: _runningSql,
+              onRun: () => unawaited(_runWorkshopSql()),
               onModeChanged: (next) =>
                   unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
               onLessons: () => _openTutorial(context),
@@ -2286,6 +2290,19 @@ class _WorkshopWorkspaceViewState
                       ? _paletteWidth.clamp(200.0, 280.0)
                       : _paletteWidth;
                   final outputWidth = compact ? 320.0 : 420.0;
+                  final practicePanelMinHeight = 220.0;
+                  final practicePanelMaxHeight = math.max(
+                    practicePanelMinHeight,
+                    constraints.maxHeight - 250.0,
+                  );
+                  final preferredPracticePanelHeight =
+                      (constraints.maxHeight * .42)
+                          .clamp(280.0, 420.0)
+                          .toDouble();
+                  final practicePanelHeight =
+                      (_practicePanelHeight ?? preferredPracticePanelHeight)
+                          .clamp(practicePanelMinHeight, practicePanelMaxHeight)
+                          .toDouble();
                   return Row(
                     children: [
                       _CategoryRail(
@@ -2363,9 +2380,18 @@ class _WorkshopWorkspaceViewState
                                   abstractionMode: mode,
                                   localeCode: localeCode,
                                   liveSql: compileResult.sql,
-                                  onCheck: () => _checkPractice(result),
+                                  onCheck: () => _checkPractice(
+                                    practice.mode,
+                                    practice.stepIndex,
+                                  ),
                                   onHint: _showHint,
                                   onClose: _closePractice,
+                                  height: practicePanelHeight,
+                                  minHeight: practicePanelMinHeight,
+                                  maxHeight: practicePanelMaxHeight,
+                                  onHeightChanged: (nextHeight) => setState(
+                                    () => _practicePanelHeight = nextHeight,
+                                  ),
                                 ),
                               )
                             else
@@ -2407,29 +2433,80 @@ class _WorkshopWorkspaceViewState
     );
   }
 
+  Future<void> _runWorkshopSql() async {
+    if (_runningSql) return;
+    final roots = ref.read(workspaceProvider).roots;
+    final sql = _compiler.compileWorkspace(roots).sql.trim();
+    final runtime = ref.read(sqlRuntimeProvider.notifier);
+    if (sql.isEmpty) {
+      runtime.setMessage(
+        ref
+            .read(translationControllerProvider)
+            .catalog
+            .text('runtime.noExecutable'),
+      );
+      return;
+    }
+    setState(() => _runningSql = true);
+    try {
+      await runtime.executeWithSnapshot(sql);
+    } finally {
+      if (mounted) setState(() => _runningSql = false);
+    }
+  }
+
   Future<void> _openTutorial(BuildContext context) async {
+    final tutorial = ref.read(tutorialControllerProvider.notifier);
+    final initialization = tutorial.initialize();
     final catalog = ref.read(translationControllerProvider).catalog;
+    Widget buildTutorial() => TutorialDialog(
+      catalog: catalog,
+      initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
+      onProgressChanged: (mode, progress) => ref
+          .read(tutorialControllerProvider.notifier)
+          .saveLessonProgress(mode, progress),
+      onStartPractice: _startPractice,
+      onComplete: () =>
+          ref.read(tutorialControllerProvider.notifier).complete(),
+    );
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => TutorialDialog(
-        catalog: catalog,
-        initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
-        onProgressChanged: (mode, progress) => ref
-            .read(tutorialControllerProvider.notifier)
-            .saveLessonProgress(mode, progress),
-        onStartPractice: _startPractice,
-        onComplete: () =>
-            ref.read(tutorialControllerProvider.notifier).complete(),
-      ),
+      builder: (_) => !ref.read(tutorialControllerProvider).loading
+          ? buildTutorial()
+          : FutureBuilder<void>(
+              future: initialization,
+              builder: (dialogContext, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Dialog(
+                    child: SizedBox(
+                      key: ValueKey('tutorial-loading'),
+                      width: 280,
+                      height: 160,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  );
+                }
+                return buildTutorial();
+              },
+            ),
     );
   }
 
   Future<void> _startPractice(TutorialKnowledgeMode mode) async {
+    if (ref.read(tutorialControllerProvider).loading) {
+      await ref.read(tutorialControllerProvider.notifier).initialize();
+    }
+    if (!mounted) return;
     final definition = tutorialPracticeDefinitions[mode]!;
     final abstractionMode = ref.read(sqlModeProvider);
+    ref.read(sqlRuntimeProvider.notifier).clearResults();
     final progress = ref.read(tutorialControllerProvider).progressFor(mode);
-    final completedSteps = progress.practiceCompleted
+    final pathAlreadyComplete = List<int>.generate(
+      definition.stepCount,
+      (index) => index,
+    ).every(progress.completedPracticeSteps.contains);
+    final completedSteps = pathAlreadyComplete
         ? const <int>{}
         : progress.completedPracticeSteps;
     final stepIndex = definition.nextStep(completedSteps);
@@ -2459,9 +2536,28 @@ class _WorkshopWorkspaceViewState
     });
   }
 
-  Future<void> _checkPractice(TutorialPracticeResult result) async {
+  Future<void> _checkPractice(
+    TutorialKnowledgeMode expectedMode,
+    int expectedStepIndex,
+  ) async {
     final session = _practice;
-    if (session == null) return;
+    if (session == null ||
+        session.completed ||
+        session.mode != expectedMode ||
+        session.stepIndex != expectedStepIndex) {
+      return;
+    }
+    final definition = tutorialPracticeDefinitions[session.mode]!;
+    final roots = ref.read(workspaceProvider).roots;
+    final sql = _compiler.compileWorkspace(roots).sql;
+    final runtime = ref.read(sqlRuntimeProvider);
+    final result = definition.evaluate(
+      roots,
+      session.stepIndex,
+      currentSql: sql,
+      executedSql: runtime.lastSql,
+      executionSucceeded: runtime.lastMessage?.startsWith('OK') == true,
+    );
     if (!result.complete) {
       setState(() => _practice = session.copyWith(attempted: true));
       return;
@@ -2469,13 +2565,29 @@ class _WorkshopWorkspaceViewState
 
     final tutorial = ref.read(tutorialControllerProvider);
     final progress = tutorial.progressFor(session.mode);
-    final definition = tutorialPracticeDefinitions[session.mode]!;
     final completedSteps = <int>{...session.completedSteps, session.stepIndex};
     final finished = List<int>.generate(
       definition.stepCount,
       (index) => index,
     ).every(completedSteps.contains);
     final nextStepIndex = finished ? session.stepIndex : session.stepIndex + 1;
+    if (!finished && definition.steps[nextStepIndex].startFresh) {
+      ref.read(sqlRuntimeProvider.notifier).clearResults();
+      final workspace = ref.read(workspaceProvider.notifier)
+        ..resetWithRoot(recordUndo: false, clearHistory: true);
+      for (final seed in definition.starterFor(
+        ref.read(sqlModeProvider),
+        nextStepIndex,
+      )) {
+        workspace.addTemplate(
+          seed.type,
+          workspace.suggestedTemplatePosition(seed.type),
+          defaults: seed.defaults,
+          recordUndo: false,
+        );
+      }
+      _transform.value = Matrix4.identity();
+    }
     setState(() {
       if (!finished) {
         _activeCategory = _categoryForPracticeStep(
@@ -2490,17 +2602,14 @@ class _WorkshopWorkspaceViewState
         completed: finished,
       );
     });
-    final persistedSteps = progress.practiceCompleted && !finished
-        ? progress.completedPracticeSteps
-        : completedSteps;
     await ref
         .read(tutorialControllerProvider.notifier)
         .saveLessonProgress(
           session.mode,
           progress.copyWith(
-            completedPracticeSteps: persistedSteps,
+            completedPracticeSteps: completedSteps,
             completed: progress.completed || finished,
-            practiceCompleted: progress.practiceCompleted || finished,
+            practiceCompleted: finished,
           ),
         );
   }
@@ -2525,6 +2634,8 @@ class _WorkshopModeTopBar extends StatelessWidget {
   const _WorkshopModeTopBar({
     required this.catalog,
     required this.mode,
+    required this.running,
+    required this.onRun,
     required this.onModeChanged,
     required this.onLessons,
     required this.onClose,
@@ -2532,6 +2643,8 @@ class _WorkshopModeTopBar extends StatelessWidget {
 
   final TranslationCatalog catalog;
   final SqlAbstractionMode mode;
+  final bool running;
+  final VoidCallback onRun;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onLessons;
   final VoidCallback onClose;
@@ -2579,6 +2692,8 @@ class _WorkshopModeTopBar extends StatelessWidget {
             ),
           ),
           SegmentedButton<SqlAbstractionMode>(
+            key: const ValueKey('workshop-sql-mode'),
+            style: NodeQlDesign.modeSegmentedButtonStyle(context),
             segments: [
               ButtonSegment(
                 value: SqlAbstractionMode.simple,
@@ -2591,6 +2706,18 @@ class _WorkshopModeTopBar extends StatelessWidget {
             ],
             selected: <SqlAbstractionMode>{mode},
             onSelectionChanged: (selection) => onModeChanged(selection.first),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            key: const ValueKey('workshop-run-sqlite'),
+            onPressed: running ? null : onRun,
+            icon: running
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.play_arrow_rounded),
+            label: Text(catalog.text('toolbar.runSql')),
           ),
           const SizedBox(width: 10),
           FilledButton.icon(
@@ -2745,6 +2872,8 @@ class _TopBar extends StatelessWidget {
     required this.localeCode,
     required this.onLocale,
     required this.onPickDb,
+    required this.canBrowseDb,
+    required this.onBrowseDb,
     required this.onExecuteGuarded,
     required this.columnLinkMode,
     required this.onColumnLinkModeChanged,
@@ -2760,6 +2889,8 @@ class _TopBar extends StatelessWidget {
   final String localeCode;
   final ValueChanged<String> onLocale;
   final VoidCallback onPickDb;
+  final bool canBrowseDb;
+  final VoidCallback onBrowseDb;
   final VoidCallback onExecuteGuarded;
   final bool columnLinkMode;
   final VoidCallback onColumnLinkModeChanged;
@@ -2829,6 +2960,26 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
+                  Tooltip(
+                    message: catalog.text('toolbar.browseDatabase'),
+                    child: NodeQlBrutalPressable(
+                      child: OutlinedButton(
+                        key: const ValueKey<String>('open-database-browser'),
+                        onPressed: canBrowseDb ? onBrowseDb : null,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: workbenchColors.topBarForeground,
+                          fixedSize: const Size(44, 40),
+                          padding: EdgeInsets.zero,
+                          side: BorderSide(
+                            color: workbenchColors.border,
+                            width: surfaceStyle.borderWidth,
+                          ),
+                        ),
+                        child: const Icon(Icons.table_chart_outlined, size: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: NodeQlDesign.space2),
                   NodeQlBrutalPressable(
                     radius: surfaceStyle.radiusMedium,
                     child: FilledButton.icon(
@@ -2858,6 +3009,8 @@ class _TopBar extends StatelessWidget {
                   ),
                   const SizedBox(width: NodeQlDesign.space1),
                   SegmentedButton<SqlAbstractionMode>(
+                    key: const ValueKey<String>('workbench-sql-mode'),
+                    style: NodeQlDesign.modeSegmentedButtonStyle(context),
                     segments: [
                       ButtonSegment(
                         value: SqlAbstractionMode.simple,
@@ -2896,17 +3049,18 @@ class _TopBar extends StatelessWidget {
                       if (v != null) onLocale(v);
                     },
                   ),
-                  IconButton(
-                    onPressed: onSettings,
-                    tooltip: catalog.text('toolbar.settings'),
-                    color: workbenchColors.topBarForeground,
-                    icon: const Icon(Icons.settings),
-                  ),
                 ],
               ),
             ),
           ),
-          const SizedBox(width: NodeQlDesign.space3),
+          const SizedBox(width: NodeQlDesign.space2),
+          IconButton(
+            onPressed: onSettings,
+            tooltip: catalog.text('toolbar.settings'),
+            color: workbenchColors.topBarForeground,
+            icon: const Icon(Icons.settings),
+          ),
+          const SizedBox(width: NodeQlDesign.space2),
           NodeQlBrutalPressable(
             radius: surfaceStyle.radiusMedium,
             child: FilledButton.icon(
@@ -4738,7 +4892,9 @@ class _WorkspaceCanvas extends ConsumerWidget {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           final keyboard = HardwareKeyboard.instance;
           final cmdOrCtrl = keyboard.isMetaPressed || keyboard.isControlPressed;
-          if (cmdOrCtrl && event.logicalKey == LogicalKeyboardKey.keyS) {
+          if (cmdOrCtrl &&
+              !keyboard.isShiftPressed &&
+              event.logicalKey == LogicalKeyboardKey.keyS) {
             unawaited(onSaveProject());
             return KeyEventResult.handled;
           }

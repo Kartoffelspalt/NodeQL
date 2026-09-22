@@ -980,6 +980,14 @@ class SqliteDialectRenderer {
     required List<String> warnings,
     Set<String>? visited,
   }) {
+    final directPredicate = '${node.inputs['predicate'] ?? ''}'.trim();
+    if (directPredicate.isNotEmpty &&
+        !node.inputs.containsKey('aggregate') &&
+        !node.inputs.containsKey('expr') &&
+        !node.inputs.containsKey('operator') &&
+        !node.inputs.containsKey('value')) {
+      return directPredicate;
+    }
     final aggregateReporter = reporterForInput(node, 'aggregate');
     final aggregate = _aggregateFunctionFromReporter(
       aggregateReporter,

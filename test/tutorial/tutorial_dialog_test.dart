@@ -56,8 +56,32 @@ void main() {
       ),
     );
 
-    expect(find.text('2 of 3 workspace missions'), findsOneWidget);
+    expect(find.text('2 of 7 workspace missions'), findsOneWidget);
     expect(find.text('Continue in workspace'), findsOneWidget);
+  });
+
+  testWidgets('previously finished short paths resume their new missions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TutorialDialog(
+          catalog: _englishCatalog(),
+          initialProgress: const {
+            TutorialKnowledgeMode.beginnerSyntax: TutorialLessonProgress(
+              completedPracticeSteps: {0, 1, 2},
+              practiceCompleted: true,
+            ),
+          },
+          onStartPractice: (mode) async {},
+          onComplete: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('3 of 7 workspace missions'), findsOneWidget);
+    expect(find.text('Continue in workspace'), findsOneWidget);
+    expect(find.text('Repeat in workspace'), findsNothing);
   });
 
   testWidgets('uses readable workshop colors in White Mode', (tester) async {
@@ -75,9 +99,9 @@ void main() {
 
     final body = tester.widget<Text>(
       find.text(
-        'Every path opens a real query tab. Drag, connect and configure '
-        'NodeQL nodes yourself while the workshop validates the graph and '
-        'shows the generated SQLite live — no quiz questions.',
+        'Four hands-on paths, 30 workspace missions and a private SQLite '
+        'practice database. Build each solution with real nodes, run it '
+        'against sample data and finish with independent projects — no quiz questions.',
       ),
     );
     final colors = lightTheme.extension<NodeQlWorkbenchColors>()!;

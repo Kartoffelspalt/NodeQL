@@ -28,8 +28,10 @@ std::wstring Utf8ToWide(const std::string& value) {
   if (size <= 0) {
     return std::wstring(value.begin(), value.end());
   }
-  std::wstring result(size - 1, L'\0');
+  // MultiByteToWideChar includes the terminating NUL in `size`.
+  std::wstring result(size, L'\0');
   MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, result.data(), size);
+  result.resize(size - 1);
   return result;
 }
 

@@ -596,8 +596,9 @@ class _TutorialDialogState extends State<TutorialDialog> {
     _saveProgress();
   }
 
-  int get _completedLessonCount =>
-      _progress.values.where((progress) => progress.practiceCompleted).length;
+  int get _completedLessonCount => TutorialKnowledgeMode.values
+      .where((mode) => _practicePathCompleted(mode, _progress[mode]!))
+      .length;
 
   int _challengeCount(TutorialKnowledgeMode mode) =>
       _tutorialSteps[mode]!.where((step) => step.correctAnswer != null).length;
@@ -880,6 +881,17 @@ IconData _lessonIcon(TutorialKnowledgeMode mode) => switch (mode) {
   TutorialKnowledgeMode.expert => Icons.insights_outlined,
 };
 
+bool _practicePathCompleted(
+  TutorialKnowledgeMode mode,
+  TutorialLessonProgress progress,
+) {
+  final definition = tutorialPracticeDefinitions[mode]!;
+  return List<int>.generate(
+    definition.stepCount,
+    (index) => index,
+  ).every(progress.completedPracticeSteps.contains);
+}
+
 class _LessonOverview extends StatelessWidget {
   const _LessonOverview({
     required this.catalog,
@@ -897,8 +909,13 @@ class _LessonOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final completed = progress.values
-        .where((item) => item.practiceCompleted)
+    final completed = TutorialKnowledgeMode.values
+        .where(
+          (mode) => _practicePathCompleted(
+            mode,
+            progress[mode] ?? const TutorialLessonProgress(),
+          ),
+        )
         .length;
     return SingleChildScrollView(
       key: const ValueKey('tutorial-lesson-overview'),
@@ -923,7 +940,12 @@ class _LessonOverview extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            catalog.text('tutorial.overview.body'),
+            catalog.text('tutorial.overview.body', {
+              'missions': challengeCounts.values.fold<int>(
+                0,
+                (total, count) => total + count,
+              ),
+            }),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.5,
@@ -932,6 +954,13 @@ class _LessonOverview extends StatelessWidget {
           const SizedBox(height: 24),
           _WorkshopSummary(catalog: catalog, completed: completed),
           const SizedBox(height: 22),
+          Text(
+            catalog.text('tutorial.overview.curriculum'),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final twoColumns = constraints.maxWidth >= 720;
@@ -958,6 +987,116 @@ class _LessonOverview extends StatelessWidget {
                 ],
               );
             },
+          ),
+          const SizedBox(height: 22),
+          Container(
+            key: const ValueKey('tutorial-practice-dataset'),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: NodeQlWorkbenchColors.of(context).panel,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: NodeQlWorkbenchColors.of(context).border,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.storage_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        catalog.text('tutorial.overview.datasetTitle'),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  catalog.text('tutorial.overview.datasetBody'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _WorkshopSchemaCard(
+                      catalog: catalog,
+                      name: 'customers',
+                      columns: 'id · name · city · country · active',
+                      rowCount: 8,
+                    ),
+                    _WorkshopSchemaCard(
+                      catalog: catalog,
+                      name: 'orders',
+                      columns: 'id · customer_id · total · created_at',
+                      rowCount: 10,
+                    ),
+                    _WorkshopSchemaCard(
+                      catalog: catalog,
+                      name: 'archived_customers',
+                      columns: 'id · name',
+                      rowCount: 4,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkshopSchemaCard extends StatelessWidget {
+  const _WorkshopSchemaCard({
+    required this.catalog,
+    required this.name,
+    required this.columns,
+    required this.rowCount,
+  });
+
+  final TranslationCatalog catalog;
+  final String name;
+  final String columns;
+  final int rowCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      width: 270,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colors.panelElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 3),
+          Text(
+            catalog.text('tutorial.overview.datasetRows', {'count': rowCount}),
+            style: TextStyle(color: colors.muted, fontSize: 11),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            columns,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
           ),
         ],
       ),
@@ -1046,8 +1185,9 @@ class _LessonCard extends StatelessWidget {
       0,
       exerciseCount,
     );
+    final courseComplete = _practicePathCompleted(mode, progress);
     final started = solved > 0;
-    final actionKey = progress.practiceCompleted
+    final actionKey = courseComplete
         ? 'tutorial.lesson.repeat'
         : started
         ? 'tutorial.lesson.resume'
@@ -1083,14 +1223,32 @@ class _LessonCard extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  if (progress.practiceCompleted)
-                    Chip(
-                      avatar: const Icon(Icons.check_circle, size: 18),
-                      label: Text(catalog.text('tutorial.lesson.completed')),
+                  if (courseComplete)
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Chip(
+                          avatar: const Icon(Icons.check_circle, size: 18),
+                          label: Text(
+                            catalog.text('tutorial.lesson.completed'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
                     )
                   else if (mode == TutorialKnowledgeMode.beginner)
-                    Chip(
-                      label: Text(catalog.text('tutorial.lesson.recommended')),
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Chip(
+                          label: Text(
+                            catalog.text('tutorial.lesson.recommended'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
                     ),
                 ],
               ),
@@ -1125,7 +1283,36 @@ class _LessonCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (progress.practiceCompleted) ...[
+              const SizedBox(height: 12),
+              for (var index = 0; index < exerciseCount; index++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        progress.completedPracticeSteps.contains(index)
+                            ? Icons.check_circle_rounded
+                            : index == exerciseCount - 1
+                            ? Icons.flag_outlined
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 14,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          catalog.text(
+                            'tutorial.practice.${mode.name}.step.${index + 1}.title',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: colors.muted, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (courseComplete) ...[
                 const SizedBox(height: 10),
                 Row(
                   children: [

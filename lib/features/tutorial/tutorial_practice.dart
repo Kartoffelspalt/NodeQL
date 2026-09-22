@@ -38,6 +38,18 @@ enum TutorialPracticeCheck {
   orderBeforeLimit,
   selectColumnReporter,
   whereTextReporter,
+  orConnected,
+  orConfigured,
+  whereBeforeOr,
+  selectDistinct,
+  selectAggregateReporter,
+  selectAliasReporter,
+  intersectConnected,
+  intersectConfigured,
+  exceptConnected,
+  exceptConfigured,
+  unionAllConfigured,
+  queryExecuted,
 }
 
 class TutorialPracticeStep {
@@ -47,6 +59,7 @@ class TutorialPracticeStep {
     this.starterSeeds,
     this.focusNodes = const <BlockType>[],
     this.estimatedMinutes = 2,
+    this.startFresh = false,
   });
 
   final List<TutorialPracticeCheck> checks;
@@ -54,6 +67,7 @@ class TutorialPracticeStep {
   final List<TutorialPracticeSeed>? starterSeeds;
   final List<BlockType> focusNodes;
   final int estimatedMinutes;
+  final bool startFresh;
 }
 
 class TutorialPracticeDefinition {
@@ -99,11 +113,23 @@ class TutorialPracticeDefinition {
     ];
   }
 
-  TutorialPracticeResult evaluate(List<BlockNode> roots, int stepIndex) {
+  TutorialPracticeResult evaluate(
+    List<BlockNode> roots,
+    int stepIndex, {
+    String? currentSql,
+    String? executedSql,
+    bool executionSucceeded = false,
+  }) {
     final graph = TutorialPracticeGraph.fromRoots(roots);
     final step = steps[stepIndex.clamp(0, steps.length - 1)];
     return TutorialPracticeResult({
-      for (final check in step.checks) check: _evaluate(check, graph),
+      for (final check in step.checks)
+        check: check == TutorialPracticeCheck.queryExecuted
+            ? executionSucceeded &&
+                  currentSql != null &&
+                  currentSql.trim().isNotEmpty &&
+                  currentSql.trim() == executedSql?.trim()
+            : _evaluate(check, graph),
     });
   }
 
@@ -120,7 +146,9 @@ class TutorialPracticeDefinition {
         (node) =>
             graph.inputConfigured(node, 'columns', allowWildcard: true) &&
             (node.inputs['separate_from'] == true ||
-                graph.inputConfigured(node, 'table')),
+                graph.inputConfigured(node, 'table') ||
+                (node.next?.type == BlockType.sqlFrom &&
+                    graph.inputConfigured(node.next!, 'table'))),
       ),
       TutorialPracticeCheck.fromConnected => types.contains(BlockType.sqlFrom),
       TutorialPracticeCheck.fromConfigured => _configured(
@@ -197,10 +225,7 @@ class TutorialPracticeDefinition {
       TutorialPracticeCheck.unionConfigured => _configured(
         nodes,
         BlockType.sqlUnion,
-        (node) => RegExp(
-          r'^\s*select\b',
-          caseSensitive: false,
-        ).hasMatch('${node.inputs['sql'] ?? ''}'),
+        _setQueryConfigured,
       ),
       TutorialPracticeCheck.unionBeforeOrder => _appearsBefore(
         nodes,
@@ -248,6 +273,64 @@ class TutorialPracticeDefinition {
                   graph.reporterFor(node, 'value')?.type == BlockType.sqlText &&
                   graph.inputConfigured(node, 'value'),
             ),
+      TutorialPracticeCheck.orConnected => types.contains(BlockType.sqlOr),
+      TutorialPracticeCheck.orConfigured => _configured(
+        nodes,
+        BlockType.sqlOr,
+        (node) => _filterConfigured(graph, node),
+      ),
+      TutorialPracticeCheck.whereBeforeOr => _appearsBefore(
+        nodes,
+        BlockType.sqlWhere,
+        BlockType.sqlOr,
+      ),
+      TutorialPracticeCheck.selectDistinct => _configured(
+        nodes,
+        BlockType.sqlSelect,
+        (node) =>
+            node.inputs['distinct'] == true ||
+            '${node.inputs['select_mode'] ?? ''}'.trim().toUpperCase() ==
+                'DISTINCT',
+      ),
+      TutorialPracticeCheck.selectAggregateReporter =>
+        nodes.where((node) => node.type == BlockType.sqlSelect).any((node) {
+          final reporter = graph.reporterFor(node, 'columns');
+          return reporter != null &&
+              _aggregateTypes.contains(reporter.type) &&
+              graph.inputConfigured(node, 'columns');
+        }),
+      TutorialPracticeCheck.selectAliasReporter =>
+        nodes.where((node) => node.type == BlockType.sqlSelect).any((node) {
+          final reporter = graph.reporterFor(node, 'columns');
+          return reporter?.type == BlockType.sqlAlias &&
+              graph.inputConfigured(node, 'columns');
+        }),
+      TutorialPracticeCheck.intersectConnected => types.contains(
+        BlockType.sqlIntersect,
+      ),
+      TutorialPracticeCheck.intersectConfigured => _configured(
+        nodes,
+        BlockType.sqlIntersect,
+        _setQueryConfigured,
+      ),
+      TutorialPracticeCheck.exceptConnected => types.contains(
+        BlockType.sqlExcept,
+      ),
+      TutorialPracticeCheck.exceptConfigured => _configured(
+        nodes,
+        BlockType.sqlExcept,
+        _setQueryConfigured,
+      ),
+      TutorialPracticeCheck.unionAllConfigured => _configured(
+        nodes,
+        BlockType.sqlUnion,
+        (node) =>
+            _setQueryConfigured(node) &&
+            (node.inputs['all'] == true ||
+                '${node.inputs['set_mode'] ?? ''}'.trim().toUpperCase() ==
+                    'ALL'),
+      ),
+      TutorialPracticeCheck.queryExecuted => false,
     };
   }
 }
@@ -394,6 +477,7 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.fromConfigured,
               TutorialPracticeCheck.selectBeforeFrom,
             ],
+            focusNodes: [BlockType.sqlSelect, BlockType.sqlFrom],
             resumeSeeds: [
               TutorialPracticeSeed(BlockType.sqlFrom, {'table': 'customers'}),
             ],
@@ -403,6 +487,7 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.whereConnected,
               TutorialPracticeCheck.whereConfigured,
             ],
+            focusNodes: [BlockType.sqlWhere],
             resumeSeeds: [
               TutorialPracticeSeed(BlockType.sqlWhere, {
                 'column': 'country',
@@ -418,7 +503,74 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.andConfigured,
               TutorialPracticeCheck.whereBeforeAnd,
             ],
-            resumeSeeds: [],
+            focusNodes: [BlockType.sqlAnd],
+            resumeSeeds: [
+              TutorialPracticeSeed(BlockType.sqlAnd, {
+                'column': 'active',
+                'operator': '=',
+                'value': '1',
+              }),
+            ],
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.orConnected,
+              TutorialPracticeCheck.orConfigured,
+              TutorialPracticeCheck.whereBeforeOr,
+            ],
+            focusNodes: [BlockType.sqlOr],
+            resumeSeeds: [
+              TutorialPracticeSeed(BlockType.sqlOr, {
+                'column': 'city',
+                'operator': '=',
+                'value': 'Berlin',
+              }),
+            ],
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.orderByConnected,
+              TutorialPracticeCheck.orderByConfigured,
+            ],
+            focusNodes: [BlockType.sqlOrderBy],
+            resumeSeeds: [_beginnerOrder],
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.limitConnected,
+              TutorialPracticeCheck.limitConfigured,
+              TutorialPracticeCheck.orderBeforeLimit,
+            ],
+            focusNodes: [BlockType.sqlLimit],
+            resumeSeeds: [
+              TutorialPracticeSeed(BlockType.sqlLimit, {'count': '5'}),
+            ],
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.selectConnected,
+              TutorialPracticeCheck.selectConfigured,
+              TutorialPracticeCheck.fromConnected,
+              TutorialPracticeCheck.fromConfigured,
+              TutorialPracticeCheck.selectBeforeFrom,
+              TutorialPracticeCheck.whereConnected,
+              TutorialPracticeCheck.whereConfigured,
+              TutorialPracticeCheck.orderByConnected,
+              TutorialPracticeCheck.orderByConfigured,
+              TutorialPracticeCheck.limitConnected,
+              TutorialPracticeCheck.limitConfigured,
+              TutorialPracticeCheck.orderBeforeLimit,
+              TutorialPracticeCheck.queryExecuted,
+            ],
+            starterSeeds: [],
+            startFresh: true,
+            focusNodes: [
+              BlockType.eventGreenFlag,
+              BlockType.sqlSelect,
+              BlockType.sqlFrom,
+              BlockType.sqlWhere,
+            ],
+            estimatedMinutes: 5,
           ),
         ],
       ),
@@ -432,27 +584,16 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.joinConnected,
               TutorialPracticeCheck.joinConfigured,
             ],
-            resumeSeeds: [
-              TutorialPracticeSeed(BlockType.sqlInnerJoin, {
-                'table': 'orders',
-                'left_column': 'customers.id',
-                'operator': '=',
-                'right_column': 'orders.customer_id',
-                'on': 'customers.id = orders.customer_id',
-              }),
-            ],
+            focusNodes: [BlockType.sqlJoin],
+            resumeSeeds: [_ordersJoin],
           ),
           TutorialPracticeStep(
             checks: [
               TutorialPracticeCheck.groupByConnected,
               TutorialPracticeCheck.groupByConfigured,
             ],
-            resumeSeeds: [
-              TutorialPracticeSeed(BlockType.sqlGroupBy, {
-                'column': 'customers.name',
-                'expr': 'customers.name',
-              }),
-            ],
+            focusNodes: [BlockType.sqlGroupBy],
+            resumeSeeds: [_customerGroup],
           ),
           TutorialPracticeStep(
             checks: [
@@ -460,7 +601,70 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.havingConfigured,
               TutorialPracticeCheck.groupBeforeHaving,
             ],
-            resumeSeeds: [],
+            focusNodes: [BlockType.sqlHaving],
+            resumeSeeds: [_positiveHaving],
+          ),
+          TutorialPracticeStep(
+            checks: [TutorialPracticeCheck.selectAggregateReporter],
+            focusNodes: [BlockType.sqlCount],
+            estimatedMinutes: 3,
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.orderByConnected,
+              TutorialPracticeCheck.orderByConfigured,
+              TutorialPracticeCheck.groupBeforeHaving,
+            ],
+            focusNodes: [BlockType.sqlOrderBy],
+            starterSeeds: [
+              _joinCountSelect,
+              _customersFrom,
+              _ordersJoin,
+              _customerGroup,
+              _positiveHaving,
+            ],
+            resumeSeeds: [_beginnerOrder],
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.limitConnected,
+              TutorialPracticeCheck.limitConfigured,
+              TutorialPracticeCheck.orderBeforeLimit,
+            ],
+            focusNodes: [BlockType.sqlLimit],
+            starterSeeds: [
+              _joinCountSelect,
+              _customersFrom,
+              _ordersJoin,
+              _customerGroup,
+              _positiveHaving,
+              _beginnerOrder,
+            ],
+            resumeSeeds: [
+              TutorialPracticeSeed(BlockType.sqlLimit, {'count': '5'}),
+            ],
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.selectAggregateReporter,
+              TutorialPracticeCheck.joinConnected,
+              TutorialPracticeCheck.joinConfigured,
+              TutorialPracticeCheck.groupByConnected,
+              TutorialPracticeCheck.groupByConfigured,
+              TutorialPracticeCheck.havingConnected,
+              TutorialPracticeCheck.havingConfigured,
+              TutorialPracticeCheck.groupBeforeHaving,
+              TutorialPracticeCheck.orderByConnected,
+              TutorialPracticeCheck.orderByConfigured,
+              TutorialPracticeCheck.limitConnected,
+              TutorialPracticeCheck.limitConfigured,
+              TutorialPracticeCheck.orderBeforeLimit,
+              TutorialPracticeCheck.queryExecuted,
+            ],
+            starterSeeds: [_joinSelect, _customersFrom],
+            startFresh: true,
+            focusNodes: [BlockType.sqlJoin, BlockType.sqlGroupBy],
+            estimatedMinutes: 6,
           ),
         ],
       ),
@@ -474,6 +678,7 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.unionConnected,
               TutorialPracticeCheck.unionConfigured,
             ],
+            focusNodes: [BlockType.sqlUnion],
             resumeSeeds: [
               TutorialPracticeSeed(BlockType.sqlUnion, {
                 'sql': 'SELECT id, name FROM archived_customers',
@@ -486,6 +691,7 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.orderByConfigured,
               TutorialPracticeCheck.unionBeforeOrder,
             ],
+            focusNodes: [BlockType.sqlOrderBy],
             resumeSeeds: [
               TutorialPracticeSeed(BlockType.sqlOrderBy, {
                 'column': 'name',
@@ -500,7 +706,68 @@ const tutorialPracticeDefinitions =
               TutorialPracticeCheck.limitConfigured,
               TutorialPracticeCheck.orderBeforeLimit,
             ],
+            focusNodes: [BlockType.sqlLimit],
             resumeSeeds: [],
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.intersectConnected,
+              TutorialPracticeCheck.intersectConfigured,
+            ],
+            starterSeeds: [_inlineSelect],
+            startFresh: true,
+            focusNodes: [BlockType.sqlIntersect],
+            estimatedMinutes: 3,
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.exceptConnected,
+              TutorialPracticeCheck.exceptConfigured,
+            ],
+            starterSeeds: [_inlineSelect],
+            startFresh: true,
+            focusNodes: [BlockType.sqlExcept],
+            estimatedMinutes: 3,
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.unionConnected,
+              TutorialPracticeCheck.unionAllConfigured,
+            ],
+            starterSeeds: [_inlineSelect],
+            startFresh: true,
+            focusNodes: [BlockType.sqlUnion],
+            estimatedMinutes: 3,
+          ),
+          TutorialPracticeStep(
+            checks: [TutorialPracticeCheck.selectDistinct],
+            starterSeeds: [_distinctSelect],
+            startFresh: true,
+            focusNodes: [BlockType.sqlSelect],
+          ),
+          TutorialPracticeStep(
+            checks: [TutorialPracticeCheck.selectAliasReporter],
+            focusNodes: [BlockType.sqlAlias, BlockType.sqlColumn],
+            estimatedMinutes: 3,
+          ),
+          TutorialPracticeStep(
+            checks: [
+              TutorialPracticeCheck.selectConnected,
+              TutorialPracticeCheck.selectConfigured,
+              TutorialPracticeCheck.unionConnected,
+              TutorialPracticeCheck.unionConfigured,
+              TutorialPracticeCheck.orderByConnected,
+              TutorialPracticeCheck.orderByConfigured,
+              TutorialPracticeCheck.unionBeforeOrder,
+              TutorialPracticeCheck.limitConnected,
+              TutorialPracticeCheck.limitConfigured,
+              TutorialPracticeCheck.orderBeforeLimit,
+              TutorialPracticeCheck.queryExecuted,
+            ],
+            starterSeeds: [],
+            startFresh: true,
+            focusNodes: [BlockType.sqlSelect, BlockType.sqlUnion],
+            estimatedMinutes: 6,
           ),
         ],
       ),
@@ -577,11 +844,46 @@ const _joinSelect = TutorialPracticeSeed(BlockType.sqlSelect, {
   'table': 'customers',
   'separate_from': true,
 });
+const _joinCountSelect = TutorialPracticeSeed(BlockType.sqlSelect, {
+  'columns': '',
+  'table': 'customers',
+  'separate_from': true,
+  reporterInputsKey: {
+    'columns': {
+      'kind': 'OperatorBlock',
+      'id': 'tutorial_order_count',
+      'type': 'sqlCount',
+      'position': {'dx': 0, 'dy': 0},
+      'next': null,
+      'children': <Object>[],
+      'inputs': {'column': '*'},
+    },
+  },
+});
 const _customersFrom = TutorialPracticeSeed(BlockType.sqlFrom, {
   'table': 'customers',
 });
+const _ordersJoin = TutorialPracticeSeed(BlockType.sqlInnerJoin, {
+  'table': 'orders',
+  'left_column': 'customers.id',
+  'operator': '=',
+  'right_column': 'orders.customer_id',
+  'on': 'customers.id = orders.customer_id',
+});
+const _customerGroup = TutorialPracticeSeed(BlockType.sqlGroupBy, {
+  'column': 'customers.name',
+  'expr': 'customers.name',
+});
+const _positiveHaving = TutorialPracticeSeed(BlockType.sqlHaving, {
+  'predicate': 'COUNT(*) > 0',
+});
 const _inlineSelect = TutorialPracticeSeed(BlockType.sqlSelect, {
   'columns': 'id, name',
+  'table': 'customers',
+  'separate_from': false,
+});
+const _distinctSelect = TutorialPracticeSeed(BlockType.sqlSelect, {
+  'columns': 'country',
   'table': 'customers',
   'separate_from': false,
 });
@@ -596,6 +898,19 @@ const _joinTypes = <BlockType>{
   BlockType.sqlSelfJoin,
   BlockType.sqlNaturalJoin,
 };
+
+const _aggregateTypes = <BlockType>{
+  BlockType.sqlCount,
+  BlockType.sqlSum,
+  BlockType.sqlAvg,
+  BlockType.sqlMin,
+  BlockType.sqlMax,
+};
+
+bool _setQueryConfigured(BlockNode node) => RegExp(
+  r'^\s*select\s+\S',
+  caseSensitive: false,
+).hasMatch('${node.inputs['sql'] ?? ''}');
 
 const _placeholderValues = <String>{
   '',
@@ -671,7 +986,12 @@ bool _structuredConditionConfigured(Object? raw) {
 }
 
 bool _havingConfigured(TutorialPracticeGraph graph, BlockNode node) {
-  if (_semanticText(node.inputs['predicate'])) return true;
+  final hasStructuredFields =
+      node.inputs.containsKey('aggregate') ||
+      node.inputs.containsKey('expr') ||
+      node.inputs.containsKey('operator') ||
+      node.inputs.containsKey('value');
+  if (!hasStructuredFields) return _semanticText(node.inputs['predicate']);
   final expressionConfigured =
       graph.inputConfigured(node, 'aggregate', allowWildcard: true) ||
       graph.inputConfigured(node, 'expr', allowWildcard: true);

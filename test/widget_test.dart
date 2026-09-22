@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,8 @@ import 'package:http/testing.dart';
 import 'package:nodeql/core/app/nodeql_app.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/tutorial/tutorial_controller.dart';
+import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
@@ -23,6 +27,103 @@ import 'package:nodeql/localization/translation_controller.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  testWidgets('an old mission button cannot skip the newly loaded mission', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final directory = Directory.systemTemp.createTempSync('nodeql-mission-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _WorkshopTranslationController(),
+          ),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+          tutorialControllerProvider.overrideWith(
+            (_) => TutorialController(
+              storageFile: () async => File('${directory.path}/progress.json'),
+            ),
+          ),
+        ],
+        child: const NodeQlApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final rootContainer = ProviderScope.containerOf(
+      tester.element(find.byKey(const ValueKey('open-workshop'))),
+    );
+    await tester.runAsync(
+      () =>
+          rootContainer.read(tutorialControllerProvider.notifier).initialize(),
+    );
+    expect(rootContainer.read(tutorialControllerProvider).loading, isFalse);
+    await tester.tap(find.byKey(const ValueKey('open-workshop')));
+    await tester.pumpAndSettle();
+    final activeWorkshop = ProviderScope.containerOf(
+      tester.element(find.byKey(const ValueKey('workshop-choose-path'))),
+    );
+    expect(
+      activeWorkshop.read(tutorialControllerProvider.notifier),
+      same(rootContainer.read(tutorialControllerProvider.notifier)),
+    );
+    tester
+        .widget<FilledButton>(
+          find.byKey(const ValueKey('workshop-choose-path')),
+        )
+        .onPressed!();
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('tutorial-lesson-beginner')),
+      findsOneWidget,
+    );
+    expect(find.text('Insert a COLUMN value node'), findsOneWidget);
+    expect(find.text('Finish with LIMIT'), findsOneWidget);
+    final beginner = find.byKey(const ValueKey('tutorial-lesson-beginner'));
+    await tester.ensureVisible(beginner);
+    await tester.tap(beginner);
+    await tester.pumpAndSettle();
+
+    final workshopContainer = ProviderScope.containerOf(
+      tester.element(find.byType(TutorialPracticePanel)),
+    );
+    final workspace = workshopContainer.read(workspaceProvider.notifier);
+    workspace.addTemplate(
+      BlockType.sqlSelect,
+      workspace.suggestedTemplatePosition(BlockType.sqlSelect),
+      defaults: {'columns': 'name', 'table': 'customers'},
+    );
+    await tester.pumpAndSettle();
+    final oldAction = tester
+        .widget<FilledButton>(
+          find.byKey(const ValueKey('tutorial-practice-check')),
+        )
+        .onPressed!;
+    oldAction();
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TutorialPracticePanel>(find.byType(TutorialPracticePanel))
+          .session
+          .stepIndex,
+      1,
+    );
+
+    oldAction();
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TutorialPracticePanel>(find.byType(TutorialPracticePanel))
+          .session
+          .stepIndex,
+      1,
+    );
+  });
+
   testWidgets('toolbar transforms the app into an isolated workshop mode', (
     tester,
   ) async {
@@ -64,6 +165,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('workshop-choose-path')), findsOneWidget);
+    expect(find.byKey(const ValueKey('workshop-run-sqlite')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('run-sqlite')), findsNothing);
     expect(find.text('SQLite-Command Output'), findsOneWidget);
     expect(find.text('Query 1'), findsOneWidget);
@@ -95,8 +197,29 @@ void main() {
       isNot(same(mainRuntimeController)),
     );
     expect(workshopContainer.read(sqlRuntimeProvider).schemas, hasLength(3));
+    final workshopDatabasePath = workshopContainer
+        .read(sqlRuntimeProvider)
+        .dbPath!;
+    expect(File(workshopDatabasePath).existsSync(), isTrue);
     expect(container.read(sqlRuntimeProvider).schemas, isEmpty);
+    expect(container.read(sqlRuntimeProvider).dbPath, isNull);
     expect(workshopContainer.read(sqlModeProvider), SqlAbstractionMode.simple);
+    expect(container.read(sqlModeProvider), SqlAbstractionMode.advanced);
+    final workshopMode = tester.widget<SegmentedButton<SqlAbstractionMode>>(
+      find.byKey(const ValueKey('workshop-sql-mode')),
+    );
+    expect(
+      workshopMode.style?.backgroundColor?.resolve({WidgetState.selected}),
+      Theme.of(
+        tester.element(find.byKey(const ValueKey('workshop-sql-mode'))),
+      ).colorScheme.primaryContainer,
+    );
+    workshopMode.onSelectionChanged!({SqlAbstractionMode.advanced});
+    await tester.pump();
+    expect(
+      workshopContainer.read(sqlModeProvider),
+      SqlAbstractionMode.advanced,
+    );
     expect(container.read(sqlModeProvider), SqlAbstractionMode.advanced);
 
     workshopWorkspaceController.addTemplate(
@@ -113,6 +236,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('workshop-mode-exit')));
     await tester.pumpAndSettle();
+
+    expect(File(workshopDatabasePath).existsSync(), isFalse);
 
     expect(find.byKey(const ValueKey('open-workshop')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('run-sqlite')), findsOneWidget);
@@ -165,6 +290,23 @@ void main() {
     expect(find.text('SQLite-Command Output'), findsOneWidget);
     expect(find.text('Query Language'), findsOneWidget);
     expect(find.text('Query 1'), findsOneWidget);
+    final mainModeFinder = find.byKey(const ValueKey('workbench-sql-mode'));
+    final mainMode = tester.widget<SegmentedButton<SqlAbstractionMode>>(
+      mainModeFinder,
+    );
+    final mainModeContext = tester.element(mainModeFinder);
+    expect(
+      mainMode.style?.backgroundColor?.resolve({WidgetState.selected}),
+      Theme.of(mainModeContext).colorScheme.primaryContainer,
+    );
+    expect(
+      mainMode.style?.foregroundColor?.resolve({WidgetState.selected}),
+      Theme.of(mainModeContext).colorScheme.onPrimaryContainer,
+    );
+    expect(
+      mainMode.style?.backgroundColor?.resolve(<WidgetState>{}),
+      NodeQlWorkbenchColors.of(mainModeContext).panel,
+    );
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -232,10 +374,17 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(WorkbenchPage)),
     );
-    expect(
-      find.byKey(const ValueKey<String>('open-database-browser')),
-      findsNothing,
+    final browserButton = find.byKey(
+      const ValueKey<String>('open-database-browser'),
     );
+    expect(browserButton, findsOneWidget);
+    expect(tester.widget<OutlinedButton>(browserButton).child, isA<Icon>());
+    final browserTooltip = find.ancestor(
+      of: browserButton,
+      matching: find.byType(Tooltip),
+    );
+    expect(tester.widget<Tooltip>(browserTooltip).message, 'Table browser');
+    expect(tester.widget<OutlinedButton>(browserButton).onPressed, isNull);
     final browserDirectory = Directory.systemTemp.createTempSync(
       'nodeql_dbb_shortcut',
     );
@@ -254,8 +403,17 @@ void main() {
           .attachDatabasePath(browserDatabasePath),
     );
     await tester.pump();
+    expect(tester.widget<OutlinedButton>(browserButton).onPressed, isNotNull);
+    await tester.tap(browserButton);
+    await tester.pump(const Duration(milliseconds: 400));
     expect(
-      find.byKey(const ValueKey<String>('open-database-browser')),
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('database-browser-close')));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const ValueKey<String>('database-browser-dialog')),
       findsNothing,
     );
 
@@ -279,10 +437,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Output preview'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('open-database-browser')),
-      findsNothing,
-    );
+    expect(browserButton, findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('close-sql-ide')));
     await tester.pump();
     expect(
@@ -429,7 +584,16 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyO);
     await tester.pumpAndSettle();
 
-    expect(container.read(nodeQlThemeProvider).theme, NodeQlTheme.neoBrutalism);
+    expect(container.read(nodeQlThemeProvider).theme, NodeQlTheme.dark);
+
+    // The theme remains renderable for existing projects, but the NEO
+    // keyboard entry point is intentionally unavailable to users.
+    unawaited(
+      container
+          .read(nodeQlThemeProvider.notifier)
+          .setTheme(NodeQlTheme.neoBrutalism),
+    );
+    await tester.pumpAndSettle();
 
     final activeTabId = container.read(workspaceTabsProvider).activeTabId;
     final brutalRenameButton = tester.widget<IconButton>(
@@ -712,6 +876,25 @@ class _ReadyPluginPaletteController extends PluginPaletteController {
   }
 }
 
+class _WorkshopTranslationController extends _ReadyTranslationController {
+  _WorkshopTranslationController() {
+    final decoded =
+        jsonDecode(File('assets/translations/en.json').readAsStringSync())
+            as Map<String, dynamic>;
+    final messages = (decoded['messages'] as Map<String, dynamic>).map(
+      (key, value) => MapEntry(key, value as String),
+    );
+    state = TranslationState(
+      loading: false,
+      catalog: TranslationCatalog(
+        locale: 'en',
+        messages: messages,
+        englishMessages: messages,
+      ),
+    );
+  }
+}
+
 class _ReadyTranslationController extends TranslationController {
   _ReadyTranslationController()
     : super(
@@ -721,6 +904,7 @@ class _ReadyTranslationController extends TranslationController {
     const messages = {
       'app.name': 'NodeQL',
       'toolbar.mountDatabase': 'Mount .db',
+      'toolbar.browseDatabase': 'Table browser',
       'toolbar.runSql': 'Run SQLite',
       'toolbar.connectColumns': 'Connect column sources',
       'toolbar.simple': 'Simple',
