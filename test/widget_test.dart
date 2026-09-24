@@ -78,12 +78,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('tutorial-lesson-beginner')),
+      find.byKey(const ValueKey('tutorial-lesson-selectAndSimpleFilters')),
       findsOneWidget,
     );
-    expect(find.text('Insert a COLUMN value node'), findsOneWidget);
-    expect(find.text('Finish with LIMIT'), findsOneWidget);
-    final beginner = find.byKey(const ValueKey('tutorial-lesson-beginner'));
+    expect(find.text('Build a SELECT query'), findsOneWidget);
+    expect(find.text('Project: run a filtered SELECT'), findsOneWidget);
+    final beginner = find.byKey(
+      const ValueKey('tutorial-lesson-selectAndSimpleFilters'),
+    );
     await tester.ensureVisible(beginner);
     await tester.tap(beginner);
     await tester.pumpAndSettle();

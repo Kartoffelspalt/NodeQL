@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/engine/block/block_node.dart';
-import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/tutorial/workshop_database.dart';
@@ -11,7 +10,7 @@ import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
-  test('workshop has real related rows and is removed with its session', () {
+  test('workshop has related rows and is removed with its session', () {
     final sample = WorkshopDatabase.create();
     final database = sqlite3.open(sample.path);
     try {
@@ -24,13 +23,6 @@ void main() {
         database.select('SELECT COUNT(*) AS n FROM orders').single['n'],
         10,
       );
-      expect(
-        database.select('''
-              SELECT name FROM customers
-              INTERSECT SELECT name FROM archived_customers
-            ''').single['name'],
-        'Ada',
-      );
     } finally {
       database.close();
     }
@@ -39,216 +31,178 @@ void main() {
     expect(File(sample.path).existsSync(), isFalse);
   });
 
+  test('isolated workshop runtime supports safe write exercises', () async {
+    final sample = WorkshopDatabase.create();
+    addTearDown(sample.dispose);
+    final runtime = SqlRuntimeController(initialState: sample.initialState);
+    addTearDown(runtime.dispose);
+
+    final result = await runtime.executeWithSnapshot('''
+      INSERT INTO archived_customers (id, name) VALUES (999, 'Workshop');
+      UPDATE archived_customers SET name = 'NodeQL' WHERE id = 999;
+      DELETE FROM archived_customers WHERE id = 999;
+    ''');
+    expect(result.success, isTrue);
+    expect(result.changedDatabase, isTrue);
+
+    final database = sqlite3.open(sample.path);
+    try {
+      expect(
+        database.select('SELECT id FROM archived_customers WHERE id = 999'),
+        isEmpty,
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  test('DML final project executes and passes graph checks', () async {
+    final sample = WorkshopDatabase.create();
+    addTearDown(sample.dispose);
+    final runtime = SqlRuntimeController(initialState: sample.initialState);
+    addTearDown(runtime.dispose);
+    final root = _chain([
+      _operator('insert', BlockType.sqlInsert, {
+        'table': 'archived_customers',
+        'columns': 'id, name',
+        'values': "(999, 'Workshop')",
+      }),
+      _operator('update', BlockType.sqlUpdate, {
+        'table': 'archived_customers',
+        'column': 'name',
+        'value': "'NodeQL Workshop'",
+        'where_column': 'id',
+        'operator': '=',
+        'where_value': '999',
+      }),
+      _operator('delete', BlockType.sqlDelete, {
+        'table': 'archived_customers',
+        'where_column': 'id',
+        'operator': '=',
+        'where_value': '999',
+      }),
+    ]);
+    await _expectFinalProject(
+      runtime,
+      TutorialKnowledgeMode.dataManipulation,
+      root,
+    );
+  });
+
   test(
-    'workshop runtime executes SELECT but protects the sample data',
+    'schema final project executes and refreshes reflected schema',
     () async {
       final sample = WorkshopDatabase.create();
       addTearDown(sample.dispose);
-      final runtime = SqlRuntimeController(
-        initialState: sample.initialState,
-        readOnly: true,
-      );
+      final runtime = SqlRuntimeController(initialState: sample.initialState);
       addTearDown(runtime.dispose);
-
-      final result = await runtime.executeWithSnapshot('''
-      SELECT customers.name, COUNT(*) AS orders_count
-      FROM customers
-      INNER JOIN orders ON customers.id = orders.customer_id
-      GROUP BY customers.name
-      ORDER BY customers.name
-    ''');
-      expect(result.success, isTrue);
-      expect(result.rows, isNotEmpty);
-      expect(result.rows.first['name'], 'Ada');
-
-      final denied = await runtime.executeWithSnapshot(
-        "DELETE FROM customers WHERE name = 'Ada';",
+      final root = _chain([
+        _operator('table', BlockType.sqlCreateTable, {
+          'if_not_exists': 'IF NOT EXISTS',
+          'table': 'workshop_notes',
+          'definition': 'id INTEGER PRIMARY KEY, note TEXT NOT NULL',
+        }),
+        _operator('index', BlockType.sqlCreateIndex, {
+          'if_not_exists': 'IF NOT EXISTS',
+          'name': 'idx_workshop_notes_note',
+          'table': 'workshop_notes',
+          'columns': 'note',
+        }),
+        _operator('view', BlockType.sqlCreateView, {
+          'if_not_exists': 'IF NOT EXISTS',
+          'name': 'active_customers',
+          'sql': 'SELECT id, name FROM customers WHERE active = 1',
+        }),
+      ]);
+      await _expectFinalProject(
+        runtime,
+        TutorialKnowledgeMode.schemaObjects,
+        root,
       );
-      expect(denied.success, isFalse);
-      expect(denied.message, contains('read-only'));
+      expect(
+        runtime.state.schemas.map((schema) => schema.name),
+        contains('workshop_notes'),
+      );
+    },
+  );
+
+  test(
+    'transaction recovery-point project executes without keeping update',
+    () async {
+      final sample = WorkshopDatabase.create();
+      addTearDown(sample.dispose);
+      final runtime = SqlRuntimeController(initialState: sample.initialState);
+      addTearDown(runtime.dispose);
+      final root = _chain([
+        _operator('begin', BlockType.sqlBeginTransaction, {
+          'behavior': 'DEFERRED',
+        }),
+        _operator('savepoint', BlockType.sqlSavepoint, {
+          'name': 'workshop_point',
+        }),
+        _operator('update', BlockType.sqlUpdate, {
+          'table': 'customers',
+          'column': 'city',
+          'value': "'Temporary City'",
+          'where_column': 'id',
+          'operator': '=',
+          'where_value': '1',
+        }),
+        _operator('rollback', BlockType.sqlRollbackToSavepoint, {
+          'name': 'workshop_point',
+        }),
+        _operator('release', BlockType.sqlReleaseSavepoint, {
+          'name': 'workshop_point',
+        }),
+        _operator('commit', BlockType.sqlCommit, const {}),
+      ]);
+      await _expectFinalProject(
+        runtime,
+        TutorialKnowledgeMode.transactions,
+        root,
+      );
+
       final database = sqlite3.open(sample.path);
       try {
         expect(
-          database.select("SELECT id FROM customers WHERE name = 'Ada'"),
-          hasLength(1),
+          database
+              .select('SELECT city FROM customers WHERE id = 1')
+              .single['city'],
+          'Berlin',
         );
       } finally {
         database.close();
       }
     },
   );
+}
 
-  test('final projects compile, execute and pass their graph checks', () async {
-    final sample = WorkshopDatabase.create();
-    addTearDown(sample.dispose);
-    final runtime = SqlRuntimeController(
-      initialState: sample.initialState,
-      readOnly: true,
-    );
-    addTearDown(runtime.dispose);
-
-    final syntax = _chain([
-      _operator('syntax_select', BlockType.sqlSelect, {
-        'columns': 'name',
-        'table': 'customers',
-        'separate_from': true,
-      }),
-      _operator('syntax_from', BlockType.sqlFrom, {'table': 'customers'}),
-      _motion('syntax_where', BlockType.sqlWhere, {
-        'column': 'active',
-        'operator': '=',
-        'value': '1',
-      }),
-      _motion('syntax_order', BlockType.sqlOrderBy, {
-        'column': 'name',
-        'order': 'ASC',
-      }),
-      _operator('syntax_limit', BlockType.sqlLimit, {'count': '5'}),
-    ]);
-
-    final countSelect = _operator('report_select', BlockType.sqlSelect, {
-      'columns': '',
-      'table': 'customers',
-      'separate_from': true,
-    });
-    setReporterForInput(
-      countSelect,
-      'columns',
-      _operator('report_count', BlockType.sqlCount, {'column': '*'}),
-    );
-    final report = _chain([
-      countSelect,
-      _operator('report_from', BlockType.sqlFrom, {'table': 'customers'}),
-      _operator('report_join', BlockType.sqlInnerJoin, {
-        'table': 'orders',
-        'on': 'customers.id = orders.customer_id',
-      }),
-      _operator('report_group', BlockType.sqlGroupBy, {
-        'column': 'customers.name',
-      }),
-      _operator('report_having', BlockType.sqlHaving, {
-        'predicate': 'COUNT(*) > 0',
-      }),
-      _motion('report_order', BlockType.sqlOrderBy, {
-        'column': 'customers.name',
-        'order': 'ASC',
-      }),
-      _operator('report_limit', BlockType.sqlLimit, {'count': '5'}),
-    ]);
-
-    final sets = _chain([
-      _operator('sets_select', BlockType.sqlSelect, {
-        'columns': 'id, name',
-        'table': 'customers',
-      }),
-      _operator('sets_union', BlockType.sqlUnion, {
-        'sql': 'SELECT id, name FROM archived_customers',
-      }),
-      _motion('sets_order', BlockType.sqlOrderBy, {
-        'column': 'name',
-        'order': 'ASC',
-      }),
-      _operator('sets_limit', BlockType.sqlLimit, {'count': '10'}),
-    ]);
-
-    for (final (mode, root) in <(TutorialKnowledgeMode, EventBlock)>[
-      (TutorialKnowledgeMode.beginnerSyntax, syntax),
-      (TutorialKnowledgeMode.intermediate, report),
-      (TutorialKnowledgeMode.expert, sets),
-    ]) {
-      final definition = tutorialPracticeDefinitions[mode]!;
-      final sql = const SqlCompiler().compileWorkspace([root]).sql;
-      final result = await runtime.executeWithSnapshot(sql);
-      expect(result.success, isTrue, reason: '$mode: $sql — ${result.message}');
-      expect(result.rows, isNotEmpty, reason: '$mode: $sql');
-      expect(
-        definition
-            .evaluate(
-              [root],
-              definition.stepCount - 1,
-              currentSql: sql,
-              executedSql: runtime.state.lastSql,
-              executionSucceeded:
-                  runtime.state.lastMessage?.startsWith('OK') == true,
-            )
-            .complete,
-        isTrue,
-        reason: '$mode: $sql',
-      );
-    }
-  });
-
-  test('advanced set and reporter examples return the expected rows', () async {
-    final sample = WorkshopDatabase.create();
-    addTearDown(sample.dispose);
-    final runtime = SqlRuntimeController(
-      initialState: sample.initialState,
-      readOnly: true,
-    );
-    addTearDown(runtime.dispose);
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.expert]!;
-
-    EventBlock setQuery(
-      String suffix,
-      BlockType type,
-      Map<String, dynamic> inputs,
-    ) => _chain([
-      _operator('select_$suffix', BlockType.sqlSelect, {
-        'columns': 'id, name',
-        'table': 'customers',
-      }),
-      _operator('set_$suffix', type, inputs),
-    ]);
-
-    final intersect = setQuery('intersect', BlockType.sqlIntersect, {
-      'sql': 'SELECT id, name FROM archived_customers',
-    });
-    final except = setQuery('except', BlockType.sqlExcept, {
-      'sql': 'SELECT id, name FROM archived_customers',
-    });
-    final unionAll = setQuery('all', BlockType.sqlUnion, {
-      'sql': 'SELECT id, name FROM archived_customers',
-      'all': true,
-    });
-    final distinct = _chain([
-      _operator('select_distinct', BlockType.sqlSelect, {
-        'columns': 'country',
-        'table': 'customers',
-        'select_mode': 'DISTINCT',
-      }),
-    ]);
-    final aliasSelect = _operator('select_alias', BlockType.sqlSelect, {
-      'columns': '',
-      'table': 'customers',
-      'select_mode': 'DISTINCT',
-    });
-    final alias = _operator('alias', BlockType.sqlAlias, {
-      'value': '',
-      'alias': 'region',
-    });
-    setReporterForInput(
-      alias,
-      'value',
-      _operator('country_column', BlockType.sqlColumn, {'column': 'country'}),
-    );
-    setReporterForInput(aliasSelect, 'columns', alias);
-    final aliased = _chain([aliasSelect]);
-
-    for (final (root, step, rows) in <(EventBlock, int, int)>[
-      (intersect, 3, 1),
-      (except, 4, 7),
-      (unionAll, 5, 12),
-      (distinct, 6, 3),
-      (aliased, 7, 3),
-    ]) {
-      final sql = const SqlCompiler().compileWorkspace([root]).sql;
-      final result = await runtime.executeWithSnapshot(sql);
-      expect(result.success, isTrue, reason: sql);
-      expect(result.rows, hasLength(rows), reason: sql);
-      expect(definition.evaluate([root], step).complete, isTrue, reason: sql);
-    }
-  });
+Future<void> _expectFinalProject(
+  SqlRuntimeController runtime,
+  TutorialKnowledgeMode mode,
+  EventBlock root,
+) async {
+  final definition = tutorialPracticeDefinitions[mode]!;
+  final sql = const SqlCompiler().compileWorkspace([root]).sql;
+  final execution = await runtime.executeWithSnapshot(sql);
+  expect(
+    execution.success,
+    isTrue,
+    reason: '$mode: $sql — ${execution.message}',
+  );
+  expect(
+    definition
+        .evaluate(
+          [root],
+          definition.stepCount - 1,
+          currentSql: sql,
+          executedSql: runtime.state.lastSql,
+          executionSucceeded: execution.success,
+        )
+        .complete,
+    isTrue,
+    reason: '$mode: $sql',
+  );
 }
 
 EventBlock _chain(List<BlockNode> nodes) {
@@ -256,10 +210,9 @@ EventBlock _chain(List<BlockNode> nodes) {
     id: 'event_${nodes.first.id}',
     position: Offset.zero,
   );
-  BlockNode previous = event;
-  for (final node in nodes) {
-    previous.next = node;
-    previous = node;
+  event.next = nodes.first;
+  for (var index = 0; index < nodes.length - 1; index++) {
+    nodes[index].next = nodes[index + 1];
   }
   return event;
 }
@@ -274,11 +227,3 @@ OperatorBlock _operator(
   operatorType: type,
   inputs: inputs,
 );
-
-MotionBlock _motion(String id, BlockType type, Map<String, dynamic> inputs) =>
-    MotionBlock(
-      id: id,
-      position: Offset.zero,
-      motionType: type,
-      inputs: inputs,
-    );

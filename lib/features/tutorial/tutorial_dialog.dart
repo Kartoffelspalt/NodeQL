@@ -41,7 +41,7 @@ class _TutorialStepData {
 }
 
 const _tutorialSteps = <TutorialKnowledgeMode, List<_TutorialStepData>>{
-  TutorialKnowledgeMode.beginner: [
+  TutorialKnowledgeMode.selectAndSimpleFilters: [
     _TutorialStepData(
       key: 'tutorial.step.1',
       visual: _TutorialVisualKind.welcome,
@@ -100,7 +100,7 @@ const _tutorialSteps = <TutorialKnowledgeMode, List<_TutorialStepData>>{
       visual: _TutorialVisualKind.ready,
     ),
   ],
-  TutorialKnowledgeMode.beginnerSyntax: [
+  TutorialKnowledgeMode.advancedFilters: [
     _TutorialStepData(
       key: 'tutorial.syntax.step.1',
       visual: _TutorialVisualKind.nodeKinds,
@@ -160,7 +160,7 @@ const _tutorialSteps = <TutorialKnowledgeMode, List<_TutorialStepData>>{
       visual: _TutorialVisualKind.syntaxReady,
     ),
   ],
-  TutorialKnowledgeMode.intermediate: [
+  TutorialKnowledgeMode.complexQueries: [
     _TutorialStepData(
       key: 'tutorial.intermediate.step.1',
       visual: _TutorialVisualKind.query,
@@ -210,54 +210,54 @@ const _tutorialSteps = <TutorialKnowledgeMode, List<_TutorialStepData>>{
       visual: _TutorialVisualKind.ready,
     ),
   ],
-  TutorialKnowledgeMode.expert: [
+  TutorialKnowledgeMode.plugins: [
     _TutorialStepData(
-      key: 'tutorial.expert.step.1',
-      visual: _TutorialVisualKind.extension,
-    ),
-    _TutorialStepData(
-      key: 'tutorial.expert.step.2',
-      visual: _TutorialVisualKind.join,
-      correctAnswer: 1,
-    ),
-    _TutorialStepData(
-      key: 'tutorial.expert.step.3',
-      visual: _TutorialVisualKind.aggregate,
-      correctAnswer: 2,
-    ),
-    _TutorialStepData(
-      key: 'tutorial.expert.step.4',
-      visual: _TutorialVisualKind.debug,
-      correctAnswer: 0,
-    ),
-    _TutorialStepData(
-      key: 'tutorial.expert.step.5',
+      key: 'tutorial.course.plugins.step.1',
       visual: _TutorialVisualKind.plugin,
-      correctAnswer: 1,
     ),
     _TutorialStepData(
-      key: 'tutorial.expert.step.6',
-      visual: _TutorialVisualKind.parameter,
-      correctAnswer: 2,
-    ),
-    _TutorialStepData(
-      key: 'tutorial.expert.step.7',
-      visual: _TutorialVisualKind.debug,
-      correctAnswer: 0,
-    ),
-    _TutorialStepData(
-      key: 'tutorial.expert.step.8',
+      key: 'tutorial.course.plugins.step.2',
       visual: _TutorialVisualKind.extension,
-      correctAnswer: 1,
     ),
     _TutorialStepData(
-      key: 'tutorial.expert.step.9',
-      visual: _TutorialVisualKind.parameter,
-      correctAnswer: 2,
-    ),
-    _TutorialStepData(
-      key: 'tutorial.expert.step.10',
+      key: 'tutorial.course.plugins.step.3',
       visual: _TutorialVisualKind.ready,
+    ),
+  ],
+  TutorialKnowledgeMode.dataTypes: [
+    _TutorialStepData(
+      key: 'tutorial.course.dataTypes.step.1',
+      visual: _TutorialVisualKind.valueSlots,
+    ),
+  ],
+  TutorialKnowledgeMode.sortingAndWhere: [
+    _TutorialStepData(
+      key: 'tutorial.course.sortingAndWhere.step.1',
+      visual: _TutorialVisualKind.clauseOrder,
+    ),
+  ],
+  TutorialKnowledgeMode.dataManipulation: [
+    _TutorialStepData(
+      key: 'tutorial.course.dataManipulation.step.1',
+      visual: _TutorialVisualKind.query,
+    ),
+  ],
+  TutorialKnowledgeMode.schemaObjects: [
+    _TutorialStepData(
+      key: 'tutorial.course.schemaObjects.step.1',
+      visual: _TutorialVisualKind.syntaxChain,
+    ),
+  ],
+  TutorialKnowledgeMode.transactions: [
+    _TutorialStepData(
+      key: 'tutorial.course.transactions.step.1',
+      visual: _TutorialVisualKind.connection,
+    ),
+  ],
+  TutorialKnowledgeMode.databaseTools: [
+    _TutorialStepData(
+      key: 'tutorial.course.databaseTools.step.1',
+      visual: _TutorialVisualKind.interface,
     ),
   ],
 };
@@ -291,7 +291,7 @@ class TutorialDialog extends StatefulWidget {
 class _TutorialDialogState extends State<TutorialDialog> {
   int _step = 0;
   int _furthestStep = 0;
-  TutorialKnowledgeMode _mode = TutorialKnowledgeMode.beginner;
+  TutorialKnowledgeMode _mode = TutorialKnowledgeMode.selectAndSimpleFilters;
   late bool _showOverview;
   late Map<TutorialKnowledgeMode, TutorialLessonProgress> _progress;
   final Map<TutorialKnowledgeMode, Map<int, int>> _answers = {};
@@ -373,10 +373,11 @@ class _TutorialDialogState extends State<TutorialDialog> {
                           },
                           estimatedMinutes: {
                             for (final mode in TutorialKnowledgeMode.values)
-                              mode:
-                                  tutorialPracticeDefinitions[mode]
-                                      ?.estimatedMinutes ??
-                                  0,
+                              mode: mode.hasWorkspacePractice
+                                  ? tutorialPracticeDefinitions[mode]
+                                            ?.estimatedMinutes ??
+                                        0
+                                  : 8,
                           },
                           onLesson: _openLesson,
                         )
@@ -471,7 +472,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
             solved: _solvedSteps.length,
             total: _challengeCount(_mode),
           ),
-          if (widget.onStartPractice != null) ...[
+          if (_mode.hasWorkspacePractice && widget.onStartPractice != null) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
@@ -612,7 +613,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
   }
 
   void _openLesson(TutorialKnowledgeMode mode) {
-    if (widget.onStartPractice != null) {
+    if (mode.hasWorkspacePractice && widget.onStartPractice != null) {
       _startPractice(mode);
       return;
     }
@@ -875,17 +876,24 @@ class _LessonLabel extends StatelessWidget {
 }
 
 IconData _lessonIcon(TutorialKnowledgeMode mode) => switch (mode) {
-  TutorialKnowledgeMode.beginner => Icons.school_outlined,
-  TutorialKnowledgeMode.beginnerSyntax => Icons.account_tree_outlined,
-  TutorialKnowledgeMode.intermediate => Icons.schema_outlined,
-  TutorialKnowledgeMode.expert => Icons.insights_outlined,
+  TutorialKnowledgeMode.selectAndSimpleFilters => Icons.filter_alt_outlined,
+  TutorialKnowledgeMode.dataTypes => Icons.data_object_outlined,
+  TutorialKnowledgeMode.advancedFilters => Icons.filter_list_alt,
+  TutorialKnowledgeMode.sortingAndWhere => Icons.sort_by_alpha_outlined,
+  TutorialKnowledgeMode.complexQueries => Icons.account_tree_outlined,
+  TutorialKnowledgeMode.dataManipulation => Icons.edit_note_outlined,
+  TutorialKnowledgeMode.schemaObjects => Icons.schema_outlined,
+  TutorialKnowledgeMode.transactions => Icons.restore_outlined,
+  TutorialKnowledgeMode.databaseTools => Icons.storage_outlined,
+  TutorialKnowledgeMode.plugins => Icons.extension_outlined,
 };
 
 bool _practicePathCompleted(
   TutorialKnowledgeMode mode,
   TutorialLessonProgress progress,
 ) {
-  final definition = tutorialPracticeDefinitions[mode]!;
+  final definition = tutorialPracticeDefinitions[mode];
+  if (definition == null) return progress.completed;
   return List<int>.generate(
     definition.stepCount,
     (index) => index,
@@ -967,23 +975,52 @@ class _LessonOverview extends StatelessWidget {
               final width = twoColumns
                   ? (constraints.maxWidth - 16) / 2
                   : constraints.maxWidth;
-              return Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  for (final mode in TutorialKnowledgeMode.values)
-                    SizedBox(
-                      width: width,
-                      child: _LessonCard(
-                        catalog: catalog,
-                        mode: mode,
-                        progress:
-                            progress[mode] ?? const TutorialLessonProgress(),
-                        exerciseCount: challengeCounts[mode] ?? 0,
-                        estimatedMinutes: estimatedMinutes[mode] ?? 0,
-                        onTap: () => onLesson(mode),
+              Widget area(TutorialWorkshopArea workshopArea, String titleKey) =>
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        catalog.text(titleKey),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 16,
+                        children: [
+                          for (final mode in TutorialKnowledgeMode.values.where(
+                            (mode) => mode.area == workshopArea,
+                          ))
+                            SizedBox(
+                              width: width,
+                              child: _LessonCard(
+                                catalog: catalog,
+                                mode: mode,
+                                progress:
+                                    progress[mode] ??
+                                    const TutorialLessonProgress(),
+                                exerciseCount: challengeCounts[mode] ?? 0,
+                                estimatedMinutes: estimatedMinutes[mode] ?? 0,
+                                onTap: () => onLesson(mode),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  area(
+                    TutorialWorkshopArea.sqlite,
+                    'tutorial.overview.area.sqlite',
+                  ),
+                  const SizedBox(height: 24),
+                  area(
+                    TutorialWorkshopArea.nodeQl,
+                    'tutorial.overview.area.nodeQl',
+                  ),
                 ],
               );
             },
@@ -1187,11 +1224,15 @@ class _LessonCard extends StatelessWidget {
     );
     final courseComplete = _practicePathCompleted(mode, progress);
     final started = solved > 0;
-    final actionKey = courseComplete
-        ? 'tutorial.lesson.repeat'
-        : started
-        ? 'tutorial.lesson.resume'
-        : 'tutorial.lesson.start';
+    final actionKey = mode.hasWorkspacePractice
+        ? courseComplete
+              ? 'tutorial.lesson.repeat'
+              : started
+              ? 'tutorial.lesson.resume'
+              : 'tutorial.lesson.start'
+        : courseComplete
+        ? 'tutorial.lesson.repeatTheory'
+        : 'tutorial.lesson.startTheory';
     return Card(
       margin: EdgeInsets.zero,
       color: colors.panel,
@@ -1237,7 +1278,7 @@ class _LessonCard extends StatelessWidget {
                         ),
                       ),
                     )
-                  else if (mode == TutorialKnowledgeMode.beginner)
+                  else if (mode == TutorialKnowledgeMode.selectAndSimpleFilters)
                     Flexible(
                       child: Align(
                         alignment: Alignment.centerRight,
@@ -1323,7 +1364,11 @@ class _LessonCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      catalog.text('tutorial.lesson.practiceDone'),
+                      catalog.text(
+                        mode.hasWorkspacePractice
+                            ? 'tutorial.lesson.practiceDone'
+                            : 'tutorial.lesson.moduleDone',
+                      ),
                       style: const TextStyle(
                         color: Color(0xFF22C55E),
                         fontSize: 12,
@@ -1335,7 +1380,9 @@ class _LessonCard extends StatelessWidget {
               ],
               const SizedBox(height: 18),
               LinearProgressIndicator(
-                value: exerciseCount == 0 ? 0 : solved / exerciseCount,
+                value: exerciseCount == 0
+                    ? (courseComplete ? 1 : 0)
+                    : solved / exerciseCount,
                 minHeight: 5,
                 borderRadius: BorderRadius.circular(99),
                 backgroundColor: colors.border,
@@ -1345,10 +1392,12 @@ class _LessonCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      catalog.text('tutorial.lesson.exercises', {
-                        'solved': solved,
-                        'total': exerciseCount,
-                      }),
+                      exerciseCount == 0
+                          ? catalog.text('tutorial.lesson.theory')
+                          : catalog.text('tutorial.lesson.exercises', {
+                              'solved': solved,
+                              'total': exerciseCount,
+                            }),
                       style: TextStyle(color: colors.muted, fontSize: 12),
                     ),
                   ),

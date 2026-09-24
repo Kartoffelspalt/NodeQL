@@ -54,8 +54,15 @@ class TutorialController extends StateNotifier<TutorialState> {
       final lessonProgress = <TutorialKnowledgeMode, TutorialLessonProgress>{};
       if (rawLessons is Map) {
         for (final mode in TutorialKnowledgeMode.values) {
+          final current = rawLessons[mode.name];
+          final legacyKey = switch (mode) {
+            TutorialKnowledgeMode.selectAndSimpleFilters => 'beginner',
+            TutorialKnowledgeMode.advancedFilters => 'beginnerSyntax',
+            TutorialKnowledgeMode.complexQueries => 'intermediate',
+            _ => null,
+          };
           lessonProgress[mode] = TutorialLessonProgress.fromJson(
-            rawLessons[mode.name],
+            current ?? (legacyKey == null ? null : rawLessons[legacyKey]),
           );
         }
       }
@@ -96,7 +103,7 @@ class TutorialController extends StateNotifier<TutorialState> {
 
   Future<void> _persist() {
     final payload = jsonEncode({
-      'schemaVersion': 3,
+      'schemaVersion': 4,
       'completed': state.completed,
       'updatedAt': DateTime.now().toIso8601String(),
       'lessons': {

@@ -366,11 +366,13 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.overview.eyebrow': 'NODEQL-WORKSHOP',
     'tutorial.overview.title': 'Wähle einen praktischen Lernpfad',
     'tutorial.overview.body':
-        'Vier praktische Lernpfade, {missions} Workspace-Missionen und eine eigene SQLite-Übungsdatenbank. Baue jede Lösung mit echten Nodes, führe sie mit Beispieldaten aus und löse eigenständige Projekte – ohne Quizfragen.',
+        'Acht SQLite-Workshops, zwei NodeQL-spezifische Module und {missions} praktische Missionen. Lerne jeden Befehl mit echten Nodes und einer isolierten Übungsdatenbank.',
     'tutorial.overview.datasetTitle': 'Deine private Übungsdatenbank',
     'tutorial.overview.datasetBody':
-        'customers, orders und archived_customers enthalten Beispieldaten für Filter, JOINs, Aggregate und Mengenoperationen. Sie sind schreibgeschützt, von deinen Projekten getrennt und werden beim Verlassen zurückgesetzt.',
+        'customers, orders und archived_customers enthalten realistische Übungsdaten. Die Datenbank ist von deinen Projekten getrennt, erlaubt sichere Schreibübungen und wird beim Verlassen zurückgesetzt.',
     'tutorial.overview.curriculum': 'Wähle einen Lernpfad',
+    'tutorial.overview.area.sqlite': 'SQLite-Befehle',
+    'tutorial.overview.area.nodeQl': 'NodeQL-spezifisch',
     'tutorial.overview.datasetRows': '{count} Beispielzeilen',
     'tutorial.overview.progress':
         '{completed} von {total} Lektionen abgeschlossen',
@@ -382,10 +384,14 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.lesson.start': 'Im Workspace starten',
     'tutorial.lesson.resume': 'Im Workspace fortsetzen',
     'tutorial.lesson.repeat': 'Im Workspace wiederholen',
+    'tutorial.lesson.startTheory': 'Lernmodul öffnen',
+    'tutorial.lesson.repeatTheory': 'Lernmodul wiederholen',
     'tutorial.lesson.finish': 'Lektion abschließen',
     'tutorial.lesson.completed': 'Abgeschlossen',
     'tutorial.lesson.recommended': 'Empfohlen',
     'tutorial.lesson.practiceDone': 'Workspace-Aufgabe gelöst',
+    'tutorial.lesson.moduleDone': 'Lernmodul abgeschlossen',
+    'tutorial.lesson.theory': 'Geführtes NodeQL-Modul',
     'tutorial.lesson.beginner.description':
         'Ein geführter 15-Minuten-Kurs im Simple Mode: Node-Formen, Labels, Wert-Reporter und eine vollständige SELECT-Abfrage verstehen.',
     'tutorial.lesson.beginnerSyntax.description':
@@ -394,7 +400,364 @@ const builtInMessages = <String, Map<String, String>>{
         'Verknüpfe Tabellen, gruppiere Daten, nutze COUNT, filtere Gruppen und erstelle einen funktionsfähigen Bericht.',
     'tutorial.lesson.expert.description':
         'Erkunde UNION, INTERSECT, EXCEPT und UNION ALL und entwirf danach eine eigene Mengenabfrage.',
+    'tutorial.mode.selectAndSimpleFilters': 'SELECT & einfache Filter',
+    'tutorial.mode.dataTypes': 'Datentypen',
+    'tutorial.mode.advancedFilters': 'Erweiterte Filter',
+    'tutorial.mode.sortingAndWhere': 'Sortieren & WHERE',
+    'tutorial.mode.complexQueries': 'Komplexe Abfragen',
+    'tutorial.mode.dataManipulation': 'Create, Insert, Update & Delete',
+    'tutorial.mode.schemaObjects': 'Indizes, Views & Schema',
+    'tutorial.mode.transactions': 'Transaktionen & Wiederherstellungspunkte',
+    'tutorial.mode.databaseTools': 'Datenbankwerkzeuge',
+    'tutorial.mode.plugins': 'Plugins',
+    'tutorial.lesson.selectAndSimpleFilters.description':
+        'Starte mit SELECT und grenze Zeilen durch eine einfache WHERE-Bedingung ein.',
+    'tutorial.lesson.dataTypes.description':
+        'Nutze die SQLite-Speicherklassen NULL, INTEGER, REAL, TEXT und BLOB.',
+    'tutorial.lesson.advancedFilters.description':
+        'Kombiniere Bedingungen mit AND, OR und erweiterten Vergleichsoperatoren.',
+    'tutorial.lesson.sortingAndWhere.description':
+        'Filtere, sortiere mit ORDER BY und begrenze reproduzierbare Ergebnisse.',
+    'tutorial.lesson.complexQueries.description':
+        'Baue JOINs, Aggregate, gruppierte Berichte und Mengenoperationen.',
+    'tutorial.lesson.dataManipulation.description':
+        'Füge Datensätze mit INSERT hinzu, ändere sie mit UPDATE und entferne sie mit DELETE.',
+    'tutorial.lesson.schemaObjects.description':
+        'Erstelle Tabellen, Indizes und Views und verstehe ihre Aufgaben.',
+    'tutorial.lesson.transactions.description':
+        'Schütze mehrstufige Änderungen mit Transaktionen, SAVEPOINT und ROLLBACK.',
+    'tutorial.lesson.databaseTools.description':
+        'Lerne Tabellenbrowser, SQLite-Editor, Ergebnisbereich und Diagnosewerkzeuge kennen.',
+    'tutorial.lesson.plugins.description':
+        'Verstehe Plugin-Formen, Berechtigungen, Repositories und sichere Erweiterungen.',
+    'tutorial.course.dataTypes.step.1.nav': 'Speicherklassen',
+    'tutorial.course.dataTypes.step.1.eyebrow': 'SQLITE-GRUNDLAGEN',
+    'tutorial.course.dataTypes.step.1.title':
+        'SQLite-Werte nutzen fünf Speicherklassen',
+    'tutorial.course.dataTypes.step.1.body':
+        'NULL steht für keinen Wert, INTEGER für ganze Zahlen, REAL für Fließkommazahlen, TEXT für Zeichenketten und BLOB für Bytes. Die Datentyp-Palette erzeugt passend formatierte Literale.',
+    'tutorial.course.sortingAndWhere.step.1.nav': 'Klauselreihenfolge',
+    'tutorial.course.sortingAndWhere.step.1.eyebrow': 'ERGEBNISREIHENFOLGE',
+    'tutorial.course.sortingAndWhere.step.1.title':
+        'Filtere, bevor du sortierst und begrenzt',
+    'tutorial.course.sortingAndWhere.step.1.body':
+        'WHERE bestimmt die verbleibenden Zeilen, ORDER BY macht ihre Reihenfolge eindeutig und LIMIT begrenzt das fertige Ergebnis.',
+    'tutorial.course.dataManipulation.step.1.nav': 'Daten ändern',
+    'tutorial.course.dataManipulation.step.1.eyebrow': 'DML',
+    'tutorial.course.dataManipulation.step.1.title':
+        'INSERT, UPDATE und DELETE verändern Zeilen',
+    'tutorial.course.dataManipulation.step.1.body':
+        'INSERT fügt Datensätze hinzu, UPDATE ändert passende Datensätze und DELETE entfernt sie. Prüfe vor Schreibbefehlen immer Tabelle und WHERE-Bedingung.',
+    'tutorial.course.schemaObjects.step.1.nav': 'Schemaobjekte',
+    'tutorial.course.schemaObjects.step.1.eyebrow': 'DDL',
+    'tutorial.course.schemaObjects.step.1.title':
+        'Tabellen speichern Daten; Indizes und Views gestalten den Zugriff',
+    'tutorial.course.schemaObjects.step.1.body':
+        'CREATE TABLE definiert Spalten und Constraints. CREATE INDEX kann Suchen beschleunigen, CREATE VIEW gibt einer wiederverwendbaren Abfrage einen Namen.',
+    'tutorial.course.transactions.step.1.nav': 'Sichere Änderungen',
+    'tutorial.course.transactions.step.1.eyebrow': 'TRANSAKTIONEN',
+    'tutorial.course.transactions.step.1.title':
+        'Transaktionen machen zusammengehörige Änderungen atomar',
+    'tutorial.course.transactions.step.1.body':
+        'BEGIN startet eine Transaktion, COMMIT übernimmt sie. SAVEPOINT setzt einen Wiederherstellungspunkt; ROLLBACK TO macht nur spätere Arbeit rückgängig.',
+    'tutorial.course.databaseTools.step.1.nav': 'NodeQL-Werkzeuge',
+    'tutorial.course.databaseTools.step.1.eyebrow': 'NODEQL-SPEZIFISCH',
+    'tutorial.course.databaseTools.step.1.title':
+        'SQLite untersuchen, schreiben, ausführen und diagnostizieren',
+    'tutorial.course.databaseTools.step.1.body':
+        'Nutze den Tabellenbrowser für Tabellen und Views, den SQLite-Editor für direkte Befehle, die Vorschau zur Kontrolle erzeugter Abfragen und den Ergebnisbereich für Zeilen und Fehler.',
+    'tutorial.course.plugins.step.1.nav': 'Plugin-Blöcke',
+    'tutorial.course.plugins.step.1.eyebrow': 'NODEQL-SPEZIFISCH',
+    'tutorial.course.plugins.step.1.title':
+        'Die Plugin-Form bestimmt, wohin ein Block gehört',
+    'tutorial.course.plugins.step.1.body':
+        'Anweisungs-Plugins gehören in Befehlsketten, Wert-Plugins in runde Wert-Slots und Container-Plugins halten verschachtelte Blöcke. Prüfe vor dem Verbinden die deklarierten Eingaben.',
+    'tutorial.course.plugins.step.2.nav': 'Vertrauen & Zugriff',
+    'tutorial.course.plugins.step.2.eyebrow': 'PLUGIN-SICHERHEIT',
+    'tutorial.course.plugins.step.2.title':
+        'Prüfe Berechtigungen und Datenzugriff',
+    'tutorial.course.plugins.step.2.body':
+        'Ein Plugin-Manifest deklariert Host-Anforderungen, Netzwerkzugriff und Datenquellen. Installiere Plugins nur aus vertrauenswürdigen Repositories und prüfe diese Grenzen.',
+    'tutorial.course.plugins.step.3.nav': 'Plugins einsetzen',
+    'tutorial.course.plugins.step.3.eyebrow': 'NODEQL ERWEITERN',
+    'tutorial.course.plugins.step.3.title':
+        'Halte erzeugtes SQLite und Plugin-Verhalten prüfbar',
+    'tutorial.course.plugins.step.3.body':
+        'Lade das Plugin-Verzeichnis nach der Installation neu, finde neue Blöcke in der Plugin-Palette und prüfe erzeugtes SQLite oder deklarierte Aktionen vor der Ausführung.',
     'tutorial.practice.start': 'Mit echten Nodes üben',
+    'tutorial.practice.selectAndSimpleFilters.tab':
+        'Workshop · SELECT & Filter',
+    'tutorial.practice.dataTypes.tab': 'Workshop · Datentypen',
+    'tutorial.practice.advancedFilters.tab': 'Workshop · Erweiterte Filter',
+    'tutorial.practice.sortingAndWhere.tab': 'Workshop · Sortieren & WHERE',
+    'tutorial.practice.complexQueries.tab': 'Workshop · Komplexe Abfragen',
+    'tutorial.practice.dataManipulation.tab': 'Workshop · Daten ändern',
+    'tutorial.practice.schemaObjects.tab': 'Workshop · Schemaobjekte',
+    'tutorial.practice.transactions.tab': 'Workshop · Transaktionen',
+    'tutorial.practice.selectAndSimpleFilters.step.1.title':
+        'Baue eine SELECT-Abfrage',
+    'tutorial.practice.selectAndSimpleFilters.step.1.instruction':
+        'Verbinde SELECT und wähle Spalten sowie die Tabelle customers.',
+    'tutorial.practice.selectAndSimpleFilters.step.1.hint':
+        'Ziehe SELECT unter ABFRAGE AUSFÜHREN und ersetze die Platzhalter.',
+    'tutorial.practice.selectAndSimpleFilters.step.1.example':
+        'SELECT name FROM customers;',
+    'tutorial.practice.selectAndSimpleFilters.step.1.concept':
+        'SELECT bestimmt die ausgegebenen Werte; FROM benennt ihre Quelle.',
+    'tutorial.practice.selectAndSimpleFilters.step.2.title':
+        'Füge einen einfachen Filter hinzu',
+    'tutorial.practice.selectAndSimpleFilters.step.2.instruction':
+        'Verbinde WHERE und konfiguriere einen vollständigen Vergleich.',
+    'tutorial.practice.selectAndSimpleFilters.step.2.hint':
+        'Probiere city = Berlin oder active = 1.',
+    'tutorial.practice.selectAndSimpleFilters.step.2.example':
+        "SELECT name FROM customers WHERE city = 'Berlin';",
+    'tutorial.practice.selectAndSimpleFilters.step.2.concept':
+        'WHERE entfernt Zeilen, die seine Bedingung nicht erfüllen.',
+    'tutorial.practice.selectAndSimpleFilters.step.3.title':
+        'Projekt: Führe ein gefiltertes SELECT aus',
+    'tutorial.practice.selectAndSimpleFilters.step.3.instruction':
+        'Baue SELECT und WHERE neu auf und führe das erzeugte SQLite aus.',
+    'tutorial.practice.selectAndSimpleFilters.step.3.hint':
+        'Nutze customers und eine echte Spalte wie country oder active.',
+    'tutorial.practice.selectAndSimpleFilters.step.3.example':
+        "SELECT name, city FROM customers WHERE country = 'DE';",
+    'tutorial.practice.selectAndSimpleFilters.step.3.concept':
+        'Eine gute Abfrage verbindet eine klare Ausgabe mit einem gezielten Zeilenfilter.',
+    'tutorial.practice.dataTypes.step.1.title':
+        'Gib ein typisiertes Literal aus',
+    'tutorial.practice.dataTypes.step.1.instruction':
+        'Stecke einen Datentyp-Wert in SELECT und konfiguriere seinen Wert.',
+    'tutorial.practice.dataTypes.step.1.hint':
+        'Öffne Datentypen und teste INTEGER, REAL, TEXT, BLOB oder NULL.',
+    'tutorial.practice.dataTypes.step.1.example':
+        "SELECT 'SQLite' FROM customers;",
+    'tutorial.practice.dataTypes.step.1.concept':
+        'SQLite-Werte nutzen die Speicherklassen NULL, INTEGER, REAL, TEXT oder BLOB.',
+    'tutorial.practice.dataTypes.step.2.title':
+        'Vergleiche mit einem TEXT-Wert',
+    'tutorial.practice.dataTypes.step.2.instruction':
+        'Stecke einen TEXT-Reporter in das Wertefeld von WHERE.',
+    'tutorial.practice.dataTypes.step.2.hint':
+        'Setze den TEXT-Wert auf Berlin und vergleiche ihn mit city.',
+    'tutorial.practice.dataTypes.step.2.example':
+        "SELECT name FROM customers WHERE city = 'Berlin';",
+    'tutorial.practice.dataTypes.step.2.concept':
+        'Typisierte Reporter setzen Text in Anführungszeichen und lassen Zahlen unquoted.',
+    'tutorial.practice.dataTypes.step.3.title':
+        'Projekt: Führe ein typisiertes SELECT aus',
+    'tutorial.practice.dataTypes.step.3.instruction':
+        'Prüfe das vorbereitete Literal und führe die Abfrage erfolgreich aus.',
+    'tutorial.practice.dataTypes.step.3.hint':
+        'Der TEXT-Reporter muss in SELECT eingesteckt bleiben.',
+    'tutorial.practice.dataTypes.step.3.example':
+        "SELECT 'SQLite' FROM customers;",
+    'tutorial.practice.dataTypes.step.3.concept':
+        'Das erzeugte SQLite zeigt, wie ein typisierter NodeQL-Wert SQLite erreicht.',
+    'tutorial.practice.advancedFilters.step.1.title':
+        'Grenze Ergebnisse mit AND ein',
+    'tutorial.practice.advancedFilters.step.1.instruction':
+        'Füge nach WHERE eine konfigurierte AND-Bedingung hinzu.',
+    'tutorial.practice.advancedFilters.step.1.hint':
+        'Probiere active = 1 nach city = Berlin.',
+    'tutorial.practice.advancedFilters.step.1.example':
+        "… WHERE city = 'Berlin' AND active = 1;",
+    'tutorial.practice.advancedFilters.step.1.concept':
+        'AND behält eine Zeile nur, wenn beide Bedingungen wahr sind.',
+    'tutorial.practice.advancedFilters.step.2.title':
+        'Erweitere Ergebnisse mit OR',
+    'tutorial.practice.advancedFilters.step.2.instruction':
+        'Füge dem vorhandenen Filter eine konfigurierte OR-Bedingung hinzu.',
+    'tutorial.practice.advancedFilters.step.2.hint':
+        'Probiere country = FR als Alternative.',
+    'tutorial.practice.advancedFilters.step.2.example':
+        "… WHERE city = 'Berlin' AND active = 1 OR country = 'FR';",
+    'tutorial.practice.advancedFilters.step.2.concept':
+        'OR akzeptiert Zeilen, die eine Seite erfüllen; beachte die Operatorrangfolge.',
+    'tutorial.practice.advancedFilters.step.3.title':
+        'Projekt: Führe einen kombinierten Filter aus',
+    'tutorial.practice.advancedFilters.step.3.instruction':
+        'Baue und starte ein SELECT mit WHERE, AND und OR.',
+    'tutorial.practice.advancedFilters.step.3.hint':
+        'Konfiguriere jeden Vergleich und halte WHERE vor AND und OR.',
+    'tutorial.practice.advancedFilters.step.3.example':
+        "SELECT * FROM customers WHERE country = 'DE' AND active = 1 OR city = 'Paris';",
+    'tutorial.practice.advancedFilters.step.3.concept':
+        'Kombinierte Prädikate beschreiben genaue Regeln für Ergebniszeilen.',
+    'tutorial.practice.sortingAndWhere.step.1.title':
+        'Sortiere gefilterte Zeilen',
+    'tutorial.practice.sortingAndWhere.step.1.instruction':
+        'Füge ORDER BY mit Spalte und Richtung ASC oder DESC hinzu.',
+    'tutorial.practice.sortingAndWhere.step.1.hint':
+        'Sortiere nach WHERE mit name ASC.',
+    'tutorial.practice.sortingAndWhere.step.1.example':
+        "… WHERE city = 'Berlin' ORDER BY name ASC;",
+    'tutorial.practice.sortingAndWhere.step.1.concept':
+        'ORDER BY macht die Ergebnisreihenfolge eindeutig und reproduzierbar.',
+    'tutorial.practice.sortingAndWhere.step.2.title':
+        'Begrenze das sortierte Ergebnis',
+    'tutorial.practice.sortingAndWhere.step.2.instruction':
+        'Verbinde LIMIT nach ORDER BY und trage eine positive Zeilenzahl ein.',
+    'tutorial.practice.sortingAndWhere.step.2.hint':
+        'Nutze LIMIT 5 unter ORDER BY.',
+    'tutorial.practice.sortingAndWhere.step.2.example':
+        '… ORDER BY name ASC LIMIT 5;',
+    'tutorial.practice.sortingAndWhere.step.2.concept':
+        'LIMIT ist vorhersehbar, wenn davor ausdrücklich sortiert wird.',
+    'tutorial.practice.sortingAndWhere.step.3.title':
+        'Projekt: Gefilterte Ergebnisseite',
+    'tutorial.practice.sortingAndWhere.step.3.instruction':
+        'Baue WHERE → ORDER BY → LIMIT in einem vollständigen SELECT und führe es aus.',
+    'tutorial.practice.sortingAndWhere.step.3.hint':
+        'Nutze Filter, Sortierspalte und eine positive Begrenzung.',
+    'tutorial.practice.sortingAndWhere.step.3.example':
+        'SELECT name FROM customers WHERE active = 1 ORDER BY name ASC LIMIT 5;',
+    'tutorial.practice.sortingAndWhere.step.3.concept':
+        'Filtern, Sortieren und Begrenzen bilden die Grundlage von Suchen und Seiten.',
+    'tutorial.practice.complexQueries.step.1.title':
+        'Verbinde customers und orders',
+    'tutorial.practice.complexQueries.step.1.instruction':
+        'Verbinde einen JOIN und konfiguriere Tabelle sowie passende Spalten.',
+    'tutorial.practice.complexQueries.step.1.hint':
+        'Verbinde customers.id mit orders.customer_id.',
+    'tutorial.practice.complexQueries.step.1.example':
+        '… FROM customers INNER JOIN orders ON customers.id = orders.customer_id;',
+    'tutorial.practice.complexQueries.step.1.concept':
+        'JOIN kombiniert zusammengehörige Zeilen über eine definierte Schlüsselbeziehung.',
+    'tutorial.practice.complexQueries.step.2.title':
+        'Gruppiere und filtere einen Bericht',
+    'tutorial.practice.complexQueries.step.2.instruction':
+        'Füge konfigurierte GROUP-BY- und HAVING-Nodes in dieser Reihenfolge hinzu.',
+    'tutorial.practice.complexQueries.step.2.hint':
+        'Gruppiere nach customers.name und nutze HAVING COUNT(*) > 0.',
+    'tutorial.practice.complexQueries.step.2.example':
+        '… GROUP BY customers.name HAVING COUNT(*) > 0;',
+    'tutorial.practice.complexQueries.step.2.concept':
+        'GROUP BY bildet Gruppen; HAVING filtert die berechneten Gruppen.',
+    'tutorial.practice.complexQueries.step.3.title':
+        'Kombiniere kompatible Ergebnisse',
+    'tutorial.practice.complexQueries.step.3.instruction':
+        'Verbinde UNION und trage ein vollständiges kompatibles SELECT ein.',
+    'tutorial.practice.complexQueries.step.3.hint':
+        'Nutze SELECT id, name FROM archived_customers.',
+    'tutorial.practice.complexQueries.step.3.example':
+        'SELECT id, name FROM customers UNION SELECT id, name FROM archived_customers;',
+    'tutorial.practice.complexQueries.step.3.concept':
+        'UNION kombiniert kompatible Ergebnismengen und entfernt Duplikate.',
+    'tutorial.practice.complexQueries.step.4.title':
+        'Projekt: Führe einen gruppierten JOIN aus',
+    'tutorial.practice.complexQueries.step.4.instruction':
+        'Baue JOIN mit COUNT, GROUP BY und HAVING und führe ihn aus.',
+    'tutorial.practice.complexQueries.step.4.hint':
+        'Zähle Bestellungen pro Kunde und behalte Gruppen mit mindestens einer Bestellung.',
+    'tutorial.practice.complexQueries.step.4.example':
+        'SELECT COUNT(*) FROM customers INNER JOIN orders ON customers.id = orders.customer_id GROUP BY customers.name HAVING COUNT(*) > 0;',
+    'tutorial.practice.complexQueries.step.4.concept':
+        'Komplexe Abfragen bleiben verständlich, wenn Beziehung, Aggregation und Gruppenfilter sichtbar sind.',
+    'tutorial.practice.dataManipulation.step.1.title': 'Füge eine Zeile ein',
+    'tutorial.practice.dataManipulation.step.1.instruction':
+        'Verbinde INSERT und konfiguriere Tabelle, Spalten und Werte.',
+    'tutorial.practice.dataManipulation.step.1.hint':
+        'Nutze archived_customers mit id, name und einem passenden Wertetupel.',
+    'tutorial.practice.dataManipulation.step.1.example':
+        "INSERT INTO archived_customers (id, name) VALUES (999, 'Workshop');",
+    'tutorial.practice.dataManipulation.step.1.concept':
+        'INSERT erzeugt Zeilen; Anzahl der Werte und ausgewählten Spalten muss passen.',
+    'tutorial.practice.dataManipulation.step.2.title': 'Ändere passende Zeilen',
+    'tutorial.practice.dataManipulation.step.2.instruction':
+        'Verbinde UPDATE und konfiguriere Zuweisung sowie WHERE-Vergleich.',
+    'tutorial.practice.dataManipulation.step.2.hint':
+        'Ziele auf archived_customers und identifiziere eine Zeile über id.',
+    'tutorial.practice.dataManipulation.step.2.example':
+        "UPDATE archived_customers SET name = 'NodeQL' WHERE id = 999;",
+    'tutorial.practice.dataManipulation.step.2.concept':
+        'UPDATE ohne präzises WHERE kann mehr Zeilen als beabsichtigt ändern.',
+    'tutorial.practice.dataManipulation.step.3.title': 'Lösche passende Zeilen',
+    'tutorial.practice.dataManipulation.step.3.instruction':
+        'Verbinde DELETE und konfiguriere einen präzisen WHERE-Vergleich.',
+    'tutorial.practice.dataManipulation.step.3.hint':
+        'Lösche einen archivierten Kunden über seine id.',
+    'tutorial.practice.dataManipulation.step.3.example':
+        'DELETE FROM archived_customers WHERE id = 999;',
+    'tutorial.practice.dataManipulation.step.3.concept':
+        'DELETE entfernt jede passende Zeile; deshalb ist die Bedingung entscheidend.',
+    'tutorial.practice.dataManipulation.step.4.title':
+        'Projekt: Vollständiger Lebenszyklus einer Zeile',
+    'tutorial.practice.dataManipulation.step.4.instruction':
+        'Führe die vorbereitete Kette INSERT → UPDATE → DELETE aus.',
+    'tutorial.practice.dataManipulation.step.4.hint':
+        'Prüfe alle drei Anweisungen, bevor du sie gemeinsam startest.',
+    'tutorial.practice.dataManipulation.step.4.example':
+        'INSERT …; UPDATE … WHERE id = 999; DELETE … WHERE id = 999;',
+    'tutorial.practice.dataManipulation.step.4.concept':
+        'Die Übung zeigt, wie Datensätze sicher erzeugt, geändert und entfernt werden.',
+    'tutorial.practice.schemaObjects.step.1.title': 'Erstelle eine Tabelle',
+    'tutorial.practice.schemaObjects.step.1.instruction':
+        'Verbinde CREATE TABLE und definiere Name sowie Spalten.',
+    'tutorial.practice.schemaObjects.step.1.hint':
+        'Nutze workshop_notes mit id INTEGER PRIMARY KEY und note TEXT NOT NULL.',
+    'tutorial.practice.schemaObjects.step.1.example':
+        'CREATE TABLE workshop_notes (id INTEGER PRIMARY KEY, note TEXT NOT NULL);',
+    'tutorial.practice.schemaObjects.step.1.concept':
+        'Eine Tabellendefinition gibt gespeicherten Werten Namen, Typen und Constraints.',
+    'tutorial.practice.schemaObjects.step.2.title': 'Erstelle einen Index',
+    'tutorial.practice.schemaObjects.step.2.instruction':
+        'Füge CREATE INDEX für eine echte Tabelle und Spalte hinzu.',
+    'tutorial.practice.schemaObjects.step.2.hint':
+        'Indiziere workshop_notes.note und vergib einen eindeutigen Namen.',
+    'tutorial.practice.schemaObjects.step.2.example':
+        'CREATE INDEX idx_workshop_notes_note ON workshop_notes (note);',
+    'tutorial.practice.schemaObjects.step.2.concept':
+        'Indizes tauschen Speicher und Schreibarbeit gegen schnellere Suchen.',
+    'tutorial.practice.schemaObjects.step.3.title': 'Erstelle eine View',
+    'tutorial.practice.schemaObjects.step.3.instruction':
+        'Verbinde CREATE VIEW und gib Namen sowie ein vollständiges SELECT an.',
+    'tutorial.practice.schemaObjects.step.3.hint':
+        'Erzeuge active_customers aus customers WHERE active = 1.',
+    'tutorial.practice.schemaObjects.step.3.example':
+        'CREATE VIEW active_customers AS SELECT id, name FROM customers WHERE active = 1;',
+    'tutorial.practice.schemaObjects.step.3.concept':
+        'Eine View speichert eine wiederverwendbare Abfrage, nicht deren Ergebniszeilen.',
+    'tutorial.practice.schemaObjects.step.4.title':
+        'Projekt: Baue wiederverwendbare Schemaobjekte',
+    'tutorial.practice.schemaObjects.step.4.instruction':
+        'Führe die vorbereiteten Definitionen für Tabelle, Index und View aus.',
+    'tutorial.practice.schemaObjects.step.4.hint':
+        'IF NOT EXISTS macht diese Übungskette wiederholbar.',
+    'tutorial.practice.schemaObjects.step.4.example':
+        'CREATE TABLE IF NOT EXISTS …; CREATE INDEX IF NOT EXISTS …; CREATE VIEW IF NOT EXISTS …;',
+    'tutorial.practice.schemaObjects.step.4.concept':
+        'Tabellen, Indizes und Views lösen verschiedene Speicher- und Zugriffsaufgaben.',
+    'tutorial.practice.transactions.step.1.title':
+        'Definiere eine Transaktionsgrenze',
+    'tutorial.practice.transactions.step.1.instruction':
+        'Verbinde BEGIN TRANSACTION und COMMIT in dieser Reihenfolge.',
+    'tutorial.practice.transactions.step.1.hint':
+        'Wähle für BEGIN DEFERRED, IMMEDIATE oder EXCLUSIVE.',
+    'tutorial.practice.transactions.step.1.example':
+        'BEGIN DEFERRED TRANSACTION; COMMIT;',
+    'tutorial.practice.transactions.step.1.concept':
+        'COMMIT übernimmt alle erfolgreichen Änderungen seit BEGIN gemeinsam.',
+    'tutorial.practice.transactions.step.2.title':
+        'Füge einen Wiederherstellungspunkt hinzu',
+    'tutorial.practice.transactions.step.2.instruction':
+        'Verbinde SAVEPOINT, ROLLBACK TO SAVEPOINT und RELEASE mit demselben Namen.',
+    'tutorial.practice.transactions.step.2.hint':
+        'Nutze workshop_point für alle drei Nodes.',
+    'tutorial.practice.transactions.step.2.example':
+        'SAVEPOINT workshop_point; ROLLBACK TO SAVEPOINT workshop_point; RELEASE SAVEPOINT workshop_point;',
+    'tutorial.practice.transactions.step.2.concept':
+        'Ein Savepoint macht einen Teil rückgängig, ohne die ganze Transaktion abzubrechen.',
+    'tutorial.practice.transactions.step.3.title':
+        'Projekt: Führe eine umkehrbare Änderung aus',
+    'tutorial.practice.transactions.step.3.instruction':
+        'Führe die vorbereitete Transaktion aus und prüfe ihre Savepoint-Reihenfolge.',
+    'tutorial.practice.transactions.step.3.hint':
+        'Das UPDATE wird vor RELEASE und COMMIT rückgängig gemacht.',
+    'tutorial.practice.transactions.step.3.example':
+        'BEGIN; SAVEPOINT workshop_point; UPDATE …; ROLLBACK TO SAVEPOINT workshop_point; RELEASE SAVEPOINT workshop_point; COMMIT;',
+    'tutorial.practice.transactions.step.3.concept':
+        'Wiederherstellungspunkte machen mehrstufige Schreibvorgänge sicherer.',
     'tutorial.practice.success':
         'Gelöst – dieser Arbeitsbereich enthält die benötigten verbundenen Nodes.',
     'tutorial.practice.otherTab':
@@ -517,6 +880,40 @@ const builtInMessages = <String, Map<String, String>>{
         'Zweite SELECT-Abfrage für EXCEPT ist eingestellt',
     'tutorial.practice.check.unionAllConfigured':
         'UNION ALL behält doppelte Zeilen',
+    'tutorial.practice.check.selectLiteralReporter':
+        'Ein konfigurierter Datentyp-Wert steckt in SELECT',
+    'tutorial.practice.check.insertConnected': 'INSERT ist verbunden',
+    'tutorial.practice.check.insertConfigured':
+        'Tabelle, Spalten und Werte von INSERT sind konfiguriert',
+    'tutorial.practice.check.updateConnected': 'UPDATE ist verbunden',
+    'tutorial.practice.check.updateConfigured':
+        'Zuweisung und WHERE von UPDATE sind konfiguriert',
+    'tutorial.practice.check.deleteConnected': 'DELETE ist verbunden',
+    'tutorial.practice.check.deleteConfigured':
+        'Tabelle und WHERE von DELETE sind konfiguriert',
+    'tutorial.practice.check.createTableConnected':
+        'CREATE TABLE ist verbunden',
+    'tutorial.practice.check.createTableConfigured':
+        'Tabellenname und Definition sind konfiguriert',
+    'tutorial.practice.check.createIndexConnected':
+        'CREATE INDEX ist verbunden',
+    'tutorial.practice.check.createIndexConfigured':
+        'Indexname, Tabelle und Spalten sind konfiguriert',
+    'tutorial.practice.check.createViewConnected': 'CREATE VIEW ist verbunden',
+    'tutorial.practice.check.createViewConfigured':
+        'View-Name und SELECT sind konfiguriert',
+    'tutorial.practice.check.beginTransactionConnected':
+        'BEGIN TRANSACTION ist verbunden',
+    'tutorial.practice.check.savepointConnected': 'SAVEPOINT ist verbunden',
+    'tutorial.practice.check.savepointConfigured':
+        'Der Wiederherstellungspunkt hat einen Namen',
+    'tutorial.practice.check.rollbackToSavepointConnected':
+        'ROLLBACK TO SAVEPOINT ist verbunden',
+    'tutorial.practice.check.releaseSavepointConnected':
+        'RELEASE SAVEPOINT ist verbunden',
+    'tutorial.practice.check.commitConnected': 'COMMIT ist verbunden',
+    'tutorial.practice.check.transactionOrderValid':
+        'Transaktions- und Savepoint-Reihenfolge ist gültig',
     'tutorial.practice.check.queryExecuted':
         'Genau diese Abfrage wurde auf der Übungsdatenbank erfolgreich ausgeführt',
     'tutorial.practice.node.eventGreenFlag.title':
@@ -579,6 +976,46 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.practice.node.sqlExcept.title': 'EXCEPT · Zeilen abziehen',
     'tutorial.practice.node.sqlExcept.body':
         'EXCEPT behält Zeilen aus dem ersten SELECT, die im zweiten Ergebnis fehlen.',
+    'tutorial.practice.node.sqlInsert.title': 'INSERT · Zeilen hinzufügen',
+    'tutorial.practice.node.sqlInsert.body':
+        'INSERT zielt auf eine Tabelle, benennt Spalten und liefert passende Wertetupel.',
+    'tutorial.practice.node.sqlUpdate.title': 'UPDATE · Zeilen ändern',
+    'tutorial.practice.node.sqlUpdate.body':
+        'UPDATE weist passenden Zeilen neue Werte zu. WHERE begrenzt den betroffenen Bereich.',
+    'tutorial.practice.node.sqlDelete.title': 'DELETE · Zeilen entfernen',
+    'tutorial.practice.node.sqlDelete.body':
+        'DELETE entfernt jede Zeile, die seine WHERE-Bedingung erfüllt.',
+    'tutorial.practice.node.sqlCreateTable.title':
+        'CREATE TABLE · Speicher definieren',
+    'tutorial.practice.node.sqlCreateTable.body':
+        'CREATE TABLE definiert Spalten, SQLite-Affinitäten und Constraints.',
+    'tutorial.practice.node.sqlCreateIndex.title':
+        'CREATE INDEX · Suchen beschleunigen',
+    'tutorial.practice.node.sqlCreateIndex.body':
+        'CREATE INDEX baut eine Suchstruktur für ausgewählte Spalten auf.',
+    'tutorial.practice.node.sqlCreateView.title':
+        'CREATE VIEW · Abfrage speichern',
+    'tutorial.practice.node.sqlCreateView.body':
+        'CREATE VIEW gibt einem SELECT einen wiederverwendbaren Namen.',
+    'tutorial.practice.node.sqlBeginTransaction.title':
+        'BEGIN · Transaktion starten',
+    'tutorial.practice.node.sqlBeginTransaction.body':
+        'BEGIN startet eine atomare Arbeitseinheit und wählt das Sperrverhalten.',
+    'tutorial.practice.node.sqlCommit.title': 'COMMIT · Änderungen übernehmen',
+    'tutorial.practice.node.sqlCommit.body':
+        'COMMIT macht erfolgreiche Änderungen der aktuellen Transaktion dauerhaft.',
+    'tutorial.practice.node.sqlSavepoint.title':
+        'SAVEPOINT · Wiederherstellung markieren',
+    'tutorial.practice.node.sqlSavepoint.body':
+        'SAVEPOINT erzeugt einen benannten Wiederherstellungspunkt.',
+    'tutorial.practice.node.sqlRollbackToSavepoint.title':
+        'ROLLBACK TO · Abschnitt zurücknehmen',
+    'tutorial.practice.node.sqlRollbackToSavepoint.body':
+        'ROLLBACK TO macht Arbeit nach dem Savepoint rückgängig und hält die Transaktion offen.',
+    'tutorial.practice.node.sqlReleaseSavepoint.title':
+        'RELEASE · Savepoint schließen',
+    'tutorial.practice.node.sqlReleaseSavepoint.body':
+        'RELEASE entfernt den benannten Savepoint, sobald er nicht mehr benötigt wird.',
     'tutorial.practice.node.sqlAlias.title': 'ALIAS · Ausdruck benennen',
     'tutorial.practice.node.sqlAlias.body':
         'ALIAS umhüllt einen anderen Wert-Reporter wie SPALTE und gibt der Ergebnisspalte mit AS einen verständlichen Namen.',

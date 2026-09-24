@@ -25,10 +25,12 @@ void main() {
     );
 
     expect(find.text('Choose a practical learning path'), findsOneWidget);
-    expect(find.text('About 15 min'), findsOneWidget);
+    expect(find.text('About 8 min'), findsWidgets);
     expect(find.byKey(const ValueKey('tutorial-answer-1-0')), findsNothing);
 
-    final beginner = find.byKey(const ValueKey('tutorial-lesson-beginner'));
+    final beginner = find.byKey(
+      const ValueKey('tutorial-lesson-selectAndSimpleFilters'),
+    );
     await tester.ensureVisible(beginner);
     await tester.tap(beginner);
     await tester.pumpAndSettle();
@@ -56,7 +58,7 @@ void main() {
       ),
     );
 
-    expect(find.text('2 of 7 workspace missions'), findsOneWidget);
+    expect(find.text('2 of 3 workspace missions'), findsOneWidget);
     expect(find.text('Continue in workspace'), findsOneWidget);
   });
 
@@ -79,9 +81,8 @@ void main() {
       ),
     );
 
-    expect(find.text('3 of 7 workspace missions'), findsOneWidget);
-    expect(find.text('Continue in workspace'), findsOneWidget);
-    expect(find.text('Repeat in workspace'), findsNothing);
+    expect(find.text('3 of 3 workspace missions'), findsOneWidget);
+    expect(find.text('Repeat in workspace'), findsOneWidget);
   });
 
   testWidgets('uses readable workshop colors in White Mode', (tester) async {
@@ -99,9 +100,8 @@ void main() {
 
     final body = tester.widget<Text>(
       find.text(
-        'Four hands-on paths, 30 workspace missions and a private SQLite '
-        'practice database. Build each solution with real nodes, run it '
-        'against sample data and finish with independent projects — no quiz questions.',
+        'Eight SQLite workshops, two NodeQL-specific modules and 27 hands-on '
+        'missions. Learn each command with real nodes and an isolated practice database.',
       ),
     );
     final colors = lightTheme.extension<NodeQlWorkbenchColors>()!;

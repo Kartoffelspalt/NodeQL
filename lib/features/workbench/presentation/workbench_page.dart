@@ -2202,7 +2202,7 @@ class _WorkshopProviderScope extends StatelessWidget {
         ref.onDispose(database.dispose);
         return SqlRuntimeController(
           initialState: database.initialState,
-          readOnly: true,
+          readOnly: false,
         );
       }),
       sqlModeProvider.overrideWith((ref) => SqlModeController.session()),
@@ -2625,6 +2625,37 @@ class _WorkshopWorkspaceViewState
   SqlPaletteCategory _categoryForPracticeStep(TutorialPracticeStep step) {
     if (step.focusNodes.contains(BlockType.sqlText)) {
       return SqlPaletteCategory.dataTypes;
+    }
+    if (step.focusNodes.any(
+      const <BlockType>{
+        BlockType.sqlInsert,
+        BlockType.sqlInsertOrReplace,
+        BlockType.sqlUpsert,
+        BlockType.sqlUpdate,
+        BlockType.sqlDelete,
+      }.contains,
+    )) {
+      return SqlPaletteCategory.dml;
+    }
+    if (step.focusNodes.any(
+      const <BlockType>{
+        BlockType.sqlCreateTable,
+        BlockType.sqlCreateIndex,
+        BlockType.sqlCreateView,
+      }.contains,
+    )) {
+      return SqlPaletteCategory.ddl;
+    }
+    if (step.focusNodes.any(
+      const <BlockType>{
+        BlockType.sqlBeginTransaction,
+        BlockType.sqlCommit,
+        BlockType.sqlSavepoint,
+        BlockType.sqlRollbackToSavepoint,
+        BlockType.sqlReleaseSavepoint,
+      }.contains,
+    )) {
+      return SqlPaletteCategory.txn;
     }
     return SqlPaletteCategory.queryLanguage;
   }
