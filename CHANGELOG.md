@@ -8,6 +8,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - No unreleased changes yet.
 
+## [0.4.1] - 2026-09-25
+
+### Added
+
+- Added a visual catalog of SQLite functions, including Unix-timestamp to
+  date/time conversion with `datetime(..., 'unixepoch')`.
+- Added individual aliases for multiple SELECT columns directly in the column
+  picker.
+- Added fullscreen mode and CSV, JSON, and TSV exports for query results.
+- Added a live database preview and a reusable result-export service.
+- Added fullscreen settings sections for Accessibility, Motion, Display, and
+  Personalization.
+- Added a responsive workbench layout controller for smoothly resizable work
+  areas.
+- Expanded the isolated SQLite Workshop with improved practice workflows and
+  a dedicated workshop database.
+
+### Changed
+
+- Unified SQL command output and result-table presentation.
+- Refined the database browser, workspace layout, and desktop runner behavior
+  on Linux and Windows.
+- Improved alias compilation and column qualification in joined queries.
+
+### Fixed
+
+- Restored autosave after workspace changes.
+- Fixed invalid rollback arguments during query execution.
+- Fixed interaction with embedded column and function reporter nodes.
+- Fixed ambiguous-column errors when aliases are used with joins.
+- Fixed scrollbar controller assertions in resizable layouts.
+- Fixed Material ink warnings for selectable repository entries.
+
 ## [0.3.6] - 2026-08-31
 
 ### Added
