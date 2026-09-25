@@ -38,6 +38,7 @@ class TutorialController extends StateNotifier<TutorialState> {
 
   final Future<File> Function() _storageFile;
   Future<void>? _initialization;
+  Future<void> _pendingWrite = Future<void>.value();
 
   Future<void> initialize() => _initialization ??= _initialize();
 
@@ -53,8 +54,15 @@ class TutorialController extends StateNotifier<TutorialState> {
       final lessonProgress = <TutorialKnowledgeMode, TutorialLessonProgress>{};
       if (rawLessons is Map) {
         for (final mode in TutorialKnowledgeMode.values) {
+          final current = rawLessons[mode.name];
+          final legacyKey = switch (mode) {
+            TutorialKnowledgeMode.selectAndSimpleFilters => 'beginner',
+            TutorialKnowledgeMode.advancedFilters => 'beginnerSyntax',
+            TutorialKnowledgeMode.complexQueries => 'intermediate',
+            _ => null,
+          };
           lessonProgress[mode] = TutorialLessonProgress.fromJson(
-            rawLessons[mode.name],
+            current ?? (legacyKey == null ? null : rawLessons[legacyKey]),
           );
         }
       }
@@ -69,6 +77,8 @@ class TutorialController extends StateNotifier<TutorialState> {
   }
 
   Future<void> complete() async {
+    if (state.loading) await initialize();
+    if (!mounted) return;
     state = TutorialState(
       loading: false,
       completed: true,
@@ -81,6 +91,8 @@ class TutorialController extends StateNotifier<TutorialState> {
     TutorialKnowledgeMode mode,
     TutorialLessonProgress progress,
   ) async {
+    if (state.loading) await initialize();
+    if (!mounted) return;
     state = TutorialState(
       loading: false,
       completed: state.completed,
@@ -89,23 +101,24 @@ class TutorialController extends StateNotifier<TutorialState> {
     await _persist();
   }
 
-  Future<void> _persist() async {
-    try {
-      final file = await _storageFile();
-      await file.parent.create(recursive: true);
-      await file.writeAsString(
-        jsonEncode({
-          'schemaVersion': 3,
-          'completed': state.completed,
-          'updatedAt': DateTime.now().toIso8601String(),
-          'lessons': {
-            for (final entry in state.lessonProgress.entries)
-              entry.key.name: entry.value.toJson(),
-          },
-        }),
-        flush: true,
-      );
-    } catch (_) {}
+  Future<void> _persist() {
+    final payload = jsonEncode({
+      'schemaVersion': 4,
+      'completed': state.completed,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'lessons': {
+        for (final entry in state.lessonProgress.entries)
+          entry.key.name: entry.value.toJson(),
+      },
+    });
+    _pendingWrite = _pendingWrite.then((_) async {
+      try {
+        final file = await _storageFile();
+        await file.parent.create(recursive: true);
+        await file.writeAsString(payload, flush: true);
+      } catch (_) {}
+    });
+    return _pendingWrite;
   }
 
   static Future<File> _defaultStorageFile() async {

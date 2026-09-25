@@ -12,6 +12,7 @@ enum BlockType {
   sqlColumn,
   sqlText,
   sqlAlias,
+  sqlFunction,
   sqlFrom,
   sqlWhere,
   sqlAnd,
@@ -180,6 +181,7 @@ abstract class BlockNode {
       case BlockType.sqlColumn:
       case BlockType.sqlText:
       case BlockType.sqlAlias:
+      case BlockType.sqlFunction:
       case BlockType.sqlFrom:
       case BlockType.sqlJoin:
       case BlockType.sqlInnerJoin:

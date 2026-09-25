@@ -630,6 +630,58 @@ void main() {
     );
   });
 
+  test('keeps multiple individually aliased SELECT projections', () {
+    final root = EventBlock(id: 'run-projections', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'select-projections',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSelect,
+        inputs: <String, dynamic>{
+          'columns': 'name AS "Display name", city AS city_label',
+          'table': 'people',
+        },
+      );
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
+      'SELECT name AS "Display name", city AS city_label FROM people;',
+    );
+  });
+
+  test('qualifies aliased simple projections when a query joins tables', () {
+    final root = EventBlock(
+      id: 'run-qualified-projections',
+      position: Offset.zero,
+    );
+    final select = OperatorBlock(
+      id: 'select-qualified-projections',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{
+        'columns': 'id AS customer_id, name AS customer_name',
+        'table': 'customers',
+      },
+    );
+    final join = OperatorBlock(
+      id: 'join-orders',
+      position: Offset.zero,
+      operatorType: BlockType.sqlInnerJoin,
+      inputs: <String, dynamic>{
+        'table': 'orders',
+        'left_column': 'customers.id',
+        'right_column': 'orders.customer_id',
+      },
+    );
+    root.next = select;
+    select.next = join;
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
+      'SELECT customers.id AS customer_id, customers.name AS customer_name '
+      'FROM customers INNER JOIN orders ON customers.id = orders.customer_id;',
+    );
+  });
+
   test('renders visual operations with SQLite syntax', () {
     final root = EventBlock(id: 'run', position: Offset.zero);
     root.next = OperatorBlock(

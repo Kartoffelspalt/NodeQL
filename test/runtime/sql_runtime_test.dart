@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/learning/sql_exercise_evaluator.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
@@ -8,6 +9,34 @@ import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  test(
+    'runs an isolate query from a provider-managed runtime controller',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'nodeql_provider_runtime',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final path = '${tempDir.path}${Platform.pathSeparator}runtime.db';
+      final database = sqlite3.open(path);
+      database.execute(
+        'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);',
+      );
+      database.close();
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final controller = container.read(sqlRuntimeProvider.notifier);
+      await controller.attachDatabasePath(path);
+
+      final result = await controller.executeWithSnapshot(
+        'SELECT id, body FROM notes;',
+      );
+
+      expect(result.success, isTrue);
+      expect(controller.state.lastMessage, 'OK');
+    },
+  );
+
   test(
     'executes a visual SQLite program instead of accepting node SQLite text',
     () async {

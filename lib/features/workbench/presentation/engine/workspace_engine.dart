@@ -335,6 +335,44 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _touch();
   }
 
+  /// Updates a SQLite function reporter embedded in another node. Argument
+  /// text overrides are cleared so the freshly selected function template is
+  /// reflected immediately; reporter arguments themselves remain connected.
+  void updateSqliteFunctionReporterInput(
+    BlockNode node,
+    String key,
+    BlockNode reporter, {
+    required String function,
+    required List<String> arguments,
+  }) {
+    _pushUndoSnapshot();
+    reporter.inputs['function'] = function;
+    reporter.inputs['args'] = arguments;
+    reporter.inputs.removeWhere(
+      (inputKey, _) => RegExp(r'^arg\d+$').hasMatch(inputKey),
+    );
+    setReporterForInput(node, key, reporter);
+    _relayoutAll();
+    _touch();
+  }
+
+  /// Updates a standalone SQLite function while resetting edited text
+  /// arguments. Nested reporter arguments are intentionally retained.
+  void updateSqliteFunction(
+    BlockNode node, {
+    required String function,
+    required List<String> arguments,
+  }) {
+    _pushUndoSnapshot();
+    node.inputs['function'] = function;
+    node.inputs['args'] = arguments;
+    node.inputs.removeWhere(
+      (inputKey, _) => RegExp(r'^arg\d+$').hasMatch(inputKey),
+    );
+    _relayoutAll();
+    _touch();
+  }
+
   void setNestedReporterInput(
     BlockNode node,
     String key,
@@ -996,6 +1034,16 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           position: worldPos,
           operatorType: type,
         )..inputs.addAll(<String, dynamic>{'value': 'id', 'alias': 'alias'});
+      case BlockType.sqlFunction:
+        return OperatorBlock(
+            id: 'function_$suffix',
+            position: worldPos,
+            operatorType: type,
+          )
+          ..inputs.addAll(<String, dynamic>{
+            'function': 'datetime',
+            'args': <String>['unix_timestamp', "'unixepoch'"],
+          });
       case BlockType.sqlCount:
         return OperatorBlock(
           id: 'count_$suffix',

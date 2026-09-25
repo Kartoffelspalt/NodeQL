@@ -3,369 +3,317 @@ import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 
 void main() {
-  test('beginner mission only accepts a configured connected SELECT', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final select = OperatorBlock(
-      id: 'select',
-      position: Offset.zero,
-      operatorType: BlockType.sqlSelect,
-      inputs: {'columns': '*', 'table': 'customers'},
+  test('curriculum contains eight SQLite workshops and 27 missions', () {
+    expect(
+      TutorialKnowledgeMode.values.where(
+        (mode) => mode.area == TutorialWorkshopArea.sqlite,
+      ),
+      hasLength(8),
     );
+    expect(
+      TutorialKnowledgeMode.values.where(
+        (mode) => mode.area == TutorialWorkshopArea.nodeQl,
+      ),
+      hasLength(2),
+    );
+    expect(
+      tutorialPracticeDefinitions.values.fold<int>(
+        0,
+        (total, definition) => total + definition.stepCount,
+      ),
+      27,
+    );
+    for (final mode in TutorialKnowledgeMode.values) {
+      expect(
+        tutorialPracticeDefinitions.containsKey(mode),
+        mode.hasWorkspacePractice,
+      );
+    }
+  });
 
-    expect(definition.evaluate([event, select], 0).complete, isFalse);
+  test('every mission restores one compilable connected graph', () {
+    for (final definition in tutorialPracticeDefinitions.values) {
+      for (final mode in SqlAbstractionMode.values) {
+        for (var step = 0; step < definition.stepCount; step++) {
+          final workspace = WorkspaceController()
+            ..resetWithRoot(recordUndo: false, clearHistory: true);
+          for (final seed in definition.starterFor(mode, step)) {
+            workspace.addTemplate(
+              seed.type,
+              workspace.suggestedTemplatePosition(seed.type),
+              defaults: seed.defaults,
+              recordUndo: false,
+            );
+          }
+          expect(workspace.state.roots, hasLength(1));
+          expect(
+            () => const SqlCompiler().compileWorkspace(workspace.state.roots),
+            returnsNormally,
+          );
+        }
+      }
+    }
+  });
+
+  test('SELECT workshop requires a configured query and simple filter', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode
+            .selectAndSimpleFilters]!;
+    final event = EventBlock(id: 'event', position: Offset.zero);
+    final select = _operator('select', BlockType.sqlSelect, {
+      'columns': 'name',
+      'table': 'customers',
+    });
+    final where = _motion('where', BlockType.sqlWhere);
     event.next = select;
     expect(definition.evaluate([event], 0).complete, isTrue);
-  });
-
-  test('syntax path checks WHERE before a configured AND', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginnerSyntax]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final where = MotionBlock(
-      id: 'where',
-      position: Offset.zero,
-      motionType: BlockType.sqlWhere,
-      inputs: {'column': 'country', 'operator': '=', 'value': 'DE'},
-    );
-    final and = MotionBlock(
-      id: 'and',
-      position: Offset.zero,
-      motionType: BlockType.sqlAnd,
-      inputs: {'column': 'city', 'operator': '=', 'value': 'Berlin'},
-    );
-
-    event.next = and..next = where;
-    expect(definition.evaluate([event], 2).complete, isFalse);
-
-    event.next = where..next = and;
-    and.next = null;
-    expect(definition.evaluate([event], 2).complete, isTrue);
-  });
-
-  test('intermediate path requires GROUP BY before configured HAVING', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.intermediate]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final group = OperatorBlock(
-      id: 'group',
-      position: Offset.zero,
-      operatorType: BlockType.sqlGroupBy,
-      inputs: {'column': 'customers.name'},
-    );
-    final having = OperatorBlock(
-      id: 'having',
-      position: Offset.zero,
-      operatorType: BlockType.sqlHaving,
-      inputs: {'predicate': 'COUNT(*) > 0'},
-    );
-
-    event.next = group..next = having;
-    expect(definition.evaluate([event], 2).complete, isTrue);
-  });
-
-  test('expert path validates UNION, ORDER BY and LIMIT missions', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.expert]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final union = OperatorBlock(
-      id: 'union',
-      position: Offset.zero,
-      operatorType: BlockType.sqlUnion,
-      inputs: {'sql': 'SELECT id, name FROM archived_customers'},
-    );
-    final order = MotionBlock(
-      id: 'order',
-      position: Offset.zero,
-      motionType: BlockType.sqlOrderBy,
-      inputs: {'column': 'name'},
-    );
-    final limit = OperatorBlock(
-      id: 'limit',
-      position: Offset.zero,
-      operatorType: BlockType.sqlLimit,
-      inputs: {'count': '10'},
-    );
-    event.next = union;
-    union.next = order;
-    order.next = limit;
-
-    expect(definition.evaluate([event], 0).complete, isTrue);
+    select.next = where;
     expect(definition.evaluate([event], 1).complete, isTrue);
-    expect(definition.evaluate([event], 2).complete, isTrue);
   });
 
-  test('resuming seeds all previously completed missions', () {
+  test('data type workshop recognizes a literal reporter', () {
     final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginnerSyntax]!;
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.dataTypes]!;
+    final select = _operator('select', BlockType.sqlSelect, {
+      'columns': '',
+      'table': 'customers',
+    });
+    setReporterForInput(
+      select,
+      'columns',
+      _operator('literal', BlockType.sqlText, {
+        'literal_type': 'real',
+        'text': '1.5',
+      }),
+    );
+    expect(
+      definition.evaluate([
+        _chain([select]),
+      ], 0).complete,
+      isTrue,
+    );
+  });
 
-    expect(definition.nextStep({0}), 1);
+  test('advanced filters enforce WHERE before AND and OR', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.advancedFilters]!;
+    final root = _chain([
+      _motion('where', BlockType.sqlWhere),
+      _motion('and', BlockType.sqlAnd),
+      _motion('or', BlockType.sqlOr),
+    ]);
+    expect(definition.evaluate([root], 0).complete, isTrue);
+    expect(definition.evaluate([root], 1).complete, isTrue);
+
+    final invalid = _chain([
+      _motion('or2', BlockType.sqlOr),
+      _motion('where2', BlockType.sqlWhere),
+    ]);
+    expect(definition.evaluate([invalid], 1).complete, isFalse);
+  });
+
+  test('DML workshop validates INSERT, UPDATE and DELETE fields', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.dataManipulation]!;
+    final insert = _operator('insert', BlockType.sqlInsert, {
+      'table': 'archived_customers',
+      'columns': 'id, name',
+      'values': "(999, 'Workshop')",
+    });
+    final update = _operator('update', BlockType.sqlUpdate, {
+      'table': 'archived_customers',
+      'column': 'name',
+      'value': "'NodeQL'",
+      'where_column': 'id',
+      'operator': '=',
+      'where_value': '999',
+    });
+    final delete = _operator('delete', BlockType.sqlDelete, {
+      'table': 'archived_customers',
+      'where_column': 'id',
+      'operator': '=',
+      'where_value': '999',
+    });
+    expect(
+      definition.evaluate([
+        _chain([insert]),
+      ], 0).complete,
+      isTrue,
+    );
+    expect(
+      definition.evaluate([
+        _chain([update]),
+      ], 1).complete,
+      isTrue,
+    );
+    expect(
+      definition.evaluate([
+        _chain([delete]),
+      ], 2).complete,
+      isTrue,
+    );
+  });
+
+  test('schema workshop validates tables, indexes and views', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.schemaObjects]!;
+    final table = _operator('table', BlockType.sqlCreateTable, {
+      'table': 'notes',
+      'definition': 'id INTEGER PRIMARY KEY, note TEXT',
+    });
+    final index = _operator('index', BlockType.sqlCreateIndex, {
+      'name': 'idx_notes_note',
+      'table': 'notes',
+      'columns': 'note',
+    });
+    final view = _operator('view', BlockType.sqlCreateView, {
+      'name': 'active_customers',
+      'sql': 'SELECT id FROM customers WHERE active = 1',
+    });
+    expect(
+      definition.evaluate([
+        _chain([table]),
+      ], 0).complete,
+      isTrue,
+    );
+    expect(
+      definition.evaluate([
+        _chain([index]),
+      ], 1).complete,
+      isTrue,
+    );
+    expect(
+      definition.evaluate([
+        _chain([view]),
+      ], 2).complete,
+      isTrue,
+    );
+  });
+
+  test('transaction workshop enforces recovery-point order', () {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.transactions]!;
+    final ordered = _chain([
+      _operator('begin', BlockType.sqlBeginTransaction),
+      _operator('savepoint', BlockType.sqlSavepoint, {
+        'name': 'workshop_point',
+      }),
+      _operator('rollback', BlockType.sqlRollbackToSavepoint, {
+        'name': 'workshop_point',
+      }),
+      _operator('release', BlockType.sqlReleaseSavepoint, {
+        'name': 'workshop_point',
+      }),
+      _operator('commit', BlockType.sqlCommit),
+    ]);
+    const sql =
+        'BEGIN; SAVEPOINT point; ROLLBACK TO point; RELEASE point; COMMIT;';
     expect(
       definition
-          .starterFor(SqlAbstractionMode.simple, 2)
-          .map((seed) => seed.type),
-      [BlockType.sqlSelect, BlockType.sqlFrom, BlockType.sqlWhere],
+          .evaluate(
+            [ordered],
+            2,
+            currentSql: sql,
+            executedSql: sql,
+            executionSucceeded: true,
+          )
+          .complete,
+      isTrue,
     );
-  });
 
-  test('recognizes a column reporter as configured SELECT content', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final select = OperatorBlock(
-      id: 'select',
-      position: Offset.zero,
-      operatorType: BlockType.sqlSelect,
-      inputs: {'columns': '', 'table': 'customers'},
-    );
-    setReporterForInput(
-      select,
-      'columns',
-      OperatorBlock(
-        id: 'column',
-        position: Offset.zero,
-        operatorType: BlockType.sqlColumn,
-        inputs: {'column': 'name'},
-      ),
-    );
-    event.next = select;
-
-    final graph = TutorialPracticeGraph.fromRoots([event]);
-    expect(graph.reporters, hasLength(1));
-    expect(definition.evaluate([event], 0).complete, isTrue);
-  });
-
-  test('beginner course lasts about 15 minutes and teaches reporters', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
-    expect(definition.stepCount, 7);
-    expect(definition.estimatedMinutes, 15);
-
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final select = OperatorBlock(
-      id: 'select',
-      position: Offset.zero,
-      operatorType: BlockType.sqlSelect,
-      inputs: {'columns': 'name', 'table': 'customers'},
-    );
-    event.next = select;
-    expect(definition.evaluate([event], 1).complete, isFalse);
-    setReporterForInput(
-      select,
-      'columns',
-      OperatorBlock(
-        id: 'column',
-        position: Offset.zero,
-        operatorType: BlockType.sqlColumn,
-        inputs: {'column': 'name'},
-      ),
-    );
-    expect(definition.evaluate([event], 1).complete, isTrue);
-
-    final starter = definition.starterFor(SqlAbstractionMode.simple, 6);
-    expect(starter.map((seed) => seed.type), [
-      BlockType.sqlSelect,
-      BlockType.sqlWhere,
-      BlockType.sqlAnd,
-      BlockType.sqlOrderBy,
+    final invalid = _chain([
+      _operator('savepoint2', BlockType.sqlSavepoint, {'name': 'point'}),
+      _operator('begin2', BlockType.sqlBeginTransaction),
+      _operator('rollback2', BlockType.sqlRollbackToSavepoint, {
+        'name': 'point',
+      }),
+      _operator('release2', BlockType.sqlReleaseSavepoint, {'name': 'point'}),
+      _operator('commit2', BlockType.sqlCommit),
     ]);
-
-    final reporterStarter = definition
-        .starterFor(SqlAbstractionMode.simple, 2)
-        .single;
-    final resumedSelect = OperatorBlock(
-      id: 'resumed_select',
-      position: Offset.zero,
-      operatorType: BlockType.sqlSelect,
-      inputs: Map<String, dynamic>.from(reporterStarter.defaults),
+    expect(
+      definition
+          .evaluate(
+            [invalid],
+            2,
+            currentSql: sql,
+            executedSql: sql,
+            executionSucceeded: true,
+          )
+          .complete,
+      isFalse,
     );
-    final resumedEvent = EventBlock(id: 'resumed_event', position: Offset.zero)
-      ..next = resumedSelect;
-    expect(definition.evaluate([resumedEvent], 1).complete, isTrue);
   });
 
-  test('recognizes a text reporter in a complete WHERE condition', () {
+  test('execution check only accepts the current successful SQL', () {
     final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginnerSyntax]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final where = MotionBlock(
-      id: 'where',
-      position: Offset.zero,
-      motionType: BlockType.sqlWhere,
-      inputs: {'column': 'city', 'operator': '=', 'value': '', 'predicate': ''},
+        tutorialPracticeDefinitions[TutorialKnowledgeMode
+            .selectAndSimpleFilters]!;
+    final root = _chain([
+      _operator('select', BlockType.sqlSelect, {
+        'columns': 'name',
+        'table': 'customers',
+      }),
+      _motion('where', BlockType.sqlWhere),
+    ]);
+    const sql = "SELECT name FROM customers WHERE city = 'Berlin';";
+    expect(
+      definition
+          .evaluate(
+            [root],
+            2,
+            currentSql: sql,
+            executedSql: sql,
+            executionSucceeded: true,
+          )
+          .complete,
+      isTrue,
     );
-    setReporterForInput(
-      where,
-      'value',
-      OperatorBlock(
-        id: 'text',
-        position: Offset.zero,
-        operatorType: BlockType.sqlText,
-        inputs: {'text': 'Berlin'},
-      ),
+    expect(
+      definition
+          .evaluate(
+            [root],
+            2,
+            currentSql: sql,
+            executedSql: 'SELECT 1;',
+            executionSucceeded: true,
+          )
+          .complete,
+      isFalse,
     );
-    event.next = where;
-
-    expect(definition.evaluate([event], 1).complete, isTrue);
-  });
-
-  test('validates every entry in a structured WHERE condition group', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginnerSyntax]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final where = MotionBlock(
-      id: 'where',
-      position: Offset.zero,
-      motionType: BlockType.sqlWhere,
-      inputs: {
-        'predicate': '',
-        'conditions': [
-          {'column': 'country', 'operator': '=', 'value': 'DE'},
-          {'column': 'active', 'operator': '=', 'value': '1'},
-        ],
-      },
-    );
-    event.next = where;
-    expect(definition.evaluate([event], 1).complete, isTrue);
-
-    (where.inputs['conditions'] as List).add({
-      'column': 'city',
-      'operator': 'NOT AN OPERATOR',
-      'value': 'Berlin',
-    });
-    expect(definition.evaluate([event], 1).complete, isFalse);
-  });
-
-  test('recognizes nested aggregate reporters in HAVING', () {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.intermediate]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final group = OperatorBlock(
-      id: 'group',
-      position: Offset.zero,
-      operatorType: BlockType.sqlGroupBy,
-      inputs: {'column': 'customers.name'},
-    );
-    final having = OperatorBlock(
-      id: 'having',
-      position: Offset.zero,
-      operatorType: BlockType.sqlHaving,
-      inputs: {'aggregate': '', 'operator': '>', 'value': '1', 'predicate': ''},
-    );
-    final count = OperatorBlock(
-      id: 'count',
-      position: Offset.zero,
-      operatorType: BlockType.sqlCount,
-      inputs: {'column': ''},
-    );
-    setReporterForInput(
-      count,
-      'column',
-      OperatorBlock(
-        id: 'column',
-        position: Offset.zero,
-        operatorType: BlockType.sqlColumn,
-        inputs: {'column': 'orders.id'},
-      ),
-    );
-    setReporterForInput(having, 'aggregate', count);
-    event.next = group..next = having;
-
-    final graph = TutorialPracticeGraph.fromRoots([event]);
-    expect(graph.reporters, hasLength(2));
-    expect(definition.evaluate([event], 2).complete, isTrue);
-  });
-
-  test('recognizes column reporters in GROUP BY and ORDER BY', () {
-    final intermediate =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.intermediate]!;
-    final expert = tutorialPracticeDefinitions[TutorialKnowledgeMode.expert]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final group = OperatorBlock(
-      id: 'group',
-      position: Offset.zero,
-      operatorType: BlockType.sqlGroupBy,
-      inputs: {'column': '', 'expr': ''},
-    );
-    setReporterForInput(
-      group,
-      'column',
-      OperatorBlock(
-        id: 'group_column',
-        position: Offset.zero,
-        operatorType: BlockType.sqlColumn,
-        inputs: {'column': 'customers.name'},
-      ),
-    );
-    event.next = group;
-    expect(intermediate.evaluate([event], 1).complete, isTrue);
-
-    final union = OperatorBlock(
-      id: 'union',
-      position: Offset.zero,
-      operatorType: BlockType.sqlUnion,
-      inputs: {'sql': 'SELECT id, name FROM archived_customers'},
-    );
-    final order = MotionBlock(
-      id: 'order',
-      position: Offset.zero,
-      motionType: BlockType.sqlOrderBy,
-      inputs: {'column': '', 'expr': '', 'order': 'DESC'},
-    );
-    setReporterForInput(
-      order,
-      'column',
-      OperatorBlock(
-        id: 'order_column',
-        position: Offset.zero,
-        operatorType: BlockType.sqlColumn,
-        inputs: {'column': 'name'},
-      ),
-    );
-    event.next = union..next = order;
-    expect(expert.evaluate([event], 1).complete, isTrue);
-  });
-
-  test('rejects placeholders, invalid UNION SQL, and non-positive LIMIT', () {
-    final beginner =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
-    final expert = tutorialPracticeDefinitions[TutorialKnowledgeMode.expert]!;
-    final event = EventBlock(id: 'event', position: Offset.zero);
-    final select = OperatorBlock(
-      id: 'select',
-      position: Offset.zero,
-      operatorType: BlockType.sqlSelect,
-      inputs: {'columns': 'column_name', 'table': 'table_name'},
-    );
-    event.next = select;
-    expect(beginner.evaluate([event], 0).complete, isFalse);
-
-    final union = OperatorBlock(
-      id: 'union',
-      position: Offset.zero,
-      operatorType: BlockType.sqlUnion,
-      inputs: {'sql': 'DELETE FROM customers'},
-    );
-    event.next = union;
-    expect(expert.evaluate([event], 0).complete, isFalse);
-
-    final order = MotionBlock(
-      id: 'order',
-      position: Offset.zero,
-      motionType: BlockType.sqlOrderBy,
-      inputs: {'column': 'name', 'order': 'ASC'},
-    );
-    final limit = OperatorBlock(
-      id: 'limit',
-      position: Offset.zero,
-      operatorType: BlockType.sqlLimit,
-      inputs: {'count': '0'},
-    );
-    event.next = order..next = limit;
-    expect(expert.evaluate([event], 2).complete, isFalse);
   });
 }
+
+EventBlock _chain(List<BlockNode> nodes) {
+  final event = EventBlock(
+    id: 'event-${nodes.first.id}',
+    position: Offset.zero,
+  );
+  event.next = nodes.first;
+  for (var index = 0; index < nodes.length - 1; index++) {
+    nodes[index].next = nodes[index + 1];
+  }
+  return event;
+}
+
+OperatorBlock _operator(
+  String id,
+  BlockType type, [
+  Map<String, dynamic> inputs = const {},
+]) => OperatorBlock(
+  id: id,
+  position: Offset.zero,
+  operatorType: type,
+  inputs: Map<String, dynamic>.from(inputs),
+);
+
+MotionBlock _motion(String id, BlockType type) => MotionBlock(
+  id: id,
+  position: Offset.zero,
+  motionType: type,
+  inputs: {'column': 'city', 'operator': '=', 'value': 'Berlin'},
+);

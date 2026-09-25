@@ -9,8 +9,53 @@ import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
+import 'package:nodeql/localization/translation_controller.dart';
 
 void main() {
+  test('every practical mission has English and German copy', () {
+    final english = _englishCatalog().messages;
+    final german = builtInMessages['de']!;
+    for (final definition in tutorialPracticeDefinitions.values) {
+      for (var index = 0; index < definition.stepCount; index++) {
+        final prefix = definition.stepKey(index);
+        for (final field in [
+          'title',
+          'instruction',
+          'hint',
+          'example',
+          'concept',
+        ]) {
+          expect(
+            english['$prefix.$field'],
+            isNotEmpty,
+            reason: '$prefix.$field',
+          );
+          expect(
+            german['$prefix.$field'],
+            isNotEmpty,
+            reason: '$prefix.$field',
+          );
+        }
+        for (final node in definition.steps[index].focusNodes) {
+          final nodeKey = 'tutorial.practice.node.${node.name}';
+          expect(english['$nodeKey.title'], isNotEmpty, reason: nodeKey);
+          expect(english['$nodeKey.body'], isNotEmpty, reason: nodeKey);
+          expect(german['$nodeKey.title'], isNotEmpty, reason: nodeKey);
+          expect(german['$nodeKey.body'], isNotEmpty, reason: nodeKey);
+        }
+        for (final check in definition.steps[index].checks) {
+          final checkKey = 'tutorial.practice.check.${check.name}';
+          expect(english[checkKey], isNotEmpty, reason: checkKey);
+          expect(german[checkKey], isNotEmpty, reason: checkKey);
+        }
+      }
+    }
+    for (final mode in TutorialKnowledgeMode.values) {
+      expect(german['tutorial.mode.${mode.name}'], isNotEmpty);
+      expect(german['tutorial.lesson.${mode.name}.description'], isNotEmpty);
+    }
+  });
+
   testWidgets('Simple Mode explains labels while showing live SQLite', (
     tester,
   ) async {
@@ -56,8 +101,50 @@ void main() {
       find.byKey(const ValueKey('tutorial-practice-progress')),
       findsOneWidget,
     );
-    expect(find.text('SELECT * FROM customers;'), findsNWidgets(2));
+    expect(find.text('SELECT * FROM customers;'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('description panel can be resized within its safe limits', (
+    tester,
+  ) async {
+    final definition =
+        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
+    final result = definition.evaluate([
+      EventBlock(id: 'event', position: Offset.zero),
+    ], 0);
+    double? resizedHeight;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TutorialPracticePanel(
+            catalog: _englishCatalog(),
+            session: const TutorialPracticeSession(
+              mode: TutorialKnowledgeMode.beginner,
+            ),
+            definition: definition,
+            result: result,
+            abstractionMode: SqlAbstractionMode.simple,
+            localeCode: 'en',
+            liveSql: '',
+            onCheck: () {},
+            onHint: () {},
+            onClose: () {},
+            height: 300,
+            minHeight: 220,
+            maxHeight: 360,
+            onHeightChanged: (height) => resizedHeight = height,
+          ),
+        ),
+      ),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey('tutorial-practice-resize-handle')),
+      const Offset(0, 140),
+    );
+    expect(resizedHeight, 360);
   });
 }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 enum SqlAbstractionMode { advanced, simple }
@@ -68,6 +69,6 @@ class SqlModeController extends StateNotifier<SqlAbstractionMode> {
 
   static Future<File> _defaultStorageFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/nodeql_sql_mode.json');
+    return File(p.join(support.path, 'nodeql_sql_mode.json'));
   }
 }

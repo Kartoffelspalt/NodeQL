@@ -2,6 +2,7 @@ import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sqlite_function_catalog.dart';
 
 /// A database-neutral representation of the connected visual blocks.
 ///
@@ -310,9 +311,10 @@ class SqliteDialectRenderer {
           warnings: warnings,
           visited: visited,
         );
-        final cols = reporterColumns.isNotEmpty
+        final rawColumns = reporterColumns.isNotEmpty
             ? reporterColumns
             : (colsFromChildren.isNotEmpty ? colsFromChildren : colsFromInput);
+        final cols = _qualifySelectColumnsForJoin(node, rawColumns);
         final selectKeyword =
             _isEnabled(node.inputs['distinct']) ||
                 '${node.inputs['select_mode'] ?? ''}'.trim().toUpperCase() ==
@@ -381,6 +383,13 @@ class SqliteDialectRenderer {
           visited: visited,
         );
         return _withAlias(expression, node);
+      case BlockType.sqlFunction:
+        return _compileCatalogFunction(
+          node,
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
       case BlockType.sqlFrom:
         return 'FROM ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlWhere:
@@ -980,6 +989,14 @@ class SqliteDialectRenderer {
     required List<String> warnings,
     Set<String>? visited,
   }) {
+    final directPredicate = '${node.inputs['predicate'] ?? ''}'.trim();
+    if (directPredicate.isNotEmpty &&
+        !node.inputs.containsKey('aggregate') &&
+        !node.inputs.containsKey('expr') &&
+        !node.inputs.containsKey('operator') &&
+        !node.inputs.containsKey('value')) {
+      return directPredicate;
+    }
     final aggregateReporter = reporterForInput(node, 'aggregate');
     final aggregate = _aggregateFunctionFromReporter(
       aggregateReporter,
@@ -1188,6 +1205,49 @@ class SqliteDialectRenderer {
     return _withIdentifierAlias(expression, node.inputs['alias']);
   }
 
+  String _compileCatalogFunction(
+    BlockNode node, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+    Set<String>? visited,
+  }) {
+    final name = '${node.inputs['function'] ?? ''}'.trim().toLowerCase();
+    final signature = sqliteFunctionByName(name);
+    if (signature == null) {
+      warnings.add('Unknown SQLite function "$name".');
+      return 'NULL';
+    }
+    final rawArgs = node.inputs['args'];
+    final configured = rawArgs is List
+        ? rawArgs.map((value) => '$value').toList(growable: false)
+        : <String>[];
+    final arguments = <String>[];
+    for (var index = 0; index < configured.length; index++) {
+      final configuredArgument =
+          '${node.inputs['arg$index'] ?? configured[index]}';
+      arguments.add(
+        _compileReporterInput(
+          node,
+          'arg$index',
+          configuredArgument,
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        ),
+      );
+    }
+    if (!signature.acceptsArity(arguments.length)) {
+      final maximum = signature.maxArgs == null
+          ? 'or more'
+          : '${signature.maxArgs}';
+      warnings.add(
+        '${signature.name} expects ${signature.minArgs} to $maximum argument(s); '
+        'received ${arguments.length}.',
+      );
+    }
+    return '${signature.name}(${arguments.join(', ')})';
+  }
+
   String _withTableAlias(
     String table,
     BlockNode node, {
@@ -1198,6 +1258,97 @@ class SqliteDialectRenderer {
       table,
       configuredAlias.isEmpty ? fallbackAlias : configuredAlias,
     );
+  }
+
+  String _qualifySelectColumnsForJoin(BlockNode node, String columns) {
+    if (!_hasJoinAfter(node) || columns.trim() == '*') return columns;
+    final qualifier = _selectProjectionQualifier(node);
+    if (qualifier == null) return columns;
+    return _splitProjectionList(columns)
+        .map((projection) => _qualifySimpleProjection(projection, qualifier))
+        .join(', ');
+  }
+
+  bool _hasJoinAfter(BlockNode node) {
+    final seen = <String>{node.id};
+    BlockNode? current = node.next;
+    while (current != null && seen.add(current.id)) {
+      if (isJoinType(current.type)) return true;
+      current = current.next;
+    }
+    return false;
+  }
+
+  String? _selectProjectionQualifier(BlockNode node) {
+    final explicitAlias = '${node.inputs['table_alias'] ?? ''}'.trim();
+    if (_isSimpleSqlReference(explicitAlias)) return explicitAlias;
+
+    var source = '${node.inputs['table'] ?? ''}'.trim();
+    if (source.isEmpty || source == 'table_name') {
+      final seen = <String>{node.id};
+      BlockNode? current = node.next;
+      while (current != null && seen.add(current.id)) {
+        if (current.type == BlockType.sqlFrom) {
+          source = '${current.inputs['table'] ?? ''}'.trim();
+          break;
+        }
+        current = current.next;
+      }
+    }
+    if (_isSimpleSqlReference(source)) return source;
+
+    final parts = source.split(RegExp(r'\s+'));
+    if (parts.length >= 2 &&
+        (parts.length == 2 || parts[parts.length - 2].toUpperCase() == 'AS') &&
+        _isSimpleSqlReference(parts.last)) {
+      return parts.last;
+    }
+    return null;
+  }
+
+  bool _isSimpleSqlReference(String value) => RegExp(
+    r'^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$',
+  ).hasMatch(value);
+
+  String _qualifySimpleProjection(String projection, String qualifier) {
+    final match = RegExp(
+      r'^([A-Za-z_][A-Za-z0-9_]*)(\s+AS\s+(?:"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_]*))?$',
+      caseSensitive: false,
+    ).firstMatch(projection.trim());
+    if (match == null) return projection.trim();
+    return '$qualifier.${match.group(1)}${match.group(2) ?? ''}';
+  }
+
+  List<String> _splitProjectionList(String source) {
+    final projections = <String>[];
+    var start = 0;
+    var depth = 0;
+    String? quote;
+    for (var index = 0; index < source.length; index++) {
+      final char = source[index];
+      if (quote != null) {
+        if (char == quote) {
+          if (index + 1 < source.length && source[index + 1] == quote) {
+            index++;
+          } else {
+            quote = null;
+          }
+        }
+        continue;
+      }
+      if (char == "'" || char == '"' || char == '`') {
+        quote = char;
+      } else if (char == '(') {
+        depth++;
+      } else if (char == ')' && depth > 0) {
+        depth--;
+      } else if (char == ',' && depth == 0) {
+        projections.add(source.substring(start, index).trim());
+        start = index + 1;
+      }
+    }
+    projections.add(source.substring(start).trim());
+    return projections.where((projection) => projection.isNotEmpty).toList();
   }
 
   String _withIdentifierAlias(String expression, dynamic rawAlias) {

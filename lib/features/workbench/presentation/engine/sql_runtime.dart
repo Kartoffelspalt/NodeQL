@@ -71,10 +71,14 @@ final sqlRuntimeProvider =
     );
 
 class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
-  SqlRuntimeController({SqlRuntimeState initialState = const SqlRuntimeState()})
-    : super(initialState);
+  SqlRuntimeController({
+    SqlRuntimeState initialState = const SqlRuntimeState(),
+    bool readOnly = false,
+  }) : _readOnly = readOnly,
+       super(initialState);
   static const _securityChannel = MethodChannel('nodeql/security_scope');
   static const int _maxPreviewRows = 500;
+  final bool _readOnly;
 
   Future<void> pickDatabase() async {
     final result = await FilePicker.platform.pickFiles(
@@ -158,16 +162,41 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     }
     File? snapshot;
     var changesDatabase = false;
+    // Do not capture this StateNotifier in an Isolate.run closure. The
+    // notifier's Riverpod context contains non-sendable futures, which made
+    // automatic workspace previews fail with "Invalid argument(s)".
+    final readOnly = _readOnly;
     try {
       changesDatabase = await Isolate.run(
         () => _containsWriteStatements(dbPath, sql),
       );
+      if (!mounted) {
+        return const SqlExecutionResult(
+          success: false,
+          message: 'Runtime closed.',
+        );
+      }
+      if (_readOnly && changesDatabase) {
+        const message = 'Workshop data is read-only. Build a SELECT query.';
+        state = state.copyWith(
+          lastSql: sql,
+          lastRows: const [],
+          lastMessage: message,
+        );
+        return const SqlExecutionResult(success: false, message: message);
+      }
       if (changesDatabase) {
         snapshot = await _createSnapshot(dbPath);
       }
       final result = await Isolate.run(
-        () => _runQuery(dbPath, sql, _maxPreviewRows),
+        () => _runQuery(dbPath, sql, _maxPreviewRows, readOnly: readOnly),
       );
+      if (!mounted) {
+        return const SqlExecutionResult(
+          success: false,
+          message: 'Runtime closed.',
+        );
+      }
       final rows = result.rows;
       final message = result.truncated
           ? 'OK (showing first $_maxPreviewRows rows)'
@@ -186,6 +215,12 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         changedDatabase: changesDatabase,
       );
     } catch (e) {
+      if (!mounted) {
+        return const SqlExecutionResult(
+          success: false,
+          message: 'Runtime closed.',
+        );
+      }
       if (snapshot != null) {
         await _restoreSnapshot(dbPath, snapshot);
       }
@@ -249,6 +284,10 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     state = state.copyWith(lastMessage: message);
   }
 
+  void clearResults() {
+    state = state.copyWith(lastSql: '', lastRows: const [], lastMessage: null);
+  }
+
   List<TableSchema> _reflectSchema(String path) {
     final database = sqlite3.open(path);
     try {
@@ -289,8 +328,16 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     await snapshot.copy(dbPath);
   }
 
-  static _QueryResult _runQuery(String path, String sql, int maxRows) {
-    final database = sqlite3.open(path);
+  static _QueryResult _runQuery(
+    String path,
+    String sql,
+    int maxRows, {
+    bool readOnly = false,
+  }) {
+    final database = sqlite3.open(
+      path,
+      mode: readOnly ? OpenMode.readOnly : OpenMode.readWriteCreate,
+    );
     var statements = <PreparedStatement>[];
     try {
       // SQLite foreign-key enforcement is connection-local and disabled by
@@ -504,7 +551,12 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       await dbDir.create(recursive: true);
     }
 
-    final targetPath = p.join(dbDir.path, p.basename(sourcePath));
+    // Imported databases are independent projects. A later import with the
+    // same filename must not replace an earlier one (or its unsaved changes).
+    final targetPath = await _uniqueDatabasePath(
+      dbDir.path,
+      p.basename(sourcePath),
+    );
     final target = File(targetPath);
     if (bytes != null && bytes.isNotEmpty) {
       await target.writeAsBytes(bytes, flush: true);

@@ -130,6 +130,459 @@ void main() {
     expect(snapshot.rows.single, <Object?>[1, 'Ada']);
   });
 
+  testWidgets('simple browser reveals technical details only on demand', (
+    tester,
+  ) async {
+    const messages = <String, String>{
+      'databaseBrowser.simple.title': 'Explore your data',
+      'databaseBrowser.simple.tables': 'Tables',
+      'databaseBrowser.simple.views': 'Views',
+      'databaseBrowser.simple.table': 'Table',
+      'databaseBrowser.simple.rows': 'Entries: {count}',
+      'databaseBrowser.simple.columnsCount': 'Columns: {count}',
+      'databaseBrowser.simple.content': 'Data',
+      'databaseBrowser.simple.structure': 'Columns & details',
+      'databaseBrowser.simple.columns': 'Table columns',
+      'databaseBrowser.simple.columnsHelp':
+          'One kind of information per column.',
+      'databaseBrowser.simple.required': 'Required',
+      'databaseBrowser.simple.primaryKey': 'Main key',
+      'databaseBrowser.simple.moreDetails': 'More details',
+      'databaseBrowser.simple.createSql': 'SQL used to create it',
+      'databaseBrowser.simple.newTable': 'New table',
+      'databaseBrowser.simple.preview': 'SQLite preview',
+      'databaseBrowser.simple.tableName': 'Table name',
+      'databaseBrowser.simple.defineColumns': 'Columns',
+      'databaseBrowser.simple.columnNumber': 'Column {number}',
+      'databaseBrowser.simple.columnName': 'Column name',
+      'databaseBrowser.simple.type': 'Data type',
+      'databaseBrowser.simple.primaryKeyOption': 'Primary key',
+      'databaseBrowser.simple.notNullOption': 'Required',
+      'databaseBrowser.simple.uniqueOption': 'Unique',
+      'databaseBrowser.simple.createTable': 'Create a table',
+      'databaseBrowser.simple.createTableHelp': 'Define columns visually.',
+      'databaseBrowser.simple.createTableAction': 'Create table',
+      'databaseBrowser.simple.addColumn': 'Add column',
+      'databaseBrowser.databaseInfo': 'Database information',
+      'databaseBrowser.search': 'Search tables or views',
+      'databaseBrowser.title': 'SQLite browser',
+      'databaseBrowser.table': 'Table',
+      'databaseBrowser.tables': 'Tables',
+      'databaseBrowser.views': 'Views',
+      'databaseBrowser.content': 'Contents',
+      'databaseBrowser.structure': 'Structure',
+      'databaseBrowser.rows': '{count} rows',
+      'databaseBrowser.columnsCount': '{count} columns',
+      'databaseBrowser.rowRange': 'Rows {start}–{end} of {count}',
+      'databaseBrowser.simple.rowRange': 'Entries {start}–{end} of {count}',
+      'databaseBrowser.page': 'Page {current} of {total}',
+      'databaseBrowser.simple.page': 'Page {current} of {total}',
+      'toolbar.simple': 'Simple',
+      'toolbar.advanced': 'Advanced',
+      'common.close': 'Close',
+    };
+    const catalog = TranslationCatalog(
+      locale: 'en',
+      messages: messages,
+      englishMessages: messages,
+    );
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => DatabaseBrowserDialog(
+                  databasePath: databasePath,
+                  catalog: catalog,
+                  initialMode: SqlAbstractionMode.simple,
+                  sqlExecutor: (_) async =>
+                      const SqlExecutionResult(success: true, message: 'OK'),
+                  overviewLoader: (_) async =>
+                      const SqliteDatabaseBrowser().loadOverview(databasePath),
+                  objectLoader: (_, name, limit, offset) async =>
+                      const SqliteDatabaseBrowser().loadObject(
+                        databasePath,
+                        name,
+                        limit: limit,
+                        offset: offset,
+                      ),
+                ),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Explore your data'), findsOneWidget);
+    expect(find.byKey(const ValueKey('database-browser-search')), findsNothing);
+    expect(find.text('Database information'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('database-browser-structure-tab')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('One kind of information per column.'), findsOneWidget);
+    expect(find.text('SQL used to create it'), findsNothing);
+    final details = find.byKey(
+      const ValueKey('database-browser-simple-details'),
+    );
+    await tester.scrollUntilVisible(
+      details,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('database-browser-simple-structure')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.text('More details'));
+    await tester.pumpAndSettle();
+    expect(find.text('SQL used to create it'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('database-browser-new-table')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('database-browser-simple-create-preview')),
+      findsNothing,
+    );
+    final formScrollable = find
+        .descendant(
+          of: find.byKey(const ValueKey('database-browser-simple-create-form')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('database-browser-simple-preview-toggle')),
+      200,
+      scrollable: formScrollable,
+    );
+    await tester.drag(formScrollable, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('database-browser-simple-preview-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('database-browser-simple-create-preview')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty simple browser offers one clear first step', (
+    tester,
+  ) async {
+    final emptyPath = '${tempDirectory.path}${Platform.pathSeparator}empty.db';
+    sqlite3.open(emptyPath).close();
+    const messages = <String, String>{
+      'databaseBrowser.simple.title': 'Explore your data',
+      'databaseBrowser.simple.emptyTitle': 'A fresh start for your data',
+      'databaseBrowser.simple.emptyHelp': 'Create your first table.',
+      'databaseBrowser.simple.newTable': 'New table',
+      'databaseBrowser.simple.createTable': 'Create a table',
+      'databaseBrowser.simple.createTableHelp': 'Define columns visually.',
+      'databaseBrowser.simple.tableName': 'Table name',
+      'databaseBrowser.simple.defineColumns': 'Columns',
+      'databaseBrowser.simple.columnNumber': 'Column {number}',
+      'databaseBrowser.simple.columnName': 'Column name',
+      'databaseBrowser.simple.type': 'Data type',
+      'databaseBrowser.simple.primaryKeyOption': 'Primary key',
+      'databaseBrowser.simple.notNullOption': 'Required',
+      'databaseBrowser.simple.uniqueOption': 'Unique',
+      'databaseBrowser.simple.addColumn': 'Add column',
+      'databaseBrowser.simple.preview': 'SQLite preview',
+      'databaseBrowser.simple.createTableAction': 'Create table',
+      'toolbar.simple': 'Simple',
+      'toolbar.advanced': 'Advanced',
+      'common.close': 'Close',
+    };
+    const catalog = TranslationCatalog(
+      locale: 'en',
+      messages: messages,
+      englishMessages: messages,
+    );
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => DatabaseBrowserDialog(
+                  databasePath: emptyPath,
+                  catalog: catalog,
+                  initialMode: SqlAbstractionMode.simple,
+                  sqlExecutor: (_) async =>
+                      const SqlExecutionResult(success: true, message: 'OK'),
+                  overviewLoader: (_) async =>
+                      const SqliteDatabaseBrowser().loadOverview(emptyPath),
+                ),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.text('A fresh start for your data'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('database-browser-new-table')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('database-browser-empty-create')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Create a table'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('database-browser-create-back')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('A fresh start for your data'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('database-browser-create-table-workspace')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final themeChoice in <NodeQlTheme>[
+    NodeQlTheme.light,
+    NodeQlTheme.dark,
+  ]) {
+    testWidgets('browser surfaces follow $themeChoice palette and radii', (
+      tester,
+    ) async {
+      const messages = <String, String>{
+        'databaseBrowser.simple.title': 'Explore your data',
+        'databaseBrowser.simple.table': 'Table',
+        'databaseBrowser.simple.tables': 'Tables',
+        'databaseBrowser.simple.views': 'Views',
+        'databaseBrowser.simple.rows': 'Entries: {count}',
+        'databaseBrowser.simple.columnsCount': 'Columns: {count}',
+        'databaseBrowser.simple.content': 'Data',
+        'databaseBrowser.simple.structure': 'Columns & details',
+        'databaseBrowser.simple.rowRange': 'Entries {start}–{end} of {count}',
+        'databaseBrowser.simple.page': 'Page {current} of {total}',
+        'toolbar.simple': 'Simple',
+        'toolbar.advanced': 'Advanced',
+        'common.close': 'Close',
+      };
+      const catalog = TranslationCatalog(
+        locale: 'en',
+        messages: messages,
+        englishMessages: messages,
+      );
+      await tester.binding.setSurfaceSize(const Size(1600, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final appTheme = themeFor(themeChoice);
+      final palette = appTheme.extension<NodeQlWorkbenchColors>()!;
+      final surfaceStyle = appTheme.extension<NodeQlSurfaceStyle>()!;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => DatabaseBrowserDialog(
+                    databasePath: databasePath,
+                    catalog: catalog,
+                    initialMode: SqlAbstractionMode.simple,
+                    overviewLoader: (_) async => const SqliteDatabaseBrowser()
+                        .loadOverview(databasePath),
+                    objectLoader: (_, name, limit, offset) async =>
+                        const SqliteDatabaseBrowser().loadObject(
+                          databasePath,
+                          name,
+                          limit: limit,
+                          offset: offset,
+                        ),
+                  ),
+                ),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      final header = tester.widget<Container>(
+        find.byKey(const ValueKey('database-browser-header')),
+      );
+      expect((header.decoration as BoxDecoration).color, palette.topBar);
+      final sidebar = tester.widget<Container>(
+        find.byKey(const ValueKey('database-browser-sidebar')),
+      );
+      expect((sidebar.decoration as BoxDecoration).color, palette.panel);
+      final summary = tester.widget<Container>(
+        find.byKey(const ValueKey('database-browser-detail-summary')),
+      );
+      expect(summary.color, palette.panelElevated);
+      final tabs = tester.widget<Container>(
+        find.byKey(const ValueKey('database-browser-tabs-surface')),
+      );
+      expect((tabs.decoration as BoxDecoration).color, palette.panel);
+      expect(
+        (tabs.decoration as BoxDecoration).borderRadius,
+        surfaceStyle.mediumBorderRadius,
+      );
+      final closeSurface = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('database-browser-close-clip')),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(closeSurface.color, appTheme.colorScheme.primaryContainer);
+      final refreshSurface = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('database-browser-refresh-clip')),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(refreshSurface.color, appTheme.colorScheme.primaryContainer);
+      final modeControl = tester.widget<SegmentedButton<SqlAbstractionMode>>(
+        find.byKey(const ValueKey('database-browser-mode')),
+      );
+      expect(
+        modeControl.segments.every((segment) => segment.icon == null),
+        isTrue,
+      );
+      expect(
+        modeControl.style?.backgroundColor?.resolve({WidgetState.selected}),
+        appTheme.colorScheme.primaryContainer,
+      );
+      expect(
+        modeControl.style?.foregroundColor?.resolve({WidgetState.selected}),
+        appTheme.colorScheme.onPrimaryContainer,
+      );
+      expect(
+        modeControl.style?.backgroundColor?.resolve(<WidgetState>{}),
+        palette.panel,
+      );
+      expect(
+        tester
+            .widget<ClipRRect>(
+              find.byKey(const ValueKey('database-browser-close-clip')),
+            )
+            .borderRadius,
+        surfaceStyle.mediumBorderRadius,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('simple structure stays usable in a narrow window', (
+    tester,
+  ) async {
+    const messages = <String, String>{
+      'databaseBrowser.simple.title': 'Explore your data',
+      'databaseBrowser.simple.tables': 'Tables',
+      'databaseBrowser.simple.views': 'Views',
+      'databaseBrowser.simple.table': 'Table',
+      'databaseBrowser.simple.columnsCount': 'Columns: {count}',
+      'databaseBrowser.simple.rows': 'Entries: {count}',
+      'databaseBrowser.simple.content': 'Data',
+      'databaseBrowser.simple.structure': 'Columns & details',
+      'databaseBrowser.simple.columns': 'Table columns',
+      'databaseBrowser.simple.columnsHelp':
+          'One kind of information per column.',
+      'databaseBrowser.simple.primaryKey': 'Main key',
+      'databaseBrowser.simple.required': 'Required',
+      'databaseBrowser.simple.moreDetails': 'More details',
+      'databaseBrowser.simple.rowRange': 'Entries {start}–{end} of {count}',
+      'databaseBrowser.simple.page': 'Page {current} of {total}',
+      'toolbar.simple': 'Simple',
+      'toolbar.advanced': 'Advanced',
+      'common.close': 'Close',
+    };
+    const catalog = TranslationCatalog(
+      locale: 'en',
+      messages: messages,
+      englishMessages: messages,
+    );
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(620, 600);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => DatabaseBrowserDialog(
+                  databasePath: databasePath,
+                  catalog: catalog,
+                  initialMode: SqlAbstractionMode.simple,
+                  overviewLoader: (_) async =>
+                      const SqliteDatabaseBrowser().loadOverview(databasePath),
+                  objectLoader: (_, name, limit, offset) async =>
+                      const SqliteDatabaseBrowser().loadObject(
+                        databasePath,
+                        name,
+                        limit: limit,
+                        offset: offset,
+                      ),
+                ),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('database-browser-dialog')))
+          .width,
+      lessThanOrEqualTo(620),
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('database-browser-sidebar')))
+          .width,
+      220,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('database-browser-structure-tab')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Table columns'), findsOneWidget);
+    expect(find.text('Main key'), findsOneWidget);
+    expect(find.text('Required'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byKey(const ValueKey('database-browser-mode')),
+        matching: find.byKey(const ValueKey('database-browser-header')),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('creates tables from the browser', (tester) async {
     const messages = <String, String>{
       'databaseBrowser.title': 'SQLite table browser',
@@ -226,6 +679,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: themeFor(NodeQlTheme.light),
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
@@ -298,6 +752,25 @@ void main() {
       find.byKey(const ValueKey<String>('database-browser-sql-input')),
       findsNothing,
     );
+    final primaryKeyOption = find.byKey(
+      const ValueKey<String>('database-browser-simple-primary-key-0'),
+    );
+    final primaryKeyChip = tester.widget<FilterChip>(primaryKeyOption);
+    final optionColors = Theme.of(tester.element(primaryKeyOption)).colorScheme;
+    expect(primaryKeyChip.selected, isTrue);
+    expect(primaryKeyChip.selectedColor, optionColors.primaryContainer);
+    expect(primaryKeyChip.labelStyle?.color, optionColors.onPrimaryContainer);
+    expect(
+      (primaryKeyChip.avatar as Icon).color,
+      optionColors.onPrimaryContainer,
+    );
+    expect(primaryKeyChip.checkmarkColor, optionColors.onPrimaryContainer);
+    final requiredOption = tester.widget<FilterChip>(
+      find.byKey(const ValueKey<String>('database-browser-simple-not-null-0')),
+    );
+    expect(requiredOption.selected, isFalse);
+    expect(requiredOption.backgroundColor, NodeQlWorkbenchColors.light.panel);
+    expect(requiredOption.labelStyle?.color, optionColors.onSurface);
     await tester.enterText(
       find.byKey(const ValueKey<String>('database-browser-simple-table-name')),
       'categories',
@@ -329,7 +802,11 @@ void main() {
       220,
       scrollable: simpleFormScrollable,
     );
-    await tester.drag(simpleFormScrollable, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    final formPosition = tester
+        .state<ScrollableState>(simpleFormScrollable)
+        .position;
+    formPosition.jumpTo(formPosition.maxScrollExtent);
     await tester.pump();
     await tester.tap(createSimpleTable);
     await tester.pumpAndSettle();
@@ -629,10 +1106,7 @@ void main() {
             ),
           )
           .borderRadius,
-      NodeQlSurfaceStyle.standard.innerBorderRadius(
-        outerRadius: NodeQlSurfaceStyle.standard.radiusLarge,
-        gap: 14,
-      ),
+      NodeQlSurfaceStyle.standard.mediumBorderRadius,
     );
     expect(find.text('Ada'), findsOneWidget);
     expect(find.text('1 row(s)'), findsOneWidget);

@@ -25,10 +25,12 @@ void main() {
     );
 
     expect(find.text('Choose a practical learning path'), findsOneWidget);
-    expect(find.text('About 15 min'), findsOneWidget);
+    expect(find.text('About 8 min'), findsWidgets);
     expect(find.byKey(const ValueKey('tutorial-answer-1-0')), findsNothing);
 
-    final beginner = find.byKey(const ValueKey('tutorial-lesson-beginner'));
+    final beginner = find.byKey(
+      const ValueKey('tutorial-lesson-selectAndSimpleFilters'),
+    );
     await tester.ensureVisible(beginner);
     await tester.tap(beginner);
     await tester.pumpAndSettle();
@@ -60,6 +62,29 @@ void main() {
     expect(find.text('Continue in workspace'), findsOneWidget);
   });
 
+  testWidgets('previously finished short paths resume their new missions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TutorialDialog(
+          catalog: _englishCatalog(),
+          initialProgress: const {
+            TutorialKnowledgeMode.beginnerSyntax: TutorialLessonProgress(
+              completedPracticeSteps: {0, 1, 2},
+              practiceCompleted: true,
+            ),
+          },
+          onStartPractice: (mode) async {},
+          onComplete: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('3 of 3 workspace missions'), findsOneWidget);
+    expect(find.text('Repeat in workspace'), findsOneWidget);
+  });
+
   testWidgets('uses readable workshop colors in White Mode', (tester) async {
     final lightTheme = themeFor(NodeQlTheme.light);
     await tester.pumpWidget(
@@ -75,9 +100,8 @@ void main() {
 
     final body = tester.widget<Text>(
       find.text(
-        'Every path opens a real query tab. Drag, connect and configure '
-        'NodeQL nodes yourself while the workshop validates the graph and '
-        'shows the generated SQLite live — no quiz questions.',
+        'Eight SQLite workshops, two NodeQL-specific modules and 27 hands-on '
+        'missions. Learn each command with real nodes and an isolated practice database.',
       ),
     );
     final colors = lightTheme.extension<NodeQlWorkbenchColors>()!;

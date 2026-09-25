@@ -123,6 +123,9 @@ flutter run -d macos
 ```
 
 Use `windows` or `linux` instead of `macos` on the corresponding platform.
+On Linux, file dialogs require `zenity`, `kdialog`, or `qarma` on `PATH`.
+The Debian package installs one of these as a dependency; install one
+separately when using the tarball.
 
 ## Project structure
 
