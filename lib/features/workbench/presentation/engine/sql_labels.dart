@@ -24,6 +24,15 @@ String sqlLabelFor(
   Map<String, dynamic> inputs,
   String languageCode,
 ) {
+  if (type == BlockType.sqlFunction) {
+    final rawArgs = inputs['args'];
+    final argumentCount = rawArgs is List ? rawArgs.length : 0;
+    final arguments = List<String>.generate(
+      argumentCount,
+      (index) => '[arg$index]',
+    ).join(', ');
+    return '[function]($arguments)';
+  }
   if (type == BlockType.sqlText && inputs['literal_type'] != null) {
     return switch ('${inputs['literal_type']}'.trim().toLowerCase()) {
       'null' => 'NULL',

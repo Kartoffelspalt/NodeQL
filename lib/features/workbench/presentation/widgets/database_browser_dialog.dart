@@ -345,15 +345,16 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
-    final showModeInHeader = size.width >= 1300;
+    final dialogWidth = (size.width - 32).clamp(0.0, 1240.0);
+    final dialogHeight = (size.height - 32).clamp(0.0, 900.0);
+    final showModeInHeader = dialogWidth >= 980;
     Widget content = SizedBox(
       key: const ValueKey<String>('database-browser-dialog'),
-      width: (size.width * .94).clamp(680, 1240),
-      height: (size.height * .9).clamp(480, 900),
+      width: dialogWidth,
+      height: dialogHeight,
       child: Column(
         children: [
           _buildHeader(context, showModeSwitch: showModeInHeader),
-          if (!showModeInHeader) _buildModeSwitch(context),
           Expanded(child: _buildBody(context)),
         ],
       ),
@@ -374,7 +375,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     }
 
     return Dialog(
-      insetPadding: const EdgeInsets.all(20),
+      insetPadding: const EdgeInsets.all(16),
       backgroundColor: surfaceStyle.isBrutalist ? null : Colors.transparent,
       elevation: surfaceStyle.isBrutalist ? null : 0,
       shadowColor: surfaceStyle.isBrutalist ? null : Colors.transparent,
@@ -387,41 +388,17 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     );
   }
 
-  Widget _buildModeSwitch(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        border: Border(
-          bottom: BorderSide(color: Theme.of(context).dividerColor),
-        ),
-      ),
-      child: Center(child: _buildModeControl(context)),
-    );
-  }
-
-  Widget _buildModeControl(BuildContext context, {BorderRadius? borderRadius}) {
+  Widget _buildModeControl(BuildContext context) {
     return SegmentedButton<SqlAbstractionMode>(
       key: const ValueKey<String>('database-browser-mode'),
-      showSelectedIcon: false,
-      style: borderRadius == null
-          ? null
-          : ButtonStyle(
-              shape: WidgetStatePropertyAll(
-                RoundedRectangleBorder(borderRadius: borderRadius),
-              ),
-            ),
+      style: NodeQlDesign.modeSegmentedButtonStyle(context),
       segments: [
         ButtonSegment<SqlAbstractionMode>(
           value: SqlAbstractionMode.simple,
-          icon: const Icon(Icons.visibility_outlined, size: 18),
           label: Text(widget.catalog.text('toolbar.simple')),
         ),
         ButtonSegment<SqlAbstractionMode>(
           value: SqlAbstractionMode.advanced,
-          icon: const Icon(Icons.schema_outlined, size: 18),
           label: Text(widget.catalog.text('toolbar.advanced')),
         ),
       ],
@@ -442,116 +419,154 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   Widget _buildHeader(BuildContext context, {required bool showModeSwitch}) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
-    final headerControlRadius = surfaceStyle.innerBorderRadius(
-      outerRadius: surfaceStyle.radiusLarge,
-      gap: 14,
-    );
+    final headerControlRadius = surfaceStyle.mediumBorderRadius;
     final overview = _overview;
 
     return ClipRRect(
-      borderRadius: surfaceStyle.largeBorderRadius,
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(surfaceStyle.radiusLarge),
+      ),
       child: Container(
+        key: const ValueKey<String>('database-browser-header'),
         padding: const EdgeInsetsDirectional.fromSTEB(20, 14, 12, 14),
         decoration: BoxDecoration(
-          color: colors.surfaceContainerHigh,
-          border: Border(bottom: BorderSide(color: theme.dividerColor)),
+          color: workbenchColors.topBar,
+          border: Border(bottom: BorderSide(color: workbenchColors.border)),
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _clipDatabaseSurface(
-              context: context,
-              key: const ValueKey<String>('database-browser-header-icon-clip'),
-              borderRadius: headerControlRadius,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: colors.primaryContainer,
+            Row(
+              children: [
+                _clipDatabaseSurface(
+                  context: context,
+                  key: const ValueKey<String>(
+                    'database-browser-header-icon-clip',
+                  ),
                   borderRadius: headerControlRadius,
-                ),
-                child: Icon(
-                  Icons.storage_rounded,
-                  color: colors.onPrimaryContainer,
-                  size: 23,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    p.basename(widget.databasePath),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.2,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colors.primaryContainer,
+                      borderRadius: headerControlRadius,
+                    ),
+                    child: Icon(
+                      Icons.storage_rounded,
+                      color: colors.onPrimaryContainer,
+                      size: 23,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Tooltip(
-                    message: widget.databasePath,
-                    child: Text(
-                      _modeText(
-                        'databaseBrowser.title',
-                        'databaseBrowser.simple.title',
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _mode == SqlAbstractionMode.simple
+                            ? widget.catalog.text(
+                                'databaseBrowser.simple.title',
+                              )
+                            : p.basename(widget.databasePath),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.2,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
+                      const SizedBox(height: 2),
+                      Tooltip(
+                        message: widget.databasePath,
+                        child: Text(
+                          _mode == SqlAbstractionMode.simple
+                              ? p.basename(widget.databasePath)
+                              : widget.catalog.text('databaseBrowser.title'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
+                ),
+                if (showModeSwitch) ...[
+                  const SizedBox(width: 20),
+                  _buildModeControl(context),
+                  const SizedBox(width: 16),
                 ],
-              ),
-            ),
-            if (showModeSwitch) ...[
-              const SizedBox(width: 20),
-              _buildModeControl(context, borderRadius: headerControlRadius),
-              const SizedBox(width: 16),
-            ],
-            if (overview != null)
-              _InfoPill(
-                icon: Icons.dataset_outlined,
-                borderRadius: headerControlRadius,
-                label: widget.catalog.text('databaseBrowser.objectCount', {
-                  'count': overview.objects.length,
-                }),
-              ),
-            const SizedBox(width: 6),
-            _clipDatabaseSurface(
-              context: context,
-              key: const ValueKey<String>('database-browser-refresh-clip'),
-              borderRadius: headerControlRadius,
-              child: IconButton.filledTonal(
-                key: const ValueKey<String>('database-browser-refresh'),
-                onPressed: _loadingOverview
-                    ? null
-                    : () => _loadOverview(preferredName: _selectedName),
-                tooltip: widget.catalog.text('databaseBrowser.refresh'),
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-            ),
-            const SizedBox(width: 6),
-            _clipDatabaseSurface(
-              context: context,
-              key: const ValueKey<String>('database-browser-close-clip'),
-              borderRadius: headerControlRadius,
-              child: Material(
-                color: const Color(0xFF1ECBE1),
-                borderRadius: headerControlRadius,
-                clipBehavior: Clip.antiAlias,
-                child: IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  tooltip: widget.catalog.text('common.close'),
-                  icon: const Icon(Icons.close_rounded, color: Colors.black),
+                if (overview != null && _mode == SqlAbstractionMode.advanced)
+                  _InfoPill(
+                    icon: Icons.dataset_outlined,
+                    borderRadius: headerControlRadius,
+                    label: widget.catalog.text('databaseBrowser.objectCount', {
+                      'count': overview.objects.length,
+                    }),
+                  ),
+                const SizedBox(width: 6),
+                _clipDatabaseSurface(
+                  context: context,
+                  key: const ValueKey<String>('database-browser-refresh-clip'),
+                  borderRadius: headerControlRadius,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Material(
+                      color: colors.primaryContainer,
+                      borderRadius: headerControlRadius,
+                      child: IconButton(
+                        key: const ValueKey<String>('database-browser-refresh'),
+                        padding: EdgeInsets.zero,
+                        onPressed: _loadingOverview
+                            ? null
+                            : () => _loadOverview(preferredName: _selectedName),
+                        tooltip: widget.catalog.text('databaseBrowser.refresh'),
+                        icon: Icon(
+                          Icons.refresh_rounded,
+                          color: colors.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 6),
+                _clipDatabaseSurface(
+                  context: context,
+                  key: const ValueKey<String>('database-browser-close-clip'),
+                  borderRadius: headerControlRadius,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Material(
+                      color: colors.primaryContainer,
+                      borderRadius: headerControlRadius,
+                      child: IconButton(
+                        key: const ValueKey<String>('database-browser-close'),
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(),
+                        tooltip: widget.catalog.text('common.close'),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: colors.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            if (!showModeSwitch) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: _buildModeControl(context),
+              ),
+            ],
           ],
         ),
       ),
@@ -564,23 +579,27 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     }
     final overview = _overview;
     if (overview == null) return _buildError(context);
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Container(
-          width: 286,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            border: Border(right: BorderSide(color: theme.dividerColor)),
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) => Row(
+        children: [
+          Container(
+            key: const ValueKey<String>('database-browser-sidebar'),
+            width: constraints.maxWidth < 760 ? 220 : 286,
+            decoration: BoxDecoration(
+              color: workbenchColors.panel,
+              border: Border(right: BorderSide(color: workbenchColors.border)),
+            ),
+            child: _buildObjectList(context, overview),
           ),
-          child: _buildObjectList(context, overview),
-        ),
-        Expanded(child: _buildObjectDetails(context, overview)),
-      ],
+          Expanded(child: _buildObjectDetails(context, overview)),
+        ],
+      ),
     );
   }
 
   Widget _buildObjectList(BuildContext context, DatabaseOverview overview) {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final matches = overview.objects.where(
       (object) =>
@@ -597,49 +616,56 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-          child: TextField(
-            key: const ValueKey<String>('database-browser-search'),
-            controller: _searchController,
-            onChanged: (value) => setState(() => _searchQuery = value),
-            decoration: InputDecoration(
-              isDense: true,
-              filled: true,
-              fillColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-              prefixIcon: const Icon(Icons.search_rounded, size: 20),
-              hintText: _modeText(
-                'databaseBrowser.search',
-                'databaseBrowser.simple.search',
-              ),
-              suffixIcon: _searchQuery.isEmpty
-                  ? null
-                  : IconButton(
-                      key: const ValueKey<String>(
-                        'database-browser-clear-search',
+        if (_mode == SqlAbstractionMode.advanced ||
+            overview.objects.length > 6 ||
+            _searchQuery.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+            child: TextField(
+              key: const ValueKey<String>('database-browser-search'),
+              controller: _searchController,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: true,
+                fillColor: workbenchColors.panelElevated,
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                hintText: _modeText(
+                  'databaseBrowser.search',
+                  'databaseBrowser.simple.search',
+                ),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        key: const ValueKey<String>(
+                          'database-browser-clear-search',
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        tooltip: _modeText(
+                          'databaseBrowser.clearSearch',
+                          'databaseBrowser.simple.clearSearch',
+                        ),
+                        icon: const Icon(Icons.clear_rounded, size: 18),
                       ),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                      tooltip: _modeText(
-                        'databaseBrowser.clearSearch',
-                        'databaseBrowser.simple.clearSearch',
-                      ),
-                      icon: const Icon(Icons.clear_rounded, size: 18),
-                    ),
-              border: OutlineInputBorder(
-                borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
-                borderSide: BorderSide(color: Theme.of(context).dividerColor),
+                border: OutlineInputBorder(
+                  borderRadius: NodeQlSurfaceStyle.of(
+                    context,
+                  ).mediumBorderRadius,
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: NodeQlSurfaceStyle.of(
+                    context,
+                  ).mediumBorderRadius,
+                  borderSide: BorderSide(color: workbenchColors.border),
+                ),
               ),
             ),
           ),
-        ),
-        if (widget.sqlExecutor != null)
+        if (widget.sqlExecutor != null && _mode == SqlAbstractionMode.advanced)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
             child: Column(
@@ -680,7 +706,8 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                   count: views.length,
                 ),
               for (final object in views) _buildObjectTile(context, object),
-              if (overview.objects.isEmpty)
+              if (overview.objects.isEmpty &&
+                  _mode == SqlAbstractionMode.advanced)
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
@@ -710,7 +737,22 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
             ],
           ),
         ),
-        _buildDatabaseMetadata(context, overview),
+        if (widget.sqlExecutor != null &&
+            _mode == SqlAbstractionMode.simple &&
+            overview.objects.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+            child: OutlinedButton.icon(
+              key: const ValueKey<String>('database-browser-new-table'),
+              onPressed: _openCreateTableEditor,
+              icon: const Icon(Icons.add_rounded, size: 19),
+              label: Text(
+                widget.catalog.text('databaseBrowser.simple.newTable'),
+              ),
+            ),
+          ),
+        if (_mode == SqlAbstractionMode.advanced)
+          _buildDatabaseMetadata(context, overview),
       ],
     );
   }
@@ -718,6 +760,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   Widget _buildObjectTile(BuildContext context, DatabaseObjectSummary object) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final tileRadius = surfaceStyle.mediumBorderRadius;
     final tileIconRadius = surfaceStyle.innerBorderRadius(
@@ -735,7 +778,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
         key: ValueKey<String>('database-object-${object.name}-clip'),
         borderRadius: tileRadius,
         child: Material(
-          color: selected ? colors.secondaryContainer : Colors.transparent,
+          color: selected ? colors.primaryContainer : Colors.transparent,
           borderRadius: tileRadius,
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -757,15 +800,15 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                       height: 34,
                       decoration: BoxDecoration(
                         color: selected
-                            ? colors.secondary.withValues(alpha: .16)
-                            : colors.surfaceContainerHigh,
+                            ? colors.primary.withValues(alpha: .16)
+                            : workbenchColors.panelElevated,
                         borderRadius: tileIconRadius,
                       ),
                       child: Icon(
                         icon,
                         size: 19,
                         color: selected
-                            ? colors.onSecondaryContainer
+                            ? colors.onPrimaryContainer
                             : colors.onSurfaceVariant,
                       ),
                     ),
@@ -777,7 +820,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: selected ? colors.onSecondaryContainer : null,
+                        color: selected ? colors.onPrimaryContainer : null,
                         fontWeight: selected
                             ? FontWeight.w700
                             : FontWeight.w500,
@@ -788,7 +831,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                     Icon(
                       Icons.chevron_right_rounded,
                       size: 18,
-                      color: colors.onSecondaryContainer,
+                      color: colors.onPrimaryContainer,
                     ),
                 ],
               ),
@@ -804,7 +847,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     DatabaseOverview overview,
   ) {
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      color: NodeQlWorkbenchColors.of(context).panel,
       child: ExpansionTile(
         shape: const Border(),
         collapsedShape: const Border(),
@@ -847,12 +890,14 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   ) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final isTable = snapshot.object.type == DatabaseObjectType.table;
     return Container(
+      key: const ValueKey<String>('database-browser-detail-summary'),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-      color: colors.surface,
+      color: workbenchColors.panelElevated,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final identity = Row(
@@ -953,6 +998,47 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   Widget _buildObjectDetails(BuildContext context, DatabaseOverview overview) {
     if (_showCreateTableEditor) return _buildCreateTableEditor(context);
     if (overview.objects.isEmpty) {
+      if (_mode == SqlAbstractionMode.simple) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.table_chart_outlined,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  widget.catalog.text('databaseBrowser.simple.emptyTitle'),
+                  style: Theme.of(context).textTheme.titleLarge,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  widget.catalog.text('databaseBrowser.simple.emptyHelp'),
+                  textAlign: TextAlign.center,
+                ),
+                if (widget.sqlExecutor != null) ...[
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    key: const ValueKey<String>(
+                      'database-browser-empty-create',
+                    ),
+                    onPressed: _openCreateTableEditor,
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(
+                      widget.catalog.text('databaseBrowser.simple.newTable'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }
       return Center(
         child: Text(
           _modeText(
@@ -968,8 +1054,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     if (_error != null) return _buildError(context);
     final snapshot = _snapshot;
     if (snapshot == null) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final tabInnerRadius = surfaceStyle.innerBorderRadius(
       outerRadius: surfaceStyle.radiusMedium,
@@ -982,24 +1067,23 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
         children: [
           _buildObjectSummary(context, snapshot),
           Container(
+            key: const ValueKey<String>('database-browser-tabs-surface'),
             margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             padding: const EdgeInsets.all(4),
-            clipBehavior: surfaceStyle.isBrutalist ? Clip.none : Clip.antiAlias,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: colors.surfaceContainerHigh,
+              color: workbenchColors.panel,
               borderRadius: surfaceStyle.mediumBorderRadius,
-              border: Border.all(color: theme.dividerColor),
+              border: Border.all(color: workbenchColors.border),
             ),
             child: TabBar(
               dividerColor: Colors.transparent,
-              splashBorderRadius: surfaceStyle.isBrutalist
-                  ? null
-                  : tabInnerRadius,
+              splashBorderRadius: tabInnerRadius,
               indicatorSize: TabBarIndicatorSize.tab,
               indicator: BoxDecoration(
-                color: colors.surface,
+                color: workbenchColors.panelElevated,
                 borderRadius: tabInnerRadius,
-                border: Border.all(color: theme.dividerColor),
+                border: Border.all(color: workbenchColors.border),
               ),
               tabs: [
                 Tab(
@@ -1060,6 +1144,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   Widget _buildCreateTableEditor(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final simple = _mode == SqlAbstractionMode.simple;
 
@@ -1069,19 +1154,31 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-          color: colors.surface,
+          color: workbenchColors.panelElevated,
           child: Row(
             children: [
-              Container(
+              SizedBox(
                 width: 46,
                 height: 46,
-                decoration: BoxDecoration(
+                child: Material(
                   color: colors.primaryContainer,
                   borderRadius: surfaceStyle.mediumBorderRadius,
-                ),
-                child: Icon(
-                  Icons.table_chart_outlined,
-                  color: colors.onPrimaryContainer,
+                  clipBehavior: Clip.antiAlias,
+                  child: IconButton(
+                    key: const ValueKey<String>('database-browser-create-back'),
+                    onPressed: () => setState(() {
+                      _showCreateTableEditor = false;
+                      _simpleCreateError = null;
+                      _sqlResult = null;
+                    }),
+                    tooltip: widget.catalog.text(
+                      'databaseBrowser.backToDatabase',
+                    ),
+                    icon: Icon(
+                      Icons.arrow_back_rounded,
+                      color: colors.onPrimaryContainer,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 13),
@@ -1174,6 +1271,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   Widget _buildSimpleCreateTableForm(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     return ListView(
       key: const ValueKey<String>('database-browser-simple-create-form'),
@@ -1241,23 +1339,39 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
           ),
         ],
         const SizedBox(height: 18),
-        _DatabaseSectionTitle(
-          icon: Icons.code_rounded,
-          label: widget.catalog.text('databaseBrowser.simple.preview'),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          key: const ValueKey<String>('database-browser-simple-create-preview'),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerLow,
+        ExpansionTile(
+          key: const ValueKey<String>('database-browser-simple-preview-toggle'),
+          shape: RoundedRectangleBorder(
             borderRadius: surfaceStyle.mediumBorderRadius,
-            border: Border.all(color: theme.dividerColor),
+            side: BorderSide(color: workbenchColors.border),
           ),
-          child: SelectableText(
-            _simpleCreatePreview,
-            style: const TextStyle(fontFamily: 'monospace', height: 1.4),
+          collapsedShape: RoundedRectangleBorder(
+            borderRadius: surfaceStyle.mediumBorderRadius,
+            side: BorderSide(color: workbenchColors.border),
           ),
+          backgroundColor: workbenchColors.panel,
+          collapsedBackgroundColor: workbenchColors.panel,
+          title: Text(widget.catalog.text('databaseBrowser.simple.preview')),
+          leading: const Icon(Icons.code_rounded),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          children: [
+            Container(
+              key: const ValueKey<String>(
+                'database-browser-simple-create-preview',
+              ),
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: workbenchColors.panel,
+                borderRadius: surfaceStyle.mediumBorderRadius,
+                border: Border.all(color: workbenchColors.border),
+              ),
+              child: SelectableText(
+                _simpleCreatePreview,
+                style: const TextStyle(fontFamily: 'monospace', height: 1.4),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Align(
@@ -1390,7 +1504,8 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
               spacing: 8,
               runSpacing: 6,
               children: [
-                FilterChip(
+                _buildSimpleColumnOption(
+                  context: context,
                   key: ValueKey<String>(
                     'database-browser-simple-primary-key-$index',
                   ),
@@ -1398,14 +1513,13 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                   onSelected: _executingSql
                       ? null
                       : (selected) => _setSimplePrimaryKey(index, selected),
-                  avatar: const Icon(Icons.key_rounded, size: 17),
-                  label: Text(
-                    widget.catalog.text(
-                      'databaseBrowser.simple.primaryKeyOption',
-                    ),
+                  icon: Icons.key_rounded,
+                  label: widget.catalog.text(
+                    'databaseBrowser.simple.primaryKeyOption',
                   ),
                 ),
-                FilterChip(
+                _buildSimpleColumnOption(
+                  context: context,
                   key: ValueKey<String>(
                     'database-browser-simple-not-null-$index',
                   ),
@@ -1419,11 +1533,12 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                             _sqlResult = null;
                           });
                         },
-                  label: Text(
-                    widget.catalog.text('databaseBrowser.simple.notNullOption'),
+                  label: widget.catalog.text(
+                    'databaseBrowser.simple.notNullOption',
                   ),
                 ),
-                FilterChip(
+                _buildSimpleColumnOption(
+                  context: context,
                   key: ValueKey<String>(
                     'database-browser-simple-unique-$index',
                   ),
@@ -1437,8 +1552,8 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                             _sqlResult = null;
                           });
                         },
-                  label: Text(
-                    widget.catalog.text('databaseBrowser.simple.uniqueOption'),
+                  label: widget.catalog.text(
+                    'databaseBrowser.simple.uniqueOption',
                   ),
                 ),
               ],
@@ -1446,6 +1561,39 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSimpleColumnOption({
+    required BuildContext context,
+    required Key key,
+    required bool selected,
+    required ValueChanged<bool>? onSelected,
+    required String label,
+    IconData? icon,
+  }) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final foreground = selected ? colors.onPrimaryContainer : colors.onSurface;
+    return FilterChip(
+      key: key,
+      selected: selected,
+      onSelected: onSelected,
+      selectedColor: colors.primaryContainer,
+      backgroundColor: workbenchColors.panel,
+      checkmarkColor: colors.onPrimaryContainer,
+      labelStyle: theme.textTheme.labelLarge?.copyWith(color: foreground),
+      iconTheme: IconThemeData(color: foreground),
+      side: BorderSide(
+        color: selected ? colors.primary : workbenchColors.border,
+        width: NodeQlSurfaceStyle.of(context).borderWidth,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
+      ),
+      avatar: icon == null ? null : Icon(icon, size: 17, color: foreground),
+      label: Text(label),
     );
   }
 
@@ -1516,7 +1664,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
 
   Widget _buildContent(BuildContext context, DatabaseObjectSnapshot snapshot) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final paginationInnerRadius = surfaceStyle.innerBorderRadius(
       outerRadius: surfaceStyle.radiusMedium,
@@ -1539,9 +1687,9 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
           );
     final pageControls = Container(
       decoration: BoxDecoration(
-        color: colors.surface,
+        color: workbenchColors.panelElevated,
         borderRadius: paginationInnerRadius,
-        border: Border.all(color: theme.dividerColor),
+        border: Border.all(color: workbenchColors.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1606,9 +1754,9 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
           margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
           padding: const EdgeInsetsDirectional.fromSTEB(14, 7, 8, 7),
           decoration: BoxDecoration(
-            color: colors.surfaceContainerLow,
+            color: workbenchColors.panel,
             borderRadius: surfaceStyle.mediumBorderRadius,
-            border: Border.all(color: theme.dividerColor),
+            border: Border.all(color: workbenchColors.border),
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -1669,6 +1817,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
   Widget _buildDataGrid(BuildContext context, DatabaseObjectSnapshot snapshot) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
@@ -1676,8 +1825,8 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
         borderRadius: surfaceStyle.mediumBorderRadius,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: colors.surface,
-            border: Border.all(color: theme.dividerColor),
+            color: workbenchColors.panelElevated,
+            border: Border.all(color: workbenchColors.border),
             borderRadius: surfaceStyle.mediumBorderRadius,
           ),
           child: LayoutBuilder(
@@ -1698,7 +1847,7 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                     child: SelectionArea(
                       child: DataTable(
                         headingRowColor: WidgetStatePropertyAll(
-                          colors.surfaceContainerHigh,
+                          workbenchColors.panel,
                         ),
                         headingTextStyle: theme.textTheme.labelLarge?.copyWith(
                           fontWeight: FontWeight.w700,
@@ -1723,8 +1872,8 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
                             DataRow(
                               color: WidgetStatePropertyAll(
                                 rowIndex.isEven
-                                    ? colors.surfaceContainerLowest
-                                    : colors.surface,
+                                    ? workbenchColors.panelElevated
+                                    : workbenchColors.panel,
                               ),
                               cells: [
                                 DataCell(
@@ -1777,8 +1926,11 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
     BuildContext context,
     DatabaseObjectSnapshot snapshot,
   ) {
+    if (_mode == SqlAbstractionMode.simple) {
+      return _buildSimpleStructure(context, snapshot);
+    }
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -1795,16 +1947,14 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
           borderRadius: surfaceStyle.mediumBorderRadius,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: colors.surface,
+              color: workbenchColors.panelElevated,
               borderRadius: surfaceStyle.mediumBorderRadius,
-              border: Border.all(color: theme.dividerColor),
+              border: Border.all(color: workbenchColors.border),
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: WidgetStatePropertyAll(
-                  colors.surfaceContainerHigh,
-                ),
+                headingRowColor: WidgetStatePropertyAll(workbenchColors.panel),
                 headingTextStyle: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -1967,14 +2117,165 @@ class _DatabaseBrowserDialogState extends State<DatabaseBrowserDialog> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: colors.surfaceContainerLow,
+            color: workbenchColors.panel,
             borderRadius: surfaceStyle.mediumBorderRadius,
-            border: Border.all(color: theme.dividerColor),
+            border: Border.all(color: workbenchColors.border),
           ),
           child: SelectableText(
             snapshot.object.createSql.isEmpty ? '—' : snapshot.object.createSql,
             style: const TextStyle(fontFamily: 'monospace', height: 1.4),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimpleStructure(
+    BuildContext context,
+    DatabaseObjectSnapshot snapshot,
+  ) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    return ListView(
+      key: const ValueKey<String>('database-browser-simple-structure'),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      children: [
+        _DatabaseSectionTitle(
+          icon: Icons.view_column_outlined,
+          label: widget.catalog.text('databaseBrowser.simple.columns'),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          widget.catalog.text('databaseBrowser.simple.columnsHelp'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (final column in snapshot.columns)
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    column.name,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    column.declaredType.isEmpty
+                        ? widget.catalog.text('databaseBrowser.simple.anyType')
+                        : column.declaredType,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  if (column.notNull || column.primaryKeyOrder > 0) ...[
+                    const SizedBox(height: 9),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (column.notNull)
+                          _InfoPill(
+                            label: widget.catalog.text(
+                              'databaseBrowser.simple.required',
+                            ),
+                          ),
+                        if (column.primaryKeyOrder > 0)
+                          _InfoPill(
+                            icon: Icons.key_rounded,
+                            label: widget.catalog.text(
+                              'databaseBrowser.simple.primaryKey',
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 8),
+        ExpansionTile(
+          key: const ValueKey<String>('database-browser-simple-details'),
+          shape: RoundedRectangleBorder(
+            borderRadius: surfaceStyle.mediumBorderRadius,
+            side: BorderSide(color: workbenchColors.border),
+          ),
+          collapsedShape: RoundedRectangleBorder(
+            borderRadius: surfaceStyle.mediumBorderRadius,
+            side: BorderSide(color: workbenchColors.border),
+          ),
+          backgroundColor: workbenchColors.panel,
+          collapsedBackgroundColor: workbenchColors.panel,
+          title: Text(
+            widget.catalog.text('databaseBrowser.simple.moreDetails'),
+          ),
+          leading: const Icon(Icons.tune_rounded),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+          children: [
+            if (snapshot.foreignKeys.isNotEmpty) ...[
+              _DatabaseSectionTitle(
+                icon: Icons.link_rounded,
+                label: widget.catalog.text(
+                  'databaseBrowser.simple.foreignKeys',
+                ),
+              ),
+              for (final key in snapshot.foreignKeys)
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    '${key.fromColumn} → ${key.referencedTable}.${key.toColumn ?? ''}',
+                  ),
+                ),
+            ],
+            if (snapshot.indexes.isNotEmpty) ...[
+              _DatabaseSectionTitle(
+                icon: Icons.speed_rounded,
+                label: widget.catalog.text('databaseBrowser.simple.indexes'),
+              ),
+              for (final index in snapshot.indexes)
+                ListTile(dense: true, title: Text(index.name)),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: _DatabaseSectionTitle(
+                    icon: Icons.code_rounded,
+                    label: widget.catalog.text(
+                      'databaseBrowser.simple.createSql',
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey<String>(
+                    'database-browser-copy-create-sql',
+                  ),
+                  onPressed: snapshot.object.createSql.isEmpty
+                      ? null
+                      : () => _copyCreateSql(snapshot),
+                  tooltip: widget.catalog.text(
+                    'databaseBrowser.simple.copyCreateSql',
+                  ),
+                  icon: const Icon(Icons.copy_rounded, size: 19),
+                ),
+              ],
+            ),
+            SelectableText(
+              snapshot.object.createSql.isEmpty
+                  ? '—'
+                  : snapshot.object.createSql,
+              style: const TextStyle(fontFamily: 'monospace', height: 1.4),
+            ),
+          ],
         ),
       ],
     );
@@ -2028,6 +2329,7 @@ class _ObjectSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 12, 6),
       child: Row(
@@ -2045,7 +2347,7 @@ class _ObjectSectionLabel extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest,
+              color: workbenchColors.panelElevated,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
@@ -2108,21 +2410,21 @@ class _InfoPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-          color: colors.secondaryContainer,
+          color: colors.primaryContainer,
           borderRadius: effectiveRadius,
-          border: Border.all(color: colors.secondary.withValues(alpha: .18)),
+          border: Border.all(color: colors.primary.withValues(alpha: .24)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 14, color: colors.onSecondaryContainer),
+              Icon(icon, size: 14, color: colors.onPrimaryContainer),
               const SizedBox(width: 4),
             ],
             Text(
               label,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colors.onSecondaryContainer,
+                color: colors.onPrimaryContainer,
                 fontWeight: FontWeight.w600,
               ),
             ),

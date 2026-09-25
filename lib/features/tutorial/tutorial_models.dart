@@ -1,4 +1,41 @@
-enum TutorialKnowledgeMode { beginner, beginnerSyntax, intermediate, expert }
+enum TutorialKnowledgeMode {
+  selectAndSimpleFilters,
+  dataTypes,
+  advancedFilters,
+  sortingAndWhere,
+  complexQueries,
+  dataManipulation,
+  schemaObjects,
+  transactions,
+  databaseTools,
+  plugins;
+
+  /// Compatibility aliases for progress files and integrations created before
+  /// the curriculum was split into topic-based workshops.
+  @Deprecated('Use selectAndSimpleFilters')
+  static const beginner = TutorialKnowledgeMode.selectAndSimpleFilters;
+
+  @Deprecated('Use advancedFilters')
+  static const beginnerSyntax = TutorialKnowledgeMode.advancedFilters;
+
+  @Deprecated('Use complexQueries')
+  static const intermediate = TutorialKnowledgeMode.complexQueries;
+
+  @Deprecated('Use complexQueries')
+  static const expert = TutorialKnowledgeMode.complexQueries;
+}
+
+enum TutorialWorkshopArea { sqlite, nodeQl }
+
+extension TutorialKnowledgeModeMetadata on TutorialKnowledgeMode {
+  TutorialWorkshopArea get area => switch (this) {
+    TutorialKnowledgeMode.databaseTools ||
+    TutorialKnowledgeMode.plugins => TutorialWorkshopArea.nodeQl,
+    _ => TutorialWorkshopArea.sqlite,
+  };
+
+  bool get hasWorkspacePractice => area == TutorialWorkshopArea.sqlite;
+}
 
 class TutorialLessonProgress {
   const TutorialLessonProgress({

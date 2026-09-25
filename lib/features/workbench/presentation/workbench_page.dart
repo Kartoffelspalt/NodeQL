@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
@@ -11,15 +12,19 @@ import 'package:nodeql/engine/block/block_syntax.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:nodeql/data/project/project_file_upgrade_service.dart';
+import 'package:nodeql/data/project/project_file_paths.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_backwards_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sqlite_function_catalog.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_result_export.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
+import 'package:nodeql/features/workbench/presentation/workbench_layout_controller.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/database_browser_dialog.dart';
@@ -29,6 +34,7 @@ import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
+import 'package:nodeql/features/tutorial/workshop_database.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
@@ -79,7 +85,30 @@ class _SaveProjectIntent extends Intent {
   const _SaveProjectIntent();
 }
 
+class _NewProjectIntent extends Intent {
+  const _NewProjectIntent();
+}
+
+class _OpenProjectIntent extends Intent {
+  const _OpenProjectIntent();
+}
+
+class _SaveProjectAsIntent extends Intent {
+  const _SaveProjectAsIntent();
+}
+
 enum _SettingsAction { plugins, languages, tutorial, about }
+
+enum _SettingsSection {
+  personalization,
+  display,
+  motion,
+  accessibility,
+  languageRegion,
+  extensions,
+  learning,
+  about,
+}
 
 class _RopeHighlightColors {
   const _RopeHighlightColors({
@@ -388,17 +417,12 @@ class WorkbenchPage extends ConsumerStatefulWidget {
 class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   static const _menuChannel = MethodChannel('nodeql/menu');
   static const _projectUpgradeService = ProjectFileUpgradeService();
-  static const _neoCheatKeys = <LogicalKeyboardKey>[
-    LogicalKeyboardKey.keyN,
-    LogicalKeyboardKey.keyE,
-    LogicalKeyboardKey.keyO,
-  ];
   static const _databaseBrowserKeys = <LogicalKeyboardKey>[
     LogicalKeyboardKey.keyD,
     LogicalKeyboardKey.keyB,
     LogicalKeyboardKey.keyB,
   ];
-  static const _neoCheatTimeout = Duration(seconds: 2);
+  static const _databaseBrowserKeyTimeout = Duration(seconds: 2);
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlHighlightingController _customSqlController =
@@ -411,15 +435,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   String _activeProjectName = 'Untitled';
   bool _autosaveEnabledForProject = true;
   List<Map<String, dynamic>> _recentProjects = <Map<String, dynamic>>[];
-  int _lastAutosaveRevision = -1;
   Timer? _autosaveDebounce;
-  double _paletteWidth = 250;
+  bool _autosaveReady = false;
+  Timer? _livePreviewDebounce;
+  String _lastLivePreviewSql = '';
+  String? _livePreviewDatabasePath;
+  String? _queuedLivePreviewSql;
+  bool _livePreviewExecuting = false;
   bool _blockDiagnosticsRunning = false;
   int _blockDiagnosticsRunToken = 0;
   Future<void>? _pendingSave;
   bool _startupHintShown = false;
-  int _neoCheatIndex = 0;
-  DateTime? _neoCheatLastKeyAt;
   int _databaseBrowserKeyIndex = 0;
   bool _showCustomSqlEditor = false;
   bool _executingCustomSql = false;
@@ -441,7 +467,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     Future<void>.microtask(
       () => ref.read(pluginPaletteProvider.notifier).reload(),
     );
-    _restoreAutosave();
+    ref.listenManual<int>(
+      workspaceProvider.select((state) => state.revision),
+      (_, _) => _scheduleAutosave(),
+    );
+    ref.listenManual<int>(
+      workspaceTabsProvider.select((state) => state.revision),
+      (_, _) => _scheduleAutosave(),
+    );
+    unawaited(_initializeAutosave());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showStartupHintOnce();
     });
@@ -472,6 +506,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
     _menuChannel.setMethodCallHandler(null);
     _autosaveDebounce?.cancel();
+    _livePreviewDebounce?.cancel();
     _workspaceFocus.dispose();
     _customSqlController.dispose();
     super.dispose();
@@ -483,7 +518,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final keyboard = HardwareKeyboard.instance;
     final isSaveShortcut =
         event.logicalKey == LogicalKeyboardKey.keyS &&
-        (keyboard.isMetaPressed || keyboard.isControlPressed);
+        (keyboard.isMetaPressed || keyboard.isControlPressed) &&
+        !keyboard.isShiftPressed;
     if (isSaveShortcut) {
       unawaited(_saveProject(context));
       return true;
@@ -493,7 +529,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         keyboard.isMetaPressed ||
         keyboard.isControlPressed ||
         keyboard.isAltPressed) {
-      _resetNeoCheat();
       _resetDatabaseBrowserKeys();
       return false;
     }
@@ -503,29 +538,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       unawaited(_openDatabaseBrowser());
       return true;
     }
-    final lastKeyAt = _neoCheatLastKeyAt;
-    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
-      _resetNeoCheat();
-    }
-
-    final expectedKey = _neoCheatKeys[_neoCheatIndex];
-    if (event.logicalKey == expectedKey) {
-      _neoCheatIndex++;
-      _neoCheatLastKeyAt = now;
-      if (_neoCheatIndex == _neoCheatKeys.length) {
-        _resetNeoCheat();
-        unawaited(
-          ref
-              .read(nodeQlThemeProvider.notifier)
-              .setTheme(NodeQlTheme.neoBrutalism),
-        );
-        return true;
-      }
-      return false;
-    }
-
-    _neoCheatIndex = event.logicalKey == _neoCheatKeys.first ? 1 : 0;
-    _neoCheatLastKeyAt = _neoCheatIndex == 0 ? null : now;
     return false;
   }
 
@@ -536,14 +548,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         focusContext.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
-  void _resetNeoCheat() {
-    _neoCheatIndex = 0;
-    _neoCheatLastKeyAt = null;
-  }
-
   bool _advanceDatabaseBrowserKeys(LogicalKeyboardKey key, DateTime now) {
     final lastKeyAt = _databaseBrowserLastKeyAt;
-    if (lastKeyAt != null && now.difference(lastKeyAt) > _neoCheatTimeout) {
+    if (lastKeyAt != null &&
+        now.difference(lastKeyAt) > _databaseBrowserKeyTimeout) {
       _resetDatabaseBrowserKeys();
     }
 
@@ -575,18 +583,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     _databaseBrowserOpen = true;
     try {
       final catalog = ref.read(translationControllerProvider).catalog;
-      final mode = ref.read(sqlModeProvider);
       await showDialog<void>(
         context: context,
         builder: (_) => DatabaseBrowserDialog(
           databasePath: databasePath,
           catalog: catalog,
-          initialMode: mode,
+          initialMode: SqlAbstractionMode.simple,
           sqlExecutor: ref
               .read(sqlRuntimeProvider.notifier)
               .executeWithSnapshot,
-          onModeChanged: (next) =>
-              unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
         ),
       );
     } finally {
@@ -602,12 +607,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (_workshopMode) {
       return _WorkshopProviderScope(onExit: _exitWorkshop);
     }
-    final workspaceRevision = ref.watch(
-      workspaceProvider.select((s) => s.revision),
-    );
-    final tabsRevision = ref.watch(
-      workspaceTabsProvider.select((state) => state.revision),
-    );
+    // Keep this shell reactive to workspace edits; autosave itself is driven
+    // by the listeners registered in initState rather than by build().
+    ref.watch(workspaceProvider.select((state) => state.revision));
+    ref.watch(workspaceTabsProvider.select((state) => state.revision));
     final workspaceRoots = ref.read(workspaceProvider).roots;
     final runtime = ref.watch(sqlRuntimeProvider);
     final mode = ref.watch(sqlModeProvider);
@@ -623,26 +626,55 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       pluginBlocks: pluginState.blocksByQualifiedId,
     );
     final sql = compileResult.sql;
+    _scheduleLivePreview(sql, runtime.dbPath);
     final nodeDiagnostics = _nodeDiagnostics(
       mode: mode,
       roots: workspaceRoots,
       runtime: runtime,
       compileResult: compileResult,
     );
-    _maybeAutosave(Object.hash(workspaceRevision, tabsRevision));
-
     return Shortcuts(
       shortcuts: const <ShortcutActivator, Intent>{
         SingleActivator(LogicalKeyboardKey.keyS, meta: true):
             _SaveProjectIntent(),
         SingleActivator(LogicalKeyboardKey.keyS, control: true):
             _SaveProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, meta: true, shift: true):
+            _NewProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true):
+            _NewProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyO, meta: true, shift: true):
+            _OpenProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyO, control: true, shift: true):
+            _OpenProjectIntent(),
+        SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true):
+            _SaveProjectAsIntent(),
+        SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true):
+            _SaveProjectAsIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
           _SaveProjectIntent: CallbackAction<_SaveProjectIntent>(
             onInvoke: (_) {
               unawaited(_saveProject(context));
+              return null;
+            },
+          ),
+          _NewProjectIntent: CallbackAction<_NewProjectIntent>(
+            onInvoke: (_) {
+              unawaited(_newProject(context));
+              return null;
+            },
+          ),
+          _OpenProjectIntent: CallbackAction<_OpenProjectIntent>(
+            onInvoke: (_) {
+              unawaited(_openProject(context));
+              return null;
+            },
+          ),
+          _SaveProjectAsIntent: CallbackAction<_SaveProjectAsIntent>(
+            onInvoke: (_) {
+              unawaited(_saveProjectAs(context));
               return null;
             },
           ),
@@ -668,6 +700,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       .setLocaleTag(code),
                   onPickDb: () =>
                       ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
+                  canBrowseDb: runtime.dbPath != null,
+                  onBrowseDb: () => unawaited(_openDatabaseBrowser()),
                   onExecuteGuarded: () {
                     if (compileResult.sql.trim().isEmpty) {
                       ref
@@ -712,11 +746,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
+                      final layout = ref.watch(workbenchLayoutProvider);
                       final compact = constraints.maxWidth < 1180;
                       final paletteWidth = compact
-                          ? _paletteWidth.clamp(200.0, 280.0)
-                          : _paletteWidth;
-                      final outputWidth = compact ? 320.0 : 420.0;
+                          ? layout.paletteWidth.clamp(200.0, 280.0)
+                          : layout.paletteWidth;
+                      final outputWidth = compact
+                          ? layout.runtimeWidth.clamp(260.0, 360.0)
+                          : layout.runtimeWidth;
                       return Row(
                         children: [
                           _CategoryRail(
@@ -726,51 +763,45 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             onSelect: (next) =>
                                 setState(() => _activeCategory = next),
                           ),
-                          _Palette(
-                            category: _activeCategory,
-                            runtime: runtime,
-                            mode: mode,
-                            localeCode: locale.languageCode,
-                            catalog: catalog,
-                            width: paletteWidth,
-                            pluginEntries: pluginState.entries,
-                            onAdd: (type, defaults) {
-                              final controller = ref.read(
-                                workspaceProvider.notifier,
-                              );
-                              controller.addTemplate(
-                                type,
-                                controller.suggestedTemplatePosition(type),
-                                defaults: defaults,
-                              );
-                            },
-                          ),
-                          MouseRegion(
-                            cursor: SystemMouseCursors.resizeLeftRight,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onHorizontalDragUpdate: (details) {
-                                setState(() {
-                                  _paletteWidth =
-                                      (_paletteWidth + details.delta.dx).clamp(
-                                        200.0,
-                                        520.0,
-                                      );
-                                });
-                              },
-                              child: Container(
-                                width: 10,
-                                color: Colors.transparent,
-                                alignment: Alignment.center,
-                                child: Container(
-                                  width: 2,
-                                  height: double.infinity,
-                                  color: NodeQlWorkbenchColors.of(
-                                    context,
-                                  ).border,
-                                ),
-                              ),
+                          AnimatedSize(
+                            duration: Duration(
+                              milliseconds: layout.reduceMotion
+                                  ? 0
+                                  : (layout.highRefreshMode ? 240 : 300),
                             ),
+                            curve: Curves.easeOutQuart,
+                            alignment: Alignment.centerLeft,
+                            clipBehavior: Clip.hardEdge,
+                            child: _Palette(
+                              category: _activeCategory,
+                              runtime: runtime,
+                              mode: mode,
+                              localeCode: locale.languageCode,
+                              catalog: catalog,
+                              width: paletteWidth,
+                              pluginEntries: pluginState.entries,
+                              onAdd: (type, defaults) {
+                                final controller = ref.read(
+                                  workspaceProvider.notifier,
+                                );
+                                controller.addTemplate(
+                                  type,
+                                  controller.suggestedTemplatePosition(type),
+                                  defaults: defaults,
+                                );
+                              },
+                            ),
+                          ),
+                          _ThrottledResizeHandle(
+                            value: layout.paletteWidth,
+                            resetValue: 250,
+                            minValue: 200,
+                            maxValue: 520,
+                            highRefreshMode: layout.highRefreshMode,
+                            reduceMotion: layout.reduceMotion,
+                            onChanged: ref
+                                .read(workbenchLayoutProvider.notifier)
+                                .setPaletteWidth,
                           ),
                           Expanded(
                             child: _showCustomSqlEditor
@@ -798,16 +829,48 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                     ],
                                   ),
                           ),
-                          _SqlRuntimePane(
-                            sql: sql,
-                            runtime: runtime,
-                            mode: mode,
-                            localeCode: locale.languageCode,
-                            catalog: catalog,
-                            width: outputWidth,
-                            customMode: _showCustomSqlEditor,
-                            onToggleCustomMode: () =>
-                                _toggleCustomSqlEditor(sql),
+                          _ThrottledResizeHandle(
+                            key: const ValueKey<String>(
+                              'runtime-resize-handle',
+                            ),
+                            value: layout.runtimeWidth,
+                            resetValue: 420,
+                            minValue: 260,
+                            maxValue: 720,
+                            highRefreshMode: layout.highRefreshMode,
+                            reduceMotion: layout.reduceMotion,
+                            deltaMultiplier: -1,
+                            onChanged: ref
+                                .read(workbenchLayoutProvider.notifier)
+                                .setRuntimeWidth,
+                          ),
+                          AnimatedSize(
+                            duration: Duration(
+                              milliseconds: layout.reduceMotion
+                                  ? 0
+                                  : (layout.highRefreshMode ? 240 : 300),
+                            ),
+                            curve: Curves.easeOutQuart,
+                            alignment: Alignment.centerRight,
+                            clipBehavior: Clip.hardEdge,
+                            child: _SqlRuntimePane(
+                              sql: sql,
+                              runtime: runtime,
+                              mode: mode,
+                              localeCode: locale.languageCode,
+                              catalog: catalog,
+                              width: outputWidth,
+                              commandOutputFraction:
+                                  layout.commandOutputFraction,
+                              highRefreshMode: layout.highRefreshMode,
+                              reduceMotion: layout.reduceMotion,
+                              onCommandOutputFractionChanged: (value) => ref
+                                  .read(workbenchLayoutProvider.notifier)
+                                  .setCommandOutputFraction(value),
+                              customMode: _showCustomSqlEditor,
+                              onToggleCustomMode: () =>
+                                  _toggleCustomSqlEditor(sql),
+                            ),
                           ),
                         ],
                       );
@@ -820,6 +883,47 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         ),
       ),
     );
+  }
+
+  void _scheduleLivePreview(String sql, String? databasePath) {
+    final normalizedSql = sql.trim();
+    if (_showCustomSqlEditor || databasePath == null || normalizedSql.isEmpty) {
+      return;
+    }
+    if (_livePreviewDatabasePath != databasePath) {
+      _livePreviewDatabasePath = databasePath;
+      _lastLivePreviewSql = '';
+      _queuedLivePreviewSql = null;
+    }
+    if (normalizedSql == _lastLivePreviewSql ||
+        normalizedSql == _queuedLivePreviewSql) {
+      return;
+    }
+    _livePreviewDebounce?.cancel();
+    _livePreviewDebounce = Timer(const Duration(milliseconds: 420), () {
+      unawaited(_executeLivePreview(normalizedSql, databasePath));
+    });
+  }
+
+  Future<void> _executeLivePreview(String sql, String databasePath) async {
+    if (!mounted || _livePreviewDatabasePath != databasePath) return;
+    if (_livePreviewExecuting) {
+      _queuedLivePreviewSql = sql;
+      return;
+    }
+    if (sql == _lastLivePreviewSql) return;
+    _livePreviewExecuting = true;
+    try {
+      await ref.read(sqlRuntimeProvider.notifier).executeWithSnapshot(sql);
+      _lastLivePreviewSql = sql;
+    } finally {
+      _livePreviewExecuting = false;
+      final queued = _queuedLivePreviewSql;
+      _queuedLivePreviewSql = null;
+      if (queued != null && queued != _lastLivePreviewSql) {
+        unawaited(_executeLivePreview(queued, databasePath));
+      }
+    }
   }
 
   void _toggleCustomSqlEditor(String generatedSql) {
@@ -843,21 +947,37 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (mounted) setState(() => _executingCustomSql = false);
   }
 
-  Future<void> _maybeAutosave(int revision) async {
-    if (!_autosaveEnabledForProject) {
+  Future<void> _initializeAutosave() async {
+    try {
+      await _restoreAutosave();
+    } finally {
+      if (mounted) _autosaveReady = true;
+    }
+  }
+
+  void _scheduleAutosave() {
+    if (!_autosaveReady || !_autosaveEnabledForProject) {
       _autosaveDebounce?.cancel();
       return;
     }
-    if (revision == _lastAutosaveRevision) return;
-    _lastAutosaveRevision = revision;
     _autosaveDebounce?.cancel();
-    _autosaveDebounce = Timer(const Duration(milliseconds: 550), () async {
+    _autosaveDebounce = Timer(
+      const Duration(milliseconds: 550),
+      _writeAutosave,
+    );
+  }
+
+  Future<void> _writeAutosave() async {
+    if (!_autosaveEnabledForProject) return;
+    try {
       final support = await getApplicationSupportDirectory();
       final autosave = File(
-        '${support.path}/nodeql_autosave_$_activeProjectId.nodeql',
+        p.join(support.path, 'nodeql_autosave_$_activeProjectId.nodeql'),
       );
       await autosave.writeAsString(jsonEncode(_projectEnvelope()), flush: true);
-    });
+    } catch (_) {
+      // Autosave is best-effort. A later workspace change retries the write.
+    }
   }
 
   Future<void> _restoreAutosave() async {
@@ -883,16 +1003,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
     final support = await getApplicationSupportDirectory();
     final autosave = File(
-      '${support.path}/nodeql_autosave_$_activeProjectId.nodeql',
+      p.join(support.path, 'nodeql_autosave_$_activeProjectId.nodeql'),
     );
     final legacySqpAutosave = File(
-      '${support.path}/nodeql_autosave_$_activeProjectId.sqp',
+      p.join(support.path, 'nodeql_autosave_$_activeProjectId.sqp'),
     );
     final legacyScratchQlAutosave = File(
-      '${support.path}/scratchql_autosave_$_activeProjectId.scratchql',
+      p.join(support.path, 'scratchql_autosave_$_activeProjectId.scratchql'),
     );
     final legacyScratchQlSqpAutosave = File(
-      '${support.path}/scratchql_autosave_$_activeProjectId.sqp',
+      p.join(support.path, 'scratchql_autosave_$_activeProjectId.sqp'),
     );
     final sourceFile = await autosave.exists()
         ? autosave
@@ -1219,199 +1339,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final catalog = ref.read(translationControllerProvider).catalog;
     final action = await showDialog<_SettingsAction>(
       context: context,
-      builder: (dialogContext) {
-        final surfaceStyle = NodeQlSurfaceStyle.of(dialogContext);
-        final settingsContent = Consumer(
-          builder: (context, ref, _) {
-            final current = ref.watch(nodeQlThemeProvider);
-            const accentColors = <Color>[
-              Color(0xFF2563EB),
-              Color(0xFF7C3AED),
-              Color(0xFFDB2777),
-              Color(0xFFEA580C),
-              Color(0xFF16A34A),
-              Color(0xFF0891B2),
-            ];
-            return RadioGroup<NodeQlTheme>(
-              groupValue: current.theme,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(nodeQlThemeProvider.notifier).setTheme(value);
-                }
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RadioListTile<NodeQlTheme>(
-                    value: NodeQlTheme.light,
-                    title: Text(catalog.text('settings.theme.light')),
-                  ),
-                  RadioListTile<NodeQlTheme>(
-                    value: NodeQlTheme.dark,
-                    title: Text(catalog.text('settings.theme.dark')),
-                  ),
-                  RadioListTile<NodeQlTheme>(
-                    value: NodeQlTheme.midnight,
-                    title: Text(catalog.text('settings.theme.midnight')),
-                  ),
-                  RadioListTile<NodeQlTheme>(
-                    value: NodeQlTheme.matrix,
-                    title: Text(catalog.text('settings.theme.matrix')),
-                  ),
-                  const Divider(),
-                  Wrap(
-                    spacing: NodeQlDesign.space2,
-                    runSpacing: NodeQlDesign.space2,
-                    children: [
-                      for (final color in accentColors)
-                        Semantics(
-                          button: true,
-                          selected:
-                              current.accentColor?.toARGB32() ==
-                              color.toARGB32(),
-                          child: Tooltip(
-                            message:
-                                '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
-                            child: InkWell(
-                              onTap: () => ref
-                                  .read(nodeQlThemeProvider.notifier)
-                                  .setAccentColor(color),
-                              borderRadius: BorderRadius.circular(999),
-                              child: AnimatedContainer(
-                                duration: NodeQlDesign.quick,
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: color,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color:
-                                        current.accentColor?.toARGB32() ==
-                                            color.toARGB32()
-                                        ? Theme.of(
-                                            context,
-                                          ).colorScheme.onSurface
-                                        : Colors.transparent,
-                                    width: 3,
-                                  ),
-                                ),
-                                child:
-                                    current.accentColor?.toARGB32() ==
-                                        color.toARGB32()
-                                    ? const Icon(
-                                        Icons.check_rounded,
-                                        color: Colors.white,
-                                        size: 18,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (current.accentColor != null)
-                        IconButton(
-                          tooltip: 'Akzentfarbe zurücksetzen',
-                          onPressed: () => ref
-                              .read(nodeQlThemeProvider.notifier)
-                              .clearAccentColor(),
-                          icon: const Icon(Icons.restart_alt_rounded),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  NodeQlBrutalPressable(
-                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
-                    child: FilledButton.tonal(
-                      key: const ValueKey<String>('settings-manage-plugins'),
-                      clipBehavior: Clip.antiAlias,
-                      onPressed: () => Navigator.of(
-                        dialogContext,
-                      ).pop(_SettingsAction.plugins),
-                      style: _nodeQlFilledButtonCornerStyle(context),
-                      child: Text(catalog.text('settings.plugins')),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  NodeQlBrutalPressable(
-                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
-                    child: FilledButton.tonal(
-                      key: const ValueKey<String>('settings-languages'),
-                      clipBehavior: Clip.antiAlias,
-                      onPressed: () => Navigator.of(
-                        dialogContext,
-                      ).pop(_SettingsAction.languages),
-                      style: _nodeQlFilledButtonCornerStyle(context),
-                      child: Text(catalog.text('settings.languages')),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  NodeQlBrutalPressable(
-                    radius: NodeQlSurfaceStyle.of(context).radiusMedium,
-                    child: FilledButton.tonalIcon(
-                      key: const ValueKey<String>('settings-tutorial'),
-                      clipBehavior: Clip.antiAlias,
-                      onPressed: () => Navigator.of(
-                        dialogContext,
-                      ).pop(_SettingsAction.tutorial),
-                      style: _nodeQlFilledButtonCornerStyle(context),
-                      icon: const Icon(Icons.school_outlined),
-                      label: Text(catalog.text('settings.tutorial')),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: () =>
-                        Navigator.of(dialogContext).pop(_SettingsAction.about),
-                    icon: const Icon(Icons.info_outline),
-                    label: Text(catalog.text('settings.about')),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-        if (surfaceStyle.isBrutalist) {
-          return AlertDialog(
-            title: Text(catalog.text('settings.title')),
-            content: settingsContent,
-          );
-        }
-
-        final theme = Theme.of(dialogContext);
-        return Dialog(
-          key: const ValueKey<String>('settings-dialog'),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 340),
-            child: ClipRRect(
-              key: const ValueKey<String>('settings-dialog-surface-clip'),
-              borderRadius: surfaceStyle.largeBorderRadius,
-              clipBehavior: Clip.antiAlias,
-              child: Material(
-                color:
-                    theme.dialogTheme.backgroundColor ??
-                    theme.colorScheme.surface,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        catalog.text('settings.title'),
-                        style: theme.dialogTheme.titleTextStyle,
-                      ),
-                      const SizedBox(height: 16),
-                      settingsContent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
+      builder: (_) => _AppleSettingsDialog(catalog: catalog),
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -1896,8 +1824,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   String _projectNameFromPath(String path) {
-    final chunks = path.split(Platform.pathSeparator);
-    final file = chunks.isEmpty ? path : chunks.last;
+    final file = p.basename(path);
     if (file.endsWith('.nodeql')) {
       return file.substring(0, file.length - '.nodeql'.length);
     }
@@ -1944,11 +1871,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   String? _relativePathIfInsideProject(String dbPath, String projectPath) {
-    final projectDir = p.dirname(projectPath);
-    if (!p.isWithin(projectDir, dbPath) && p.normalize(dbPath) != projectDir) {
-      return null;
-    }
-    return p.relative(dbPath, from: projectDir);
+    return ProjectFilePaths.relativeDatabasePath(dbPath, projectPath);
   }
 
   Future<void> _loadProjectPayload(String source, {String? projectPath}) async {
@@ -1995,12 +1918,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     String? dbRelativePath,
     String? projectPath,
   ) {
-    if (projectPath != null &&
-        dbRelativePath != null &&
-        dbRelativePath.trim().isNotEmpty) {
-      return p.normalize(p.join(p.dirname(projectPath), dbRelativePath));
-    }
-    return dbPath;
+    return ProjectFilePaths.resolveDatabasePath(
+      dbPath,
+      dbRelativePath,
+      projectPath,
+    );
   }
 
   bool _isProjectEnvelopeFormat(Object? format) {
@@ -2026,7 +1948,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<File> _registryFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/nodeql_projects.json');
+    return File(p.join(support.path, 'nodeql_projects.json'));
   }
 
   Future<String> _availableProjectPath(Directory directory, String name) async {
@@ -2174,19 +2096,502 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 }
 
-const _workshopRuntimeState = SqlRuntimeState(
-  schemas: <TableSchema>[
-    TableSchema(
-      name: 'customers',
-      columns: <String>['id', 'name', 'city', 'country', 'active'],
+class _AppleSettingsDialog extends ConsumerStatefulWidget {
+  const _AppleSettingsDialog({required this.catalog});
+
+  final TranslationCatalog catalog;
+
+  @override
+  ConsumerState<_AppleSettingsDialog> createState() =>
+      _AppleSettingsDialogState();
+}
+
+class _AppleSettingsDialogState extends ConsumerState<_AppleSettingsDialog> {
+  _SettingsSection _section = _SettingsSection.personalization;
+
+  bool get _isGerman => Localizations.localeOf(context).languageCode == 'de';
+  String _text(String de, String en) => _isGerman ? de : en;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Dialog.fullscreen(
+      key: const ValueKey<String>('settings-dialog'),
+      child: Material(
+        color: colors.panel,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Row(
+                children: [
+                  SizedBox(
+                    width: 244,
+                    child: ColoredBox(
+                      color: colors.panelElevated,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(22, 22, 12, 14),
+                            child: Text(
+                              widget.catalog.text('settings.title'),
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
+                          Expanded(
+                            child: ListView(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              children: [
+                                _SettingsSidebarItem(
+                                  icon: Icons.palette_outlined,
+                                  label: _text(
+                                    'Personalisierung',
+                                    'Personalization',
+                                  ),
+                                  selected:
+                                      _section ==
+                                      _SettingsSection.personalization,
+                                  onTap: () => setState(
+                                    () => _section =
+                                        _SettingsSection.personalization,
+                                  ),
+                                ),
+                                _SettingsSidebarItem(
+                                  icon: Icons.desktop_windows_outlined,
+                                  label: _text('Display', 'Display'),
+                                  selected:
+                                      _section == _SettingsSection.display,
+                                  onTap: () => setState(
+                                    () => _section = _SettingsSection.display,
+                                  ),
+                                ),
+                                _SettingsSidebarItem(
+                                  icon: Icons.motion_photos_on_outlined,
+                                  label: 'Motion',
+                                  selected: _section == _SettingsSection.motion,
+                                  onTap: () => setState(
+                                    () => _section = _SettingsSection.motion,
+                                  ),
+                                ),
+                                _SettingsSidebarItem(
+                                  icon: Icons.accessibility_new_rounded,
+                                  label: _text(
+                                    'Bedienungshilfen',
+                                    'Accessibility',
+                                  ),
+                                  selected:
+                                      _section ==
+                                      _SettingsSection.accessibility,
+                                  onTap: () => setState(
+                                    () => _section =
+                                        _SettingsSection.accessibility,
+                                  ),
+                                ),
+                                const Padding(
+                                  padding: EdgeInsets.fromLTRB(12, 14, 12, 6),
+                                  child: Divider(height: 1),
+                                ),
+                                _SettingsSidebarItem(
+                                  icon: Icons.language_rounded,
+                                  label: _text(
+                                    'Sprache & Region',
+                                    'Language & Region',
+                                  ),
+                                  selected:
+                                      _section ==
+                                      _SettingsSection.languageRegion,
+                                  onTap: () => setState(
+                                    () => _section =
+                                        _SettingsSection.languageRegion,
+                                  ),
+                                ),
+                                _SettingsSidebarItem(
+                                  icon: Icons.extension_outlined,
+                                  label: _text('Erweiterungen', 'Extensions'),
+                                  selected:
+                                      _section == _SettingsSection.extensions,
+                                  onTap: () => setState(
+                                    () =>
+                                        _section = _SettingsSection.extensions,
+                                  ),
+                                ),
+                                _SettingsSidebarItem(
+                                  icon: Icons.school_outlined,
+                                  label: _text('Lernen', 'Learning'),
+                                  selected:
+                                      _section == _SettingsSection.learning,
+                                  onTap: () => setState(
+                                    () => _section = _SettingsSection.learning,
+                                  ),
+                                ),
+                                _SettingsSidebarItem(
+                                  icon: Icons.info_outline_rounded,
+                                  label: _text('Über NodeQL', 'About NodeQL'),
+                                  selected: _section == _SettingsSection.about,
+                                  onTap: () => setState(
+                                    () => _section = _SettingsSection.about,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  VerticalDivider(width: 1, color: colors.border),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: NodeQlDesign.standard,
+                      switchInCurve: Curves.easeOutCubic,
+                      child: KeyedSubtree(
+                        key: ValueKey<_SettingsSection>(_section),
+                        child: _buildDetail(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Positioned(
+                top: 8,
+                right: 12,
+                child: IconButton(
+                  key: const ValueKey<String>('settings-close'),
+                  tooltip: _text('Einstellungen schließen', 'Close settings'),
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetail() => switch (_section) {
+    _SettingsSection.personalization => _personalizationPage(),
+    _SettingsSection.display => _displayPage(),
+    _SettingsSection.motion => _motionPage(),
+    _SettingsSection.accessibility => _accessibilityPage(),
+    _SettingsSection.languageRegion => _actionPage(
+      title: _text('Sprache & Region', 'Language & Region'),
+      description: _text(
+        'Wähle die Sprache für Oberfläche, Blöcke und Lerninhalte.',
+        'Choose the language for the interface, blocks, and learning content.',
+      ),
+      icon: Icons.language_rounded,
+      buttonLabel: widget.catalog.text('settings.languages'),
+      action: _SettingsAction.languages,
+      buttonKey: const ValueKey<String>('settings-languages'),
     ),
-    TableSchema(
-      name: 'orders',
-      columns: <String>['id', 'customer_id', 'total', 'created_at'],
+    _SettingsSection.extensions => _actionPage(
+      title: _text('Erweiterungen', 'Extensions'),
+      description: _text(
+        'Verwalte zusätzliche NodeQL-Blöcke und lokale Integrationen.',
+        'Manage additional NodeQL blocks and local integrations.',
+      ),
+      icon: Icons.extension_outlined,
+      buttonLabel: widget.catalog.text('settings.plugins'),
+      action: _SettingsAction.plugins,
+      buttonKey: const ValueKey<String>('settings-manage-plugins'),
     ),
-    TableSchema(name: 'archived_customers', columns: <String>['id', 'name']),
-  ],
-);
+    _SettingsSection.learning => _actionPage(
+      title: _text('Lernen', 'Learning'),
+      description: _text(
+        'Öffne den Workshop, um SQLite und NodeQL Schritt für Schritt zu üben.',
+        'Open the workshop to practice SQLite and NodeQL step by step.',
+      ),
+      icon: Icons.school_outlined,
+      buttonLabel: widget.catalog.text('settings.tutorial'),
+      action: _SettingsAction.tutorial,
+      buttonKey: const ValueKey<String>('settings-tutorial'),
+    ),
+    _SettingsSection.about => _actionPage(
+      title: _text('Über NodeQL', 'About NodeQL'),
+      description: _text(
+        'Versionsinformationen, Lizenzen und Hinweise zur Anwendung.',
+        'Version information, licenses, and app notices.',
+      ),
+      icon: Icons.info_outline_rounded,
+      buttonLabel: widget.catalog.text('settings.about'),
+      action: _SettingsAction.about,
+      buttonKey: const ValueKey<String>('settings-about'),
+    ),
+  };
+
+  Widget _page({required String title, required Widget child}) => Padding(
+    padding: const EdgeInsets.fromLTRB(32, 28, 32, 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 22),
+        Expanded(child: SingleChildScrollView(child: child)),
+      ],
+    ),
+  );
+
+  Widget _personalizationPage() {
+    final settings = ref.watch(nodeQlThemeProvider);
+    const colors = <Color>[
+      Color(0xFF2563EB),
+      Color(0xFF7C3AED),
+      Color(0xFFDB2777),
+      Color(0xFFEA580C),
+      Color(0xFF16A34A),
+      Color(0xFF0891B2),
+    ];
+    return _page(
+      title: _text('Personalisierung', 'Personalization'),
+      child: _SettingsGroup(
+        title: _text('Akzentfarbe', 'Accent color'),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final color in colors)
+              InkWell(
+                onTap: () => ref
+                    .read(nodeQlThemeProvider.notifier)
+                    .setAccentColor(color),
+                borderRadius: BorderRadius.circular(999),
+                child: AnimatedContainer(
+                  duration: NodeQlDesign.quick,
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color:
+                          settings.accentColor?.toARGB32() == color.toARGB32()
+                          ? Theme.of(context).colorScheme.onSurface
+                          : Colors.transparent,
+                      width: 3,
+                    ),
+                  ),
+                  child: settings.accentColor?.toARGB32() == color.toARGB32()
+                      ? const Icon(Icons.check_rounded, color: Colors.white)
+                      : null,
+                ),
+              ),
+            if (settings.accentColor != null)
+              IconButton(
+                tooltip: _text('Akzent zurücksetzen', 'Reset accent'),
+                onPressed: ref
+                    .read(nodeQlThemeProvider.notifier)
+                    .clearAccentColor,
+                icon: const Icon(Icons.restart_alt_rounded),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _displayPage() {
+    final settings = ref.watch(nodeQlThemeProvider);
+    return _page(
+      title: _text('Display', 'Display'),
+      child: _SettingsGroup(
+        title: _text('Erscheinungsbild', 'Appearance'),
+        child: RadioGroup<NodeQlTheme>(
+          groupValue: settings.theme,
+          onChanged: (theme) {
+            if (theme != null) {
+              ref.read(nodeQlThemeProvider.notifier).setTheme(theme);
+            }
+          },
+          child: Column(
+            children: [
+              for (final theme in <NodeQlTheme>[
+                NodeQlTheme.light,
+                NodeQlTheme.dark,
+                NodeQlTheme.midnight,
+                NodeQlTheme.matrix,
+              ])
+                RadioListTile<NodeQlTheme>(
+                  contentPadding: EdgeInsets.zero,
+                  value: theme,
+                  title: Text(
+                    widget.catalog.text('settings.theme.${theme.name}'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _motionPage() {
+    final layout = ref.watch(workbenchLayoutProvider);
+    final controller = ref.read(workbenchLayoutProvider.notifier);
+    return _page(
+      title: 'Motion',
+      child: _SettingsGroup(
+        title: _text('Animationen', 'Animations'),
+        child: Column(
+          children: [
+            SwitchListTile.adaptive(
+              key: const ValueKey<String>('settings-120hz-mode'),
+              contentPadding: EdgeInsets.zero,
+              value: layout.highRefreshMode,
+              secondary: const Icon(Icons.speed_rounded),
+              title: Text(_text('120-Hz-Modus', '120 Hz mode')),
+              subtitle: Text(
+                _text(
+                  'Ghost- und Snap-Animationen mit Display-VSync synchronisieren.',
+                  'Synchronize ghost and snap animations with display VSync.',
+                ),
+              ),
+              onChanged: layout.reduceMotion
+                  ? null
+                  : controller.setHighRefreshMode,
+            ),
+            const Divider(),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: layout.reduceMotion,
+              secondary: const Icon(Icons.motion_photos_off_outlined),
+              title: Text(_text('Bewegung reduzieren', 'Reduce motion')),
+              subtitle: Text(
+                _text(
+                  'Resize- und Oberflächenanimationen minimieren.',
+                  'Minimize resize and interface animations.',
+                ),
+              ),
+              onChanged: controller.setReduceMotion,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _accessibilityPage() {
+    final layout = ref.watch(workbenchLayoutProvider);
+    return _page(
+      title: _text('Bedienungshilfen', 'Accessibility'),
+      child: _SettingsGroup(
+        title: _text('Visuelle Bewegung', 'Visual motion'),
+        child: SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          value: layout.reduceMotion,
+          secondary: const Icon(Icons.accessibility_new_rounded),
+          title: Text(_text('Bewegung reduzieren', 'Reduce motion')),
+          subtitle: Text(
+            _text(
+              'Reduziert animierte Übergänge und Resize-Effekte.',
+              'Reduces animated transitions and resize effects.',
+            ),
+          ),
+          onChanged: ref.read(workbenchLayoutProvider.notifier).setReduceMotion,
+        ),
+      ),
+    );
+  }
+
+  Widget _actionPage({
+    required String title,
+    required String description,
+    required IconData icon,
+    required String buttonLabel,
+    required _SettingsAction action,
+    required ValueKey<String> buttonKey,
+  }) => _page(
+    title: title,
+    child: _SettingsGroup(
+      title: title,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon),
+        title: Text(description),
+        trailing: FilledButton.tonal(
+          key: buttonKey,
+          clipBehavior: Clip.antiAlias,
+          onPressed: () => Navigator.of(context).pop(action),
+          style: _nodeQlFilledButtonCornerStyle(context),
+          child: Text(buttonLabel),
+        ),
+      ),
+    ),
+  );
+}
+
+class _SettingsSidebarItem extends StatelessWidget {
+  const _SettingsSidebarItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Material(
+      color: selected
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: .18)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 19),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.title, required this.child});
+  final String title;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.panelElevated,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colors.border),
+          ),
+          child: child,
+        ),
+      ],
+    );
+  }
+}
 
 class _WorkshopProviderScope extends StatelessWidget {
   const _WorkshopProviderScope({required this.onExit});
@@ -2208,9 +2613,14 @@ class _WorkshopProviderScope extends StatelessWidget {
           initialWorkspaceJson: workspace.toJsonString(),
         );
       }),
-      sqlRuntimeProvider.overrideWith(
-        (ref) => SqlRuntimeController(initialState: _workshopRuntimeState),
-      ),
+      sqlRuntimeProvider.overrideWith((ref) {
+        final database = WorkshopDatabase.create();
+        ref.onDispose(database.dispose);
+        return SqlRuntimeController(
+          initialState: database.initialState,
+          readOnly: false,
+        );
+      }),
       sqlModeProvider.overrideWith((ref) => SqlModeController.session()),
     ],
     child: _WorkshopWorkspaceView(onExit: onExit),
@@ -2233,8 +2643,9 @@ class _WorkshopWorkspaceViewState
   final FocusNode _workspaceFocus = FocusNode();
   final SqlCompiler _compiler = const SqlCompiler();
   SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
-  double _paletteWidth = 250;
+  double? _practicePanelHeight;
   TutorialPracticeSession? _practice;
+  bool _runningSql = false;
 
   @override
   void dispose() {
@@ -2256,8 +2667,14 @@ class _WorkshopWorkspaceViewState
     final definition = practice == null
         ? null
         : tutorialPracticeDefinitions[practice.mode];
-    final result = definition?.evaluate(roots, practice?.stepIndex ?? 0);
     final compileResult = _compiler.compileWorkspace(roots);
+    final result = definition?.evaluate(
+      roots,
+      practice?.stepIndex ?? 0,
+      currentSql: compileResult.sql,
+      executedSql: runtime.lastSql,
+      executionSucceeded: runtime.lastMessage?.startsWith('OK') == true,
+    );
     final diagnostics = _nodeDiagnostics(
       mode: mode,
       roots: roots,
@@ -2273,6 +2690,8 @@ class _WorkshopWorkspaceViewState
             _WorkshopModeTopBar(
               catalog: catalog,
               mode: mode,
+              running: _runningSql,
+              onRun: () => unawaited(_runWorkshopSql()),
               onModeChanged: (next) =>
                   unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
               onLessons: () => _openTutorial(context),
@@ -2281,11 +2700,27 @@ class _WorkshopWorkspaceViewState
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  final layout = ref.watch(workbenchLayoutProvider);
                   final compact = constraints.maxWidth < 1180;
                   final paletteWidth = compact
-                      ? _paletteWidth.clamp(200.0, 280.0)
-                      : _paletteWidth;
-                  final outputWidth = compact ? 320.0 : 420.0;
+                      ? layout.paletteWidth.clamp(200.0, 280.0)
+                      : layout.paletteWidth;
+                  final outputWidth = compact
+                      ? layout.runtimeWidth.clamp(260.0, 360.0)
+                      : layout.runtimeWidth;
+                  final practicePanelMinHeight = 220.0;
+                  final practicePanelMaxHeight = math.max(
+                    practicePanelMinHeight,
+                    constraints.maxHeight - 250.0,
+                  );
+                  final preferredPracticePanelHeight =
+                      (constraints.maxHeight * .42)
+                          .clamp(280.0, 420.0)
+                          .toDouble();
+                  final practicePanelHeight =
+                      (_practicePanelHeight ?? preferredPracticePanelHeight)
+                          .clamp(practicePanelMinHeight, practicePanelMaxHeight)
+                          .toDouble();
                   return Row(
                     children: [
                       _CategoryRail(
@@ -2295,51 +2730,50 @@ class _WorkshopWorkspaceViewState
                         onSelect: (next) =>
                             setState(() => _activeCategory = next),
                       ),
-                      _Palette(
-                        key: ValueKey<String>(
-                          'workshop-palette-'
-                          '${practice?.mode.name ?? 'overview'}-'
-                          '${practice?.stepIndex ?? 0}-${mode.name}',
+                      AnimatedSize(
+                        duration: Duration(
+                          milliseconds: layout.reduceMotion
+                              ? 0
+                              : (layout.highRefreshMode ? 240 : 300),
                         ),
-                        category: _activeCategory,
-                        runtime: runtime,
-                        mode: mode,
-                        localeCode: localeCode,
-                        catalog: catalog,
-                        width: paletteWidth,
-                        pluginEntries: const <PluginPaletteEntry>[],
-                        onAdd: (type, defaults) {
-                          final controller = ref.read(
-                            workspaceProvider.notifier,
-                          );
-                          controller.addTemplate(
-                            type,
-                            controller.suggestedTemplatePosition(type),
-                            defaults: defaults,
-                          );
-                        },
-                      ),
-                      MouseRegion(
-                        cursor: SystemMouseCursors.resizeLeftRight,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onHorizontalDragUpdate: (details) {
-                            setState(() {
-                              _paletteWidth = (_paletteWidth + details.delta.dx)
-                                  .clamp(200.0, 520.0);
-                            });
-                          },
-                          child: Container(
-                            width: 10,
-                            color: Colors.transparent,
-                            alignment: Alignment.center,
-                            child: Container(
-                              width: 2,
-                              height: double.infinity,
-                              color: NodeQlWorkbenchColors.of(context).border,
-                            ),
+                        curve: Curves.easeOutQuart,
+                        alignment: Alignment.centerLeft,
+                        clipBehavior: Clip.hardEdge,
+                        child: _Palette(
+                          key: ValueKey<String>(
+                            'workshop-palette-'
+                            '${practice?.mode.name ?? 'overview'}-'
+                            '${practice?.stepIndex ?? 0}-${mode.name}',
                           ),
+                          category: _activeCategory,
+                          runtime: runtime,
+                          mode: mode,
+                          localeCode: localeCode,
+                          catalog: catalog,
+                          width: paletteWidth,
+                          pluginEntries: const <PluginPaletteEntry>[],
+                          onAdd: (type, defaults) {
+                            final controller = ref.read(
+                              workspaceProvider.notifier,
+                            );
+                            controller.addTemplate(
+                              type,
+                              controller.suggestedTemplatePosition(type),
+                              defaults: defaults,
+                            );
+                          },
                         ),
+                      ),
+                      _ThrottledResizeHandle(
+                        value: layout.paletteWidth,
+                        resetValue: 250,
+                        minValue: 200,
+                        maxValue: 520,
+                        highRefreshMode: layout.highRefreshMode,
+                        reduceMotion: layout.reduceMotion,
+                        onChanged: ref
+                            .read(workbenchLayoutProvider.notifier)
+                            .setPaletteWidth,
                       ),
                       Expanded(
                         child: Column(
@@ -2363,9 +2797,18 @@ class _WorkshopWorkspaceViewState
                                   abstractionMode: mode,
                                   localeCode: localeCode,
                                   liveSql: compileResult.sql,
-                                  onCheck: () => _checkPractice(result),
+                                  onCheck: () => _checkPractice(
+                                    practice.mode,
+                                    practice.stepIndex,
+                                  ),
                                   onHint: _showHint,
                                   onClose: _closePractice,
+                                  height: practicePanelHeight,
+                                  minHeight: practicePanelMinHeight,
+                                  maxHeight: practicePanelMaxHeight,
+                                  onHeightChanged: (nextHeight) => setState(
+                                    () => _practicePanelHeight = nextHeight,
+                                  ),
                                 ),
                               )
                             else
@@ -2385,16 +2828,47 @@ class _WorkshopWorkspaceViewState
                           ],
                         ),
                       ),
-                      _SqlRuntimePane(
-                        sql: compileResult.sql,
-                        runtime: runtime,
-                        mode: mode,
-                        localeCode: localeCode,
-                        catalog: catalog,
-                        width: outputWidth,
-                        customMode: false,
-                        showCustomModeToggle: false,
-                        onToggleCustomMode: () {},
+                      _ThrottledResizeHandle(
+                        key: const ValueKey<String>(
+                          'workshop-runtime-resize-handle',
+                        ),
+                        value: layout.runtimeWidth,
+                        resetValue: 420,
+                        minValue: 260,
+                        maxValue: 720,
+                        highRefreshMode: layout.highRefreshMode,
+                        reduceMotion: layout.reduceMotion,
+                        deltaMultiplier: -1,
+                        onChanged: ref
+                            .read(workbenchLayoutProvider.notifier)
+                            .setRuntimeWidth,
+                      ),
+                      AnimatedSize(
+                        duration: Duration(
+                          milliseconds: layout.reduceMotion
+                              ? 0
+                              : (layout.highRefreshMode ? 240 : 300),
+                        ),
+                        curve: Curves.easeOutQuart,
+                        alignment: Alignment.centerRight,
+                        clipBehavior: Clip.hardEdge,
+                        child: _SqlRuntimePane(
+                          sql: compileResult.sql,
+                          runtime: runtime,
+                          mode: mode,
+                          localeCode: localeCode,
+                          catalog: catalog,
+                          width: outputWidth,
+                          commandOutputFraction: layout.commandOutputFraction,
+                          highRefreshMode: layout.highRefreshMode,
+                          reduceMotion: layout.reduceMotion,
+                          onCommandOutputFractionChanged: (value) => ref
+                              .read(workbenchLayoutProvider.notifier)
+                              .setCommandOutputFraction(value),
+                          customMode: false,
+                          showCustomModeToggle: false,
+                          onToggleCustomMode: () {},
+                        ),
                       ),
                     ],
                   );
@@ -2407,29 +2881,80 @@ class _WorkshopWorkspaceViewState
     );
   }
 
+  Future<void> _runWorkshopSql() async {
+    if (_runningSql) return;
+    final roots = ref.read(workspaceProvider).roots;
+    final sql = _compiler.compileWorkspace(roots).sql.trim();
+    final runtime = ref.read(sqlRuntimeProvider.notifier);
+    if (sql.isEmpty) {
+      runtime.setMessage(
+        ref
+            .read(translationControllerProvider)
+            .catalog
+            .text('runtime.noExecutable'),
+      );
+      return;
+    }
+    setState(() => _runningSql = true);
+    try {
+      await runtime.executeWithSnapshot(sql);
+    } finally {
+      if (mounted) setState(() => _runningSql = false);
+    }
+  }
+
   Future<void> _openTutorial(BuildContext context) async {
+    final tutorial = ref.read(tutorialControllerProvider.notifier);
+    final initialization = tutorial.initialize();
     final catalog = ref.read(translationControllerProvider).catalog;
+    Widget buildTutorial() => TutorialDialog(
+      catalog: catalog,
+      initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
+      onProgressChanged: (mode, progress) => ref
+          .read(tutorialControllerProvider.notifier)
+          .saveLessonProgress(mode, progress),
+      onStartPractice: _startPractice,
+      onComplete: () =>
+          ref.read(tutorialControllerProvider.notifier).complete(),
+    );
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => TutorialDialog(
-        catalog: catalog,
-        initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
-        onProgressChanged: (mode, progress) => ref
-            .read(tutorialControllerProvider.notifier)
-            .saveLessonProgress(mode, progress),
-        onStartPractice: _startPractice,
-        onComplete: () =>
-            ref.read(tutorialControllerProvider.notifier).complete(),
-      ),
+      builder: (_) => !ref.read(tutorialControllerProvider).loading
+          ? buildTutorial()
+          : FutureBuilder<void>(
+              future: initialization,
+              builder: (dialogContext, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Dialog(
+                    child: SizedBox(
+                      key: ValueKey('tutorial-loading'),
+                      width: 280,
+                      height: 160,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  );
+                }
+                return buildTutorial();
+              },
+            ),
     );
   }
 
   Future<void> _startPractice(TutorialKnowledgeMode mode) async {
+    if (ref.read(tutorialControllerProvider).loading) {
+      await ref.read(tutorialControllerProvider.notifier).initialize();
+    }
+    if (!mounted) return;
     final definition = tutorialPracticeDefinitions[mode]!;
     final abstractionMode = ref.read(sqlModeProvider);
+    ref.read(sqlRuntimeProvider.notifier).clearResults();
     final progress = ref.read(tutorialControllerProvider).progressFor(mode);
-    final completedSteps = progress.practiceCompleted
+    final pathAlreadyComplete = List<int>.generate(
+      definition.stepCount,
+      (index) => index,
+    ).every(progress.completedPracticeSteps.contains);
+    final completedSteps = pathAlreadyComplete
         ? const <int>{}
         : progress.completedPracticeSteps;
     final stepIndex = definition.nextStep(completedSteps);
@@ -2459,9 +2984,28 @@ class _WorkshopWorkspaceViewState
     });
   }
 
-  Future<void> _checkPractice(TutorialPracticeResult result) async {
+  Future<void> _checkPractice(
+    TutorialKnowledgeMode expectedMode,
+    int expectedStepIndex,
+  ) async {
     final session = _practice;
-    if (session == null) return;
+    if (session == null ||
+        session.completed ||
+        session.mode != expectedMode ||
+        session.stepIndex != expectedStepIndex) {
+      return;
+    }
+    final definition = tutorialPracticeDefinitions[session.mode]!;
+    final roots = ref.read(workspaceProvider).roots;
+    final sql = _compiler.compileWorkspace(roots).sql;
+    final runtime = ref.read(sqlRuntimeProvider);
+    final result = definition.evaluate(
+      roots,
+      session.stepIndex,
+      currentSql: sql,
+      executedSql: runtime.lastSql,
+      executionSucceeded: runtime.lastMessage?.startsWith('OK') == true,
+    );
     if (!result.complete) {
       setState(() => _practice = session.copyWith(attempted: true));
       return;
@@ -2469,13 +3013,29 @@ class _WorkshopWorkspaceViewState
 
     final tutorial = ref.read(tutorialControllerProvider);
     final progress = tutorial.progressFor(session.mode);
-    final definition = tutorialPracticeDefinitions[session.mode]!;
     final completedSteps = <int>{...session.completedSteps, session.stepIndex};
     final finished = List<int>.generate(
       definition.stepCount,
       (index) => index,
     ).every(completedSteps.contains);
     final nextStepIndex = finished ? session.stepIndex : session.stepIndex + 1;
+    if (!finished && definition.steps[nextStepIndex].startFresh) {
+      ref.read(sqlRuntimeProvider.notifier).clearResults();
+      final workspace = ref.read(workspaceProvider.notifier)
+        ..resetWithRoot(recordUndo: false, clearHistory: true);
+      for (final seed in definition.starterFor(
+        ref.read(sqlModeProvider),
+        nextStepIndex,
+      )) {
+        workspace.addTemplate(
+          seed.type,
+          workspace.suggestedTemplatePosition(seed.type),
+          defaults: seed.defaults,
+          recordUndo: false,
+        );
+      }
+      _transform.value = Matrix4.identity();
+    }
     setState(() {
       if (!finished) {
         _activeCategory = _categoryForPracticeStep(
@@ -2490,17 +3050,14 @@ class _WorkshopWorkspaceViewState
         completed: finished,
       );
     });
-    final persistedSteps = progress.practiceCompleted && !finished
-        ? progress.completedPracticeSteps
-        : completedSteps;
     await ref
         .read(tutorialControllerProvider.notifier)
         .saveLessonProgress(
           session.mode,
           progress.copyWith(
-            completedPracticeSteps: persistedSteps,
+            completedPracticeSteps: completedSteps,
             completed: progress.completed || finished,
-            practiceCompleted: progress.practiceCompleted || finished,
+            practiceCompleted: finished,
           ),
         );
   }
@@ -2517,6 +3074,37 @@ class _WorkshopWorkspaceViewState
     if (step.focusNodes.contains(BlockType.sqlText)) {
       return SqlPaletteCategory.dataTypes;
     }
+    if (step.focusNodes.any(
+      const <BlockType>{
+        BlockType.sqlInsert,
+        BlockType.sqlInsertOrReplace,
+        BlockType.sqlUpsert,
+        BlockType.sqlUpdate,
+        BlockType.sqlDelete,
+      }.contains,
+    )) {
+      return SqlPaletteCategory.dml;
+    }
+    if (step.focusNodes.any(
+      const <BlockType>{
+        BlockType.sqlCreateTable,
+        BlockType.sqlCreateIndex,
+        BlockType.sqlCreateView,
+      }.contains,
+    )) {
+      return SqlPaletteCategory.ddl;
+    }
+    if (step.focusNodes.any(
+      const <BlockType>{
+        BlockType.sqlBeginTransaction,
+        BlockType.sqlCommit,
+        BlockType.sqlSavepoint,
+        BlockType.sqlRollbackToSavepoint,
+        BlockType.sqlReleaseSavepoint,
+      }.contains,
+    )) {
+      return SqlPaletteCategory.txn;
+    }
     return SqlPaletteCategory.queryLanguage;
   }
 }
@@ -2525,6 +3113,8 @@ class _WorkshopModeTopBar extends StatelessWidget {
   const _WorkshopModeTopBar({
     required this.catalog,
     required this.mode,
+    required this.running,
+    required this.onRun,
     required this.onModeChanged,
     required this.onLessons,
     required this.onClose,
@@ -2532,6 +3122,8 @@ class _WorkshopModeTopBar extends StatelessWidget {
 
   final TranslationCatalog catalog;
   final SqlAbstractionMode mode;
+  final bool running;
+  final VoidCallback onRun;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onLessons;
   final VoidCallback onClose;
@@ -2579,6 +3171,8 @@ class _WorkshopModeTopBar extends StatelessWidget {
             ),
           ),
           SegmentedButton<SqlAbstractionMode>(
+            key: const ValueKey('workshop-sql-mode'),
+            style: NodeQlDesign.modeSegmentedButtonStyle(context),
             segments: [
               ButtonSegment(
                 value: SqlAbstractionMode.simple,
@@ -2591,6 +3185,18 @@ class _WorkshopModeTopBar extends StatelessWidget {
             ],
             selected: <SqlAbstractionMode>{mode},
             onSelectionChanged: (selection) => onModeChanged(selection.first),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            key: const ValueKey('workshop-run-sqlite'),
+            onPressed: running ? null : onRun,
+            icon: running
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.play_arrow_rounded),
+            label: Text(catalog.text('toolbar.runSql')),
           ),
           const SizedBox(width: 10),
           FilledButton.icon(
@@ -2745,6 +3351,8 @@ class _TopBar extends StatelessWidget {
     required this.localeCode,
     required this.onLocale,
     required this.onPickDb,
+    required this.canBrowseDb,
+    required this.onBrowseDb,
     required this.onExecuteGuarded,
     required this.columnLinkMode,
     required this.onColumnLinkModeChanged,
@@ -2760,6 +3368,8 @@ class _TopBar extends StatelessWidget {
   final String localeCode;
   final ValueChanged<String> onLocale;
   final VoidCallback onPickDb;
+  final bool canBrowseDb;
+  final VoidCallback onBrowseDb;
   final VoidCallback onExecuteGuarded;
   final bool columnLinkMode;
   final VoidCallback onColumnLinkModeChanged;
@@ -2829,6 +3439,26 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
+                  Tooltip(
+                    message: catalog.text('toolbar.browseDatabase'),
+                    child: NodeQlBrutalPressable(
+                      child: OutlinedButton(
+                        key: const ValueKey<String>('open-database-browser'),
+                        onPressed: canBrowseDb ? onBrowseDb : null,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: workbenchColors.topBarForeground,
+                          fixedSize: const Size(44, 40),
+                          padding: EdgeInsets.zero,
+                          side: BorderSide(
+                            color: workbenchColors.border,
+                            width: surfaceStyle.borderWidth,
+                          ),
+                        ),
+                        child: const Icon(Icons.table_chart_outlined, size: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: NodeQlDesign.space2),
                   NodeQlBrutalPressable(
                     radius: surfaceStyle.radiusMedium,
                     child: FilledButton.icon(
@@ -2858,6 +3488,8 @@ class _TopBar extends StatelessWidget {
                   ),
                   const SizedBox(width: NodeQlDesign.space1),
                   SegmentedButton<SqlAbstractionMode>(
+                    key: const ValueKey<String>('workbench-sql-mode'),
+                    style: NodeQlDesign.modeSegmentedButtonStyle(context),
                     segments: [
                       ButtonSegment(
                         value: SqlAbstractionMode.simple,
@@ -2896,17 +3528,18 @@ class _TopBar extends StatelessWidget {
                       if (v != null) onLocale(v);
                     },
                   ),
-                  IconButton(
-                    onPressed: onSettings,
-                    tooltip: catalog.text('toolbar.settings'),
-                    color: workbenchColors.topBarForeground,
-                    icon: const Icon(Icons.settings),
-                  ),
                 ],
               ),
             ),
           ),
-          const SizedBox(width: NodeQlDesign.space3),
+          const SizedBox(width: NodeQlDesign.space2),
+          IconButton(
+            onPressed: onSettings,
+            tooltip: catalog.text('toolbar.settings'),
+            color: workbenchColors.topBarForeground,
+            icon: const Icon(Icons.settings),
+          ),
+          const SizedBox(width: NodeQlDesign.space2),
           NodeQlBrutalPressable(
             radius: surfaceStyle.radiusMedium,
             child: FilledButton.icon(
@@ -3140,13 +3773,20 @@ class _PluginRepositoriesView extends StatelessWidget {
                             right: surfaceStyle.shadowOffset.dx,
                             bottom: NodeQlDesign.space3,
                           ),
-                          child: Container(
-                            decoration: surfaceStyle.surfaceDecoration(
-                              color: workbenchColors.panel,
-                              borderColor: workbenchColors.border,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: surfaceStyle.mediumBorderRadius,
+                              boxShadow: surfaceStyle.hardShadow,
                             ),
                             child: Material(
-                              color: Colors.transparent,
+                              color: workbenchColors.panel,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: surfaceStyle.mediumBorderRadius,
+                                side: surfaceStyle.borderSide(
+                                  workbenchColors.border,
+                                ),
+                              ),
+                              clipBehavior: Clip.antiAlias,
                               child: ListTile(
                                 leading: const Icon(Icons.extension_outlined),
                                 title: Text(entry.name),
@@ -3476,8 +4116,7 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.queryLanguage => <_PaletteItem>[
         native(BlockType.eventGreenFlag),
         native(BlockType.sqlSelect),
-        native(BlockType.sqlColumn),
-        native(BlockType.sqlAlias),
+        native(BlockType.sqlFunction),
         native(BlockType.sqlFrom),
         native(BlockType.sqlWhere),
         native(BlockType.sqlAnd),
@@ -3649,6 +4288,10 @@ class _PaletteState extends State<_Palette> {
         return de
             ? 'Gibt einer Spalte, einem Aggregat oder einem anderen Ergebnisausdruck mit AS einen lesbaren Namen.'
             : 'Gives a column, aggregate, or other result expression a readable name using AS.';
+      case BlockType.sqlFunction:
+        return de
+            ? 'Ruft eine offizielle SQLite-Kern-, Datums-/Zeit- oder Aggregatfunktion auf. Die Funktionsauswahl enthält passende Argumentvorlagen.'
+            : 'Calls an official SQLite core, date/time, or aggregate function with argument templates.';
       case BlockType.sqlFrom:
         return de
             ? 'Legt fest, aus welcher Tabelle gelesen wird.'
@@ -4072,6 +4715,15 @@ class _PaletteState extends State<_Palette> {
         position: Offset.zero,
         operatorType: type,
         inputs: <String, dynamic>{'value': 'id', 'alias': 'alias'},
+      ),
+      BlockType.sqlFunction => OperatorBlock(
+        id: 'tpl_function',
+        position: Offset.zero,
+        operatorType: type,
+        inputs: <String, dynamic>{
+          'function': 'datetime',
+          'args': <String>['unix_timestamp', "'unixepoch'"],
+        },
       ),
       BlockType.sqlCount => OperatorBlock(
         id: 'tpl_count',
@@ -4738,7 +5390,9 @@ class _WorkspaceCanvas extends ConsumerWidget {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           final keyboard = HardwareKeyboard.instance;
           final cmdOrCtrl = keyboard.isMetaPressed || keyboard.isControlPressed;
-          if (cmdOrCtrl && event.logicalKey == LogicalKeyboardKey.keyS) {
+          if (cmdOrCtrl &&
+              !keyboard.isShiftPressed &&
+              event.logicalKey == LogicalKeyboardKey.keyS) {
             unawaited(onSaveProject());
             return KeyEventResult.handled;
           }
@@ -6094,6 +6748,24 @@ class _NodeView extends ConsumerWidget {
       return;
     }
 
+    if (reporter.type == BlockType.sqlFunction) {
+      final result = await _showSqliteFunctionDialog(
+        context: context,
+        functionNode: reporter,
+        localeCode: localeCode,
+      );
+      if (result != null) {
+        engine.updateSqliteFunctionReporterInput(
+          node,
+          slot.inputKey,
+          reporter,
+          function: result.function,
+          arguments: result.arguments,
+        );
+      }
+      return;
+    }
+
     if (reporter.type == BlockType.sqlColumn ||
         nestedReporter?.type == BlockType.sqlColumn) {
       final columnReporter = nestedReporter ?? reporter;
@@ -6317,7 +6989,12 @@ class _NodeView extends ConsumerWidget {
       if (leadingGap > 0) {
         buffer.write(' ' * (leadingGap / safeSpaceWidth).ceil());
       }
-      final display = _slotDisplay(values[inputKey], rawKey, localeCode, mode);
+      final display = _slotDisplay(
+        values[inputKey] ?? _functionArgumentValue(values, inputKey),
+        rawKey,
+        localeCode,
+        mode,
+      );
       final reporter = reporterForInput(node, inputKey);
       final slotWidth = _slotWidthForContent(
         display,
@@ -6378,7 +7055,12 @@ class _NodeView extends ConsumerWidget {
       final rawKey = token.substring(1, token.length - 1).trim();
       final inputKey = _slotInputKey(rawKey);
       x += _slotLeadingGap(before, inputKey);
-      final display = _slotDisplay(values[inputKey], rawKey, localeCode, mode);
+      final display = _slotDisplay(
+        values[inputKey] ?? _functionArgumentValue(values, inputKey),
+        rawKey,
+        localeCode,
+        mode,
+      );
       final reporter = reporterForInput(node, inputKey);
       final slotWidth = _slotWidthForContent(
         display,
@@ -6441,7 +7123,12 @@ class _NodeView extends ConsumerWidget {
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
       final inputKey = _slotInputKey(rawKey);
-      final display = _slotDisplay(values[inputKey], rawKey, localeCode, mode);
+      final display = _slotDisplay(
+        values[inputKey] ?? _functionArgumentValue(values, inputKey),
+        rawKey,
+        localeCode,
+        mode,
+      );
       lineWidth +=
           _slotLeadingGap(before, inputKey) +
           _reservedInlineSlotWidth(
@@ -6558,7 +7245,9 @@ class _NodeView extends ConsumerWidget {
     String localeCode,
     SqlAbstractionMode mode,
   ) {
-    final text = '${value ?? ''}'.trim();
+    final text = value is List
+        ? value.map((item) => '$item').join(', ')
+        : '${value ?? ''}'.trim();
     final rawLower = rawKey.toLowerCase();
     final normalized = text.toLowerCase();
     final inputKey = _slotInputKey(rawKey);
@@ -6634,6 +7323,15 @@ class _NodeView extends ConsumerWidget {
       return _compactColumnSelectionDisplay(text);
     }
     return text;
+  }
+
+  String? _functionArgumentValue(Map<String, dynamic> values, String rawKey) {
+    final match = RegExp(r'^arg(\d+)$').firstMatch(rawKey);
+    final arguments = values['args'];
+    if (match == null || arguments is! List) return null;
+    final index = int.parse(match.group(1)!);
+    if (index >= arguments.length) return null;
+    return '${arguments[index]}';
   }
 
   String _compactColumnSelectionDisplay(String value) {
@@ -6783,6 +7481,15 @@ class _NodeView extends ConsumerWidget {
   }) async {
     final catalog = translationCatalogOf(context);
     final mappedKey = _slotInputKey(slotKey);
+    if (node.type == BlockType.sqlFunction && mappedKey == 'function') {
+      await _editSqliteFunctionNode(
+        context: context,
+        node: node,
+        engine: engine,
+        localeCode: localeCode,
+      );
+      return;
+    }
     if (mappedKey == 'columns') {
       final linkedSource = engine.columnSourceForNode(node.id);
       final selectedTable = linkedSource == null
@@ -6885,6 +7592,139 @@ class _NodeView extends ConsumerWidget {
         _normalizeInputValue(mappedKey, parsed),
       );
     }
+  }
+
+  Future<void> _editSqliteFunctionNode({
+    required BuildContext context,
+    required BlockNode node,
+    required WorkspaceController engine,
+    required String localeCode,
+  }) async {
+    final result = await _showSqliteFunctionDialog(
+      context: context,
+      functionNode: node,
+      localeCode: localeCode,
+    );
+    if (result == null) return;
+    engine.updateSqliteFunction(
+      node,
+      function: result.function,
+      arguments: result.arguments,
+    );
+  }
+
+  Future<_SqliteFunctionEditResult?> _showSqliteFunctionDialog({
+    required BuildContext context,
+    required BlockNode functionNode,
+    required String localeCode,
+  }) async {
+    final current =
+        sqliteFunctionByName('${functionNode.inputs['function'] ?? ''}') ??
+        sqliteFunctionCatalog.firstWhere((item) => item.name == 'datetime');
+    var selectedName = current.name;
+    final args = functionNode.inputs['args'] is List
+        ? List<String>.from(
+            (functionNode.inputs['args'] as List).map((value) => '$value'),
+          )
+        : List<String>.from(current.templateArguments);
+    final argsController = TextEditingController(text: args.join(', '));
+    final result = await showDialog<_SqliteFunctionEditResult>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final signature = sqliteFunctionByName(selectedName)!;
+          return AlertDialog(
+            title: Text(
+              localeCode == 'de' ? 'SQLite-Funktion' : 'SQLite function',
+            ),
+            content: SizedBox(
+              width: 430,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedName,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: localeCode == 'de' ? 'Funktion' : 'Function',
+                    ),
+                    items: sqliteFunctionCatalog
+                        .map(
+                          (item) => DropdownMenuItem<String>(
+                            value: item.name,
+                            child: Text(
+                              '${item.name}${item.versionOrBuildDependent ? ' • optional' : ''}',
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      final next = sqliteFunctionByName(value)!;
+                      setDialogState(() {
+                        selectedName = value;
+                        argsController.text = next.templateArguments.join(', ');
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: argsController,
+                    decoration: InputDecoration(
+                      labelText: localeCode == 'de'
+                          ? 'Argumente (durch Komma)'
+                          : 'Arguments (comma separated)',
+                      helperText: signature.argumentHints.isEmpty
+                          ? (localeCode == 'de'
+                                ? 'Keine Argumente'
+                                : 'No arguments')
+                          : signature.argumentHints.join(', '),
+                    ),
+                  ),
+                  if (signature.versionOrBuildDependent) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      localeCode == 'de'
+                          ? 'Diese Funktion ist je nach SQLite-Version oder Build möglicherweise nicht verfügbar.'
+                          : 'This function can depend on the SQLite version or build.',
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(
+                  translationCatalogOf(dialogContext).text('common.cancel'),
+                ),
+              ),
+              FilledButton(
+                key: const ValueKey<String>('sqlite-function-submit'),
+                onPressed: () => Navigator.of(dialogContext).pop(
+                  _SqliteFunctionEditResult(
+                    function: selectedName,
+                    arguments: argsController.text
+                        .split(',')
+                        .map((value) => value.trim())
+                        .where((value) => value.isNotEmpty)
+                        .toList(growable: false),
+                  ),
+                ),
+                style: _nodeQlFilledButtonCornerStyle(dialogContext),
+                child: Text(
+                  translationCatalogOf(dialogContext).text('common.ok'),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    argsController.dispose();
+    return result;
   }
 
   bool _isDropdownToken(String rawToken, String mappedKey) {
@@ -7230,9 +8070,18 @@ class _NodeView extends ConsumerWidget {
         engine.contextTableForNode(node.id),
       );
     }
+    final configuredTable = '${node.inputs['table'] ?? ''}'.trim();
     final selectedTable = linkedSource == null
-        ? '${node.inputs['table'] ?? engine.contextTableForNode(node.id) ?? ''}'
+        ? (configuredTable.isEmpty || configuredTable == 'table_name'
+              ? engine.contextTableForNode(node.id) ?? ''
+              : configuredTable)
         : engine.contextTableForNode(node.id) ?? '';
+    if (_selectHasJoinedSource(node)) {
+      return _qualifiedColumnsForTable(
+        runtime,
+        _selectSourceWithAlias(node, selectedTable),
+      );
+    }
     final schema = runtime.schemas.where((s) => s.name == selectedTable);
     return schema.isEmpty
         ? runtime.schemas
@@ -7240,6 +8089,26 @@ class _NodeView extends ConsumerWidget {
               .toSet()
               .toList(growable: false)
         : schema.first.columns;
+  }
+
+  bool _selectHasJoinedSource(BlockNode node) {
+    if (node.type != BlockType.sqlSelect) return false;
+    final seen = <String>{node.id};
+    BlockNode? current = node.next;
+    while (current != null && seen.add(current.id)) {
+      if (isJoinType(current.type)) return true;
+      current = current.next;
+    }
+    return false;
+  }
+
+  String _selectSourceWithAlias(BlockNode node, String source) {
+    final alias = '${node.inputs['table_alias'] ?? ''}'.trim();
+    if (alias.isEmpty || source.trim().isEmpty) return source;
+    if (RegExp(r'\s+AS\s+', caseSensitive: false).hasMatch(source)) {
+      return source;
+    }
+    return '$source AS $alias';
   }
 
   List<String> _availableColumnsForKey(
@@ -7315,7 +8184,9 @@ class _NodeView extends ConsumerWidget {
   }) {
     final catalog = translationCatalogOf(context);
     var selectAll = currentValue.trim() == '*';
-    final selectedColumns = _selectedColumns(currentValue).toSet();
+    final projections = _projectionAliases(currentValue);
+    final selectedColumns = projections.keys.toSet();
+    final aliases = Map<String, String>.from(projections);
 
     return showDialog<String>(
       context: context,
@@ -7325,10 +8196,18 @@ class _NodeView extends ConsumerWidget {
             catalog.text('editor.chooseColumn', {'table': selectedTable}),
           ),
           content: SizedBox(
-            width: 360,
-            height: 320,
+            width: 440,
+            height: 400,
             child: ListView(
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: Text(
+                    localeCode == 'de'
+                        ? 'Wähle Spalten und vergebe bei Bedarf für jede ausgewählte Spalte einen eigenen Alias.'
+                        : 'Select columns and, if needed, give every selected column its own alias.',
+                  ),
+                ),
                 CheckboxListTile(
                   value: selectAll,
                   secondary: const Icon(Icons.select_all),
@@ -7342,21 +8221,51 @@ class _NodeView extends ConsumerWidget {
                 ),
                 if (columns.isNotEmpty) const Divider(height: 1),
                 for (final column in columns)
-                  CheckboxListTile(
-                    value: selectedColumns.contains(column),
-                    secondary: const Icon(Icons.view_column_outlined),
-                    title: Text(column),
-                    onChanged: selectAll
-                        ? null
-                        : (selected) {
-                            setDialogState(() {
-                              if (selected == true) {
-                                selectedColumns.add(column);
-                              } else {
-                                selectedColumns.remove(column);
-                              }
-                            });
-                          },
+                  Column(
+                    children: [
+                      CheckboxListTile(
+                        value: selectedColumns.contains(column),
+                        title: Text(column),
+                        secondary: Icon(
+                          aliases[column]?.trim().isNotEmpty == true
+                              ? Icons.label_rounded
+                              : Icons.label_outline_rounded,
+                        ),
+                        onChanged: selectAll
+                            ? null
+                            : (selected) {
+                                setDialogState(() {
+                                  if (selected == true) {
+                                    selectedColumns.add(column);
+                                  } else {
+                                    selectedColumns.remove(column);
+                                    aliases.remove(column);
+                                  }
+                                });
+                              },
+                      ),
+                      if (!selectAll && selectedColumns.contains(column))
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(56, 0, 16, 8),
+                          child: TextFormField(
+                            key: ValueKey<String>(
+                              'select-column-alias-$column',
+                            ),
+                            initialValue: aliases[column] ?? '',
+                            decoration: InputDecoration(
+                              isDense: true,
+                              prefixIcon: const Icon(
+                                Icons.label_outline_rounded,
+                              ),
+                              labelText: localeCode == 'de'
+                                  ? 'Alias für $column (optional)'
+                                  : 'Alias for $column (optional)',
+                            ),
+                            onChanged: (alias) =>
+                                aliases[column] = alias.trim(),
+                          ),
+                        ),
+                    ],
                   ),
                 if (columns.isEmpty)
                   Padding(
@@ -7373,9 +8282,19 @@ class _NodeView extends ConsumerWidget {
             ),
             FilledButton(
               onPressed: selectAll || selectedColumns.isNotEmpty
-                  ? () => Navigator.of(
-                      context,
-                    ).pop(selectAll ? '*' : selectedColumns.join(', '))
+                  ? () => Navigator.of(context).pop(
+                      selectAll
+                          ? '*'
+                          : columns
+                                .where(selectedColumns.contains)
+                                .map(
+                                  (column) => _projectionWithAlias(
+                                    column,
+                                    aliases[column],
+                                  ),
+                                )
+                                .join(', '),
+                    )
                   : null,
               child: Text(catalog.text('common.ok')),
             ),
@@ -7383,6 +8302,32 @@ class _NodeView extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Map<String, String> _projectionAliases(String value) {
+    final aliases = <String, String>{};
+    for (final item in _selectedColumns(value)) {
+      final match = RegExp(
+        r'^(.+?)\s+AS\s+(?:"((?:[^"]|"")*)"|([A-Za-z_][A-Za-z0-9_]*))$',
+        caseSensitive: false,
+      ).firstMatch(item);
+      if (match == null) {
+        aliases[item] = '';
+      } else {
+        aliases[match.group(1)!.trim()] =
+            (match.group(2) ?? match.group(3) ?? '').replaceAll('""', '"');
+      }
+    }
+    return aliases;
+  }
+
+  String _projectionWithAlias(String expression, String? rawAlias) {
+    final alias = rawAlias?.trim() ?? '';
+    if (alias.isEmpty) return expression;
+    if (RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(alias)) {
+      return '$expression AS $alias';
+    }
+    return '$expression AS "${alias.replaceAll('"', '""')}"';
   }
 
   Future<String?> _pickInlineOptionOverlay({
@@ -8000,6 +8945,16 @@ class _ColumnReporterEditResult {
   final bool removeReporter;
 }
 
+class _SqliteFunctionEditResult {
+  const _SqliteFunctionEditResult({
+    required this.function,
+    required this.arguments,
+  });
+
+  final String function;
+  final List<String> arguments;
+}
+
 class _NodeDiagnosticBadge extends StatelessWidget {
   const _NodeDiagnosticBadge({required this.diagnostic});
 
@@ -8177,6 +9132,514 @@ class _SqlIdePaneState extends State<_SqlIdePane> {
   }
 }
 
+enum _ResizeAxis { horizontal, vertical }
+
+/// A narrow divider that moves only a lightweight ghost while dragging. The
+/// expensive workspace resize happens once, after the pointer is released.
+class _ThrottledResizeHandle extends StatefulWidget {
+  const _ThrottledResizeHandle({
+    super.key,
+    required this.value,
+    required this.resetValue,
+    required this.onChanged,
+    this.axis = _ResizeAxis.horizontal,
+    this.deltaMultiplier = 1,
+    this.minValue,
+    this.maxValue,
+    this.highRefreshMode = true,
+    this.reduceMotion = false,
+  });
+
+  final double value;
+  final double resetValue;
+  final ValueChanged<double> onChanged;
+  final _ResizeAxis axis;
+  final double deltaMultiplier;
+  final double? minValue;
+  final double? maxValue;
+  final bool highRefreshMode;
+  final bool reduceMotion;
+
+  @override
+  State<_ThrottledResizeHandle> createState() => _ThrottledResizeHandleState();
+}
+
+class _ThrottledResizeHandleState extends State<_ThrottledResizeHandle>
+    with SingleTickerProviderStateMixin {
+  double? _dragValue;
+  double _dragOffset = 0;
+  double _settlingOffset = 0;
+  bool _hovering = false;
+  double _pendingDragDelta = 0;
+  bool _dragFrameScheduled = false;
+  OverlayEntry? _ghostOverlay;
+  Offset _overlayOrigin = Offset.zero;
+  Size _overlayHandleSize = Size.zero;
+  late final AnimationController _releaseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _releaseController =
+        AnimationController(vsync: this, duration: _releaseDuration)
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed && mounted) {
+              _removeGhostOverlay();
+              setState(() => _settlingOffset = 0);
+            }
+          });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThrottledResizeHandle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.highRefreshMode != widget.highRefreshMode ||
+        oldWidget.reduceMotion != widget.reduceMotion) {
+      _releaseController.duration = _releaseDuration;
+    }
+  }
+
+  Duration get _releaseDuration => Duration(
+    milliseconds: widget.reduceMotion
+        ? 0
+        : (widget.highRefreshMode ? 240 : 300),
+  );
+
+  @override
+  void dispose() {
+    _removeGhostOverlay();
+    _releaseController.dispose();
+    super.dispose();
+  }
+
+  void _showGhostOverlay() {
+    _removeGhostOverlay();
+    final renderBox = context.findRenderObject();
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final overlayBox = overlay.context.findRenderObject();
+    if (renderBox is! RenderBox || overlayBox is! RenderBox) return;
+    _overlayOrigin = renderBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    _overlayHandleSize = renderBox.size;
+    _ghostOverlay = OverlayEntry(
+      builder: (overlayContext) => AnimatedBuilder(
+        animation: _releaseController,
+        builder: (overlayContext, _) {
+          final isDragging = _dragValue != null;
+          final releaseProgress = Curves.easeOutCubic.transform(
+            _releaseController.value,
+          );
+          return _ResizeGhostOverlay(
+            origin: _overlayOrigin,
+            handleSize: _overlayHandleSize,
+            axis: widget.axis,
+            offset: isDragging ? _dragOffset : _settlingOffset,
+            opacity: isDragging ? 1 : 1 - releaseProgress,
+            label: isDragging
+                ? (widget.axis == _ResizeAxis.horizontal
+                      ? '${_dragValue!.round()} px'
+                      : '${(_dragValue! * 100).round()}%')
+                : null,
+          );
+        },
+      ),
+    );
+    overlay.insert(_ghostOverlay!);
+  }
+
+  void _removeGhostOverlay() {
+    _ghostOverlay?.remove();
+    _ghostOverlay = null;
+  }
+
+  void _startDrag() {
+    _releaseController.stop();
+    setState(() {
+      _dragValue = widget.value;
+      _dragOffset = 0;
+      _settlingOffset = 0;
+      _pendingDragDelta = 0;
+    });
+    if (!widget.reduceMotion) _showGhostOverlay();
+  }
+
+  void _updateDrag(double delta) {
+    if (!widget.highRefreshMode) {
+      _applyDragDelta(delta);
+      return;
+    }
+    _pendingDragDelta += delta;
+    if (_dragFrameScheduled) return;
+    _dragFrameScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _dragFrameScheduled = false;
+      if (!mounted || _dragValue == null) return;
+      final pending = _pendingDragDelta;
+      _pendingDragDelta = 0;
+      _applyDragDelta(pending);
+    });
+  }
+
+  void _applyDragDelta(double delta) {
+    final current = _dragValue ?? widget.value;
+    final proposed = current + delta * widget.deltaMultiplier;
+    final value = proposed
+        .clamp(
+          widget.minValue ?? double.negativeInfinity,
+          widget.maxValue ?? double.infinity,
+        )
+        .toDouble();
+    final appliedPhysicalDelta = widget.deltaMultiplier == 0
+        ? 0.0
+        : (value - current) / widget.deltaMultiplier;
+    setState(() {
+      _dragValue = value;
+      _dragOffset += appliedPhysicalDelta;
+    });
+    _ghostOverlay?.markNeedsBuild();
+  }
+
+  void _endDrag() {
+    if (_pendingDragDelta != 0) {
+      final pending = _pendingDragDelta;
+      _pendingDragDelta = 0;
+      _applyDragDelta(pending);
+    }
+    final targetValue = _dragValue;
+    setState(() {
+      _dragValue = null;
+      _settlingOffset = _dragOffset;
+      _dragOffset = 0;
+    });
+    if (targetValue != null) widget.onChanged(targetValue);
+    if (widget.reduceMotion) {
+      _removeGhostOverlay();
+      setState(() => _settlingOffset = 0);
+      return;
+    }
+    _ghostOverlay?.markNeedsBuild();
+    _releaseController.forward(from: 0);
+  }
+
+  void _cancelDrag() {
+    _releaseController.stop();
+    _removeGhostOverlay();
+    setState(() {
+      _dragValue = null;
+      _dragOffset = 0;
+      _settlingOffset = 0;
+      _pendingDragDelta = 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontal = widget.axis == _ResizeAxis.horizontal;
+    final colors = NodeQlWorkbenchColors.of(context);
+    final settling = !widget.reduceMotion && _settlingOffset != 0;
+    final active = _hovering || _dragValue != null || settling;
+    final accent = Theme.of(context).colorScheme.primary;
+    final isDragging = _dragValue != null;
+    return MouseRegion(
+      cursor: horizontal
+          ? SystemMouseCursors.resizeLeftRight
+          : SystemMouseCursors.resizeUpDown,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: () => widget.onChanged(widget.resetValue),
+        onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
+        onHorizontalDragUpdate: horizontal
+            ? (details) => _updateDrag(details.delta.dx)
+            : null,
+        onHorizontalDragEnd: horizontal ? (_) => _endDrag() : null,
+        onHorizontalDragCancel: horizontal ? _cancelDrag : null,
+        onVerticalDragStart: horizontal ? null : (_) => _startDrag(),
+        onVerticalDragUpdate: horizontal
+            ? null
+            : (details) => _updateDrag(details.delta.dy),
+        onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
+        onVerticalDragCancel: horizontal ? null : _cancelDrag,
+        child: RepaintBoundary(
+          child: SizedBox(
+            width: horizontal ? 6 : double.infinity,
+            height: horizontal ? double.infinity : 6,
+            child: AnimatedContainer(
+              duration: widget.reduceMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 150),
+              curve: Curves.easeOutCubic,
+              color: active
+                  ? accent.withValues(alpha: .10)
+                  : Colors.transparent,
+              child: AnimatedBuilder(
+                animation: _releaseController,
+                builder: (context, _) {
+                  final releaseProgress = Curves.easeOutCubic.transform(
+                    _releaseController.value,
+                  );
+                  final offset = widget.reduceMotion
+                      ? 0.0
+                      : (isDragging
+                            ? _dragOffset
+                            : _settlingOffset * (1 - releaseProgress));
+                  final ghostOpacity = widget.reduceMotion
+                      ? 0.0
+                      : (isDragging ? 1.0 : 1 - releaseProgress);
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      if (!widget.reduceMotion && offset.abs() > 1)
+                        Positioned(
+                          left: horizontal ? math.min(3.0, 3.0 + offset) : 0,
+                          right: horizontal ? null : 0,
+                          top: horizontal ? 0 : math.min(3.0, 3.0 + offset),
+                          bottom: horizontal ? 0 : null,
+                          width: horizontal ? offset.abs() : null,
+                          height: horizontal ? null : offset.abs(),
+                          child: IgnorePointer(
+                            child: Opacity(
+                              opacity: ghostOpacity,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: horizontal
+                                        ? Alignment.centerLeft
+                                        : Alignment.topCenter,
+                                    end: horizontal
+                                        ? Alignment.centerRight
+                                        : Alignment.bottomCenter,
+                                    colors: offset >= 0
+                                        ? <Color>[
+                                            accent.withValues(alpha: .05),
+                                            accent.withValues(alpha: .18),
+                                          ]
+                                        : <Color>[
+                                            accent.withValues(alpha: .18),
+                                            accent.withValues(alpha: .05),
+                                          ],
+                                  ),
+                                  border: Border.all(
+                                    color: accent.withValues(alpha: .22),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      Center(
+                        child: Transform.translate(
+                          offset: horizontal
+                              ? Offset(offset, 0)
+                              : Offset(0, offset),
+                          child: Opacity(
+                            opacity: isDragging
+                                ? 1
+                                : 1 - (releaseProgress * .35),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.center,
+                              children: [
+                                AnimatedContainer(
+                                  duration: widget.reduceMotion
+                                      ? Duration.zero
+                                      : const Duration(milliseconds: 130),
+                                  curve: Curves.easeOutCubic,
+                                  width: horizontal
+                                      ? (active ? 3 : 1)
+                                      : (active ? 42 : 26),
+                                  height: horizontal
+                                      ? (active ? 56 : 26)
+                                      : (active ? 3 : 1),
+                                  decoration: BoxDecoration(
+                                    color: active ? accent : colors.border,
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: active
+                                        ? <BoxShadow>[
+                                            BoxShadow(
+                                              color: accent.withValues(
+                                                alpha: .48,
+                                              ),
+                                              blurRadius: 14,
+                                              spreadRadius: 1,
+                                            ),
+                                          ]
+                                        : const <BoxShadow>[],
+                                  ),
+                                ),
+                                if (isDragging && !widget.reduceMotion)
+                                  Positioned(
+                                    left: horizontal ? 10 : null,
+                                    top: horizontal ? null : 10,
+                                    child: _ResizeGhostBadge(
+                                      label: horizontal
+                                          ? '${_dragValue!.round()} px'
+                                          : '${(_dragValue! * 100).round()}%',
+                                      horizontal: horizontal,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResizeGhostBadge extends StatelessWidget {
+  const _ResizeGhostBadge({required this.label, required this.horizontal});
+
+  final String label;
+  final bool horizontal;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    return Transform.translate(
+      offset: horizontal ? const Offset(0, -1) : const Offset(-1, 0),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.panelElevated.withValues(alpha: .96),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: accent.withValues(alpha: .72)),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .34),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(color: accent.withValues(alpha: .22), blurRadius: 12),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          child: Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .2,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResizeGhostOverlay extends StatelessWidget {
+  const _ResizeGhostOverlay({
+    required this.origin,
+    required this.handleSize,
+    required this.axis,
+    required this.offset,
+    required this.opacity,
+    required this.label,
+  });
+
+  final Offset origin;
+  final Size handleSize;
+  final _ResizeAxis axis;
+  final double offset;
+  final double opacity;
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontal = axis == _ResizeAxis.horizontal;
+    final accent = Theme.of(context).colorScheme.primary;
+    final originEdge = horizontal
+        ? origin.dx + handleSize.width / 2
+        : origin.dy + handleSize.height / 2;
+    final targetEdge = originEdge + offset;
+    final areaStart = math.min(originEdge, targetEdge);
+    final areaExtent = offset.abs();
+    final safeOpacity = opacity.clamp(0.0, 1.0).toDouble();
+
+    return IgnorePointer(
+      child: Opacity(
+        opacity: safeOpacity,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (areaExtent > 1)
+              Positioned(
+                left: horizontal ? areaStart : origin.dx,
+                top: horizontal ? origin.dy : areaStart,
+                width: horizontal ? areaExtent : handleSize.width,
+                height: horizontal ? handleSize.height : areaExtent,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: horizontal
+                          ? Alignment.centerLeft
+                          : Alignment.topCenter,
+                      end: horizontal
+                          ? Alignment.centerRight
+                          : Alignment.bottomCenter,
+                      colors: offset >= 0
+                          ? <Color>[
+                              accent.withValues(alpha: .06),
+                              accent.withValues(alpha: .22),
+                            ]
+                          : <Color>[
+                              accent.withValues(alpha: .22),
+                              accent.withValues(alpha: .06),
+                            ],
+                    ),
+                    border: Border.all(color: accent.withValues(alpha: .26)),
+                  ),
+                ),
+              ),
+            Positioned(
+              left: horizontal ? targetEdge - 1.5 : origin.dx,
+              top: horizontal ? origin.dy : targetEdge - 1.5,
+              width: horizontal ? 3 : handleSize.width,
+              height: horizontal ? handleSize.height : 3,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: accent.withValues(alpha: .55),
+                      blurRadius: 18,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (label != null)
+              Positioned(
+                left: horizontal
+                    ? targetEdge + (offset < 0 ? -72 : 10)
+                    : origin.dx + handleSize.width / 2 - 28,
+                top: horizontal
+                    ? origin.dy + handleSize.height / 2 - 14
+                    : targetEdge + (offset < 0 ? -38 : 10),
+                child: _ResizeGhostBadge(label: label!, horizontal: horizontal),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SqlRuntimePane extends StatefulWidget {
   const _SqlRuntimePane({
     required this.sql,
@@ -8185,6 +9648,10 @@ class _SqlRuntimePane extends StatefulWidget {
     required this.localeCode,
     required this.catalog,
     required this.width,
+    required this.commandOutputFraction,
+    required this.highRefreshMode,
+    required this.reduceMotion,
+    required this.onCommandOutputFractionChanged,
     required this.customMode,
     required this.onToggleCustomMode,
     this.showCustomModeToggle = true,
@@ -8196,6 +9663,10 @@ class _SqlRuntimePane extends StatefulWidget {
   final String localeCode;
   final TranslationCatalog catalog;
   final double width;
+  final double commandOutputFraction;
+  final bool highRefreshMode;
+  final bool reduceMotion;
+  final ValueChanged<double> onCommandOutputFractionChanged;
   final bool customMode;
   final VoidCallback onToggleCustomMode;
   final bool showCustomModeToggle;
@@ -8229,6 +9700,117 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     );
   }
 
+  bool get _hasPreviewRows => widget.runtime.lastRows.isNotEmpty;
+
+  String _previewActionText(String action) {
+    final german = widget.localeCode.toLowerCase().startsWith('de');
+    return switch (action) {
+      'fullscreen' =>
+        german ? 'Tabelle im Vollbild öffnen' : 'Open table fullscreen',
+      'export' => german ? 'Ergebnis exportieren' : 'Export result',
+      'copy' =>
+        german ? 'TSV in Zwischenablage kopieren' : 'Copy TSV to clipboard',
+      'exported' => german ? 'Ergebnis exportiert' : 'Result exported',
+      'copied' =>
+        german
+            ? 'Ergebnis in Zwischenablage kopiert'
+            : 'Result copied to clipboard',
+      _ => action,
+    };
+  }
+
+  Future<void> _exportPreview(SqlResultExportFormat format) async {
+    if (!_hasPreviewRows) return;
+    final extension = sqlResultExportExtension(format);
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: _previewActionText('export'),
+      fileName: 'nodeql-result.$extension',
+      type: FileType.custom,
+      allowedExtensions: <String>[extension],
+    );
+    if (path == null) return;
+    await File(path).writeAsString(
+      encodeSqlResultRows(widget.runtime.lastRows, format),
+      flush: true,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${_previewActionText('exported')}: $path')),
+    );
+  }
+
+  Future<void> _copyPreviewAsTsv() async {
+    if (!_hasPreviewRows) return;
+    await Clipboard.setData(
+      ClipboardData(
+        text: encodeSqlResultRows(
+          widget.runtime.lastRows,
+          SqlResultExportFormat.tsv,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(_previewActionText('copied'))));
+  }
+
+  Future<void> _showFullscreenPreview() async {
+    if (!_hasPreviewRows) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog.fullscreen(
+        child: _FullscreenResultPreview(
+          rows: widget.runtime.lastRows,
+          title: widget.catalog.text('runtime.outputPreview'),
+          onClose: () => Navigator.of(dialogContext).pop(),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _previewActions() => <Widget>[
+    IconButton(
+      key: const ValueKey<String>('preview-fullscreen'),
+      onPressed: _hasPreviewRows ? _showFullscreenPreview : null,
+      tooltip: _previewActionText('fullscreen'),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+      icon: const Icon(Icons.fullscreen_rounded, size: 20),
+    ),
+    PopupMenuButton<String>(
+      key: const ValueKey<String>('preview-export-menu'),
+      enabled: _hasPreviewRows,
+      tooltip: _previewActionText('export'),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+      icon: const Icon(Icons.ios_share_rounded, size: 19),
+      onSelected: (value) {
+        switch (value) {
+          case 'csv':
+            _exportPreview(SqlResultExportFormat.csv);
+          case 'json':
+            _exportPreview(SqlResultExportFormat.json);
+          case 'tsv':
+            _exportPreview(SqlResultExportFormat.tsv);
+          case 'copy-tsv':
+            _copyPreviewAsTsv();
+        }
+      },
+      itemBuilder: (context) => <PopupMenuEntry<String>>[
+        for (final format in SqlResultExportFormat.values)
+          PopupMenuItem<String>(
+            value: format.name,
+            child: Text('Export ${sqlResultExportLabel(format)}'),
+          ),
+        PopupMenuItem<String>(
+          value: 'copy-tsv',
+          child: Text(_previewActionText('copy')),
+        ),
+      ],
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -8255,7 +9837,7 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
       child: Column(
         children: [
           Container(
-            height: 48,
+            height: 38,
             padding: const EdgeInsets.only(left: 14, right: 4),
             decoration: BoxDecoration(
               color: colors.panelElevated,
@@ -8280,8 +9862,14 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                     key: const ValueKey<String>('toggle-custom-sql'),
                     onPressed: widget.onToggleCustomMode,
                     tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 38,
+                      height: 38,
+                    ),
                     icon: const Icon(Icons.account_tree_outlined, size: 20),
                   ),
+                ..._previewActions(),
               ],
             ),
           ),
@@ -8300,81 +9888,96 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final workbenchColors = NodeQlWorkbenchColors.of(context);
-        final surfaceStyle = NodeQlSurfaceStyle.of(context);
+        const handleHeight = 6.0;
+        const minimumPreviewHeight = 110.0;
         final sql = widget.sql.isEmpty
             ? widget.catalog.text('runtime.sqlOutput')
             : widget.sql;
-        final lineCount = '\n'.allMatches(sql).length + 1;
-        final desiredSqlHeight = 48.0 + 28.0 + (lineCount * 19.0);
-        final maxSqlHeight = (constraints.maxHeight * 0.58).clamp(130.0, 420.0);
-        final sqlHeight = desiredSqlHeight.clamp(112.0, maxSqlHeight);
+        final maxSqlHeight =
+            (constraints.maxHeight - minimumPreviewHeight - handleHeight)
+                .clamp(112.0, double.infinity)
+                .toDouble();
+        final sqlHeight = (constraints.maxHeight * widget.commandOutputFraction)
+            .clamp(112.0, maxSqlHeight)
+            .toDouble();
         return Column(
           key: const ValueKey('split'),
           children: [
-            SizedBox(
-              height: sqlHeight,
-              child: Container(
-                decoration: surfaceStyle.surfaceDecoration(
-                  color: workbenchColors.panel,
-                  borderColor: workbenchColors.border,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    Container(
-                      height: 48,
-                      padding: const EdgeInsets.only(left: 14, right: 4),
-                      decoration: BoxDecoration(
-                        color: workbenchColors.panelElevated,
-                        border: Border(
-                          bottom: BorderSide(color: workbenchColors.border),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.terminal_rounded,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 9),
-                          Expanded(
-                            child: Text(
-                              widget.catalog.text('runtime.sqlCommandOutput'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          if (widget.showCustomModeToggle)
-                            IconButton(
-                              key: const ValueKey<String>('toggle-custom-sql'),
-                              onPressed: widget.onToggleCustomMode,
-                              color: Theme.of(context).colorScheme.onSurface,
-                              tooltip: widget.catalog.text('runtime.customSql'),
-                              icon: const Icon(
-                                Icons.edit_note_rounded,
-                                size: 20,
-                              ),
-                            ),
-                          IconButton(
-                            key: const ValueKey('copy-sql-command'),
-                            onPressed: widget.sql.trim().isEmpty
-                                ? null
-                                : _copySqlToClipboard,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            tooltip: widget.catalog.text('runtime.copySql'),
-                            icon: const Icon(Icons.copy_rounded, size: 19),
-                          ),
-                        ],
+            TweenAnimationBuilder<double>(
+              duration: Duration(
+                milliseconds: widget.reduceMotion
+                    ? 0
+                    : (widget.highRefreshMode ? 240 : 300),
+              ),
+              curve: Curves.easeOutQuart,
+              tween: Tween<double>(end: sqlHeight),
+              builder: (context, animatedHeight, child) =>
+                  SizedBox(height: animatedHeight, child: child),
+              child: Column(
+                children: [
+                  Container(
+                    height: 38,
+                    padding: const EdgeInsets.only(left: 14, right: 4),
+                    decoration: BoxDecoration(
+                      color: workbenchColors.panelElevated,
+                      border: Border(
+                        bottom: BorderSide(color: workbenchColors.border),
                       ),
                     ),
-                    Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.terminal_rounded,
+                          size: 18,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            widget.catalog.text('runtime.sqlCommandOutput'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (widget.showCustomModeToggle)
+                          IconButton(
+                            key: const ValueKey<String>('toggle-custom-sql'),
+                            onPressed: widget.onToggleCustomMode,
+                            color: Theme.of(context).colorScheme.onSurface,
+                            tooltip: widget.catalog.text('runtime.customSql'),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 38,
+                              height: 38,
+                            ),
+                            icon: const Icon(Icons.edit_note_rounded, size: 20),
+                          ),
+                        IconButton(
+                          key: const ValueKey('copy-sql-command'),
+                          onPressed: widget.sql.trim().isEmpty
+                              ? null
+                              : _copySqlToClipboard,
+                          color: Theme.of(context).colorScheme.onSurface,
+                          tooltip: widget.catalog.text('runtime.copySql'),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 38,
+                            height: 38,
+                          ),
+                          icon: const Icon(Icons.copy_rounded, size: 19),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ColoredBox(
+                      color: workbenchColors.panel,
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         child: Align(
                           alignment: AlignmentDirectional.topStart,
                           child: SelectionArea(
@@ -8390,12 +9993,28 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            Expanded(child: _buildOutputBody()),
+            SizedBox(
+              height: handleHeight,
+              child: _ThrottledResizeHandle(
+                key: const ValueKey<String>('command-output-resize-handle'),
+                axis: _ResizeAxis.vertical,
+                value: widget.commandOutputFraction,
+                resetValue: .42,
+                minValue: .18,
+                maxValue: .78,
+                highRefreshMode: widget.highRefreshMode,
+                reduceMotion: widget.reduceMotion,
+                deltaMultiplier: constraints.maxHeight <= 0
+                    ? 0
+                    : 1 / constraints.maxHeight,
+                onChanged: widget.onCommandOutputFractionChanged,
+              ),
+            ),
+            Expanded(child: _buildDatabasePreviewPanel()),
           ],
         );
       },
@@ -8470,6 +10089,127 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
                       ),
                     )
                     .toList(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDatabasePreviewPanel() {
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    return Column(
+      children: [
+        Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: workbenchColors.panelElevated,
+            border: Border(bottom: BorderSide(color: workbenchColors.border)),
+          ),
+          alignment: Alignment.centerLeft,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.catalog.text('runtime.outputPreview'),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              ..._previewActions(),
+            ],
+          ),
+        ),
+        Expanded(child: _buildOutputBody()),
+      ],
+    );
+  }
+}
+
+class _FullscreenResultPreview extends StatefulWidget {
+  const _FullscreenResultPreview({
+    required this.rows,
+    required this.title,
+    required this.onClose,
+  });
+
+  final List<Map<String, String>> rows;
+  final String title;
+  final VoidCallback onClose;
+
+  @override
+  State<_FullscreenResultPreview> createState() =>
+      _FullscreenResultPreviewState();
+}
+
+class _FullscreenResultPreviewState extends State<_FullscreenResultPreview> {
+  final ScrollController _horizontalController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    _verticalController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final columns = <String>[];
+    for (final row in widget.rows) {
+      for (final column in row.keys) {
+        if (!columns.contains(column)) columns.add(column);
+      }
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        leading: IconButton(
+          key: const ValueKey<String>('preview-fullscreen-close'),
+          tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+          onPressed: widget.onClose,
+          icon: const Icon(Icons.close_rounded),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Scrollbar(
+          controller: _horizontalController,
+          thumbVisibility: true,
+          notificationPredicate: (notification) =>
+              notification.metrics.axis == Axis.horizontal,
+          child: SingleChildScrollView(
+            controller: _horizontalController,
+            scrollDirection: Axis.horizontal,
+            child: Scrollbar(
+              controller: _verticalController,
+              thumbVisibility: true,
+              notificationPredicate: (notification) =>
+                  notification.metrics.axis == Axis.vertical,
+              child: SingleChildScrollView(
+                controller: _verticalController,
+                child: DataTable(
+                  headingTextStyle: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  dataTextStyle: TextStyle(color: colorScheme.onSurface),
+                  columns: [
+                    for (final column in columns)
+                      DataColumn(label: Text(column)),
+                  ],
+                  rows: [
+                    for (final row in widget.rows)
+                      DataRow(
+                        cells: [
+                          for (final column in columns)
+                            DataCell(Text(row[column] ?? '')),
+                        ],
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

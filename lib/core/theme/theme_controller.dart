@@ -45,6 +45,35 @@ abstract final class NodeQlDesign {
 
   static const Duration quick = Duration(milliseconds: 140);
   static const Duration standard = Duration(milliseconds: 220);
+
+  static ButtonStyle modeSegmentedButtonStyle(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final workbenchColors = NodeQlWorkbenchColors.of(context);
+    return ButtonStyle(
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? colors.primaryContainer
+            : workbenchColors.panel,
+      ),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? colors.onPrimaryContainer
+            : colors.onSurface,
+      ),
+      side: WidgetStateProperty.resolveWith(
+        (states) => BorderSide(
+          color: states.contains(WidgetState.selected)
+              ? colors.primary
+              : workbenchColors.border,
+        ),
+      ),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(
+          borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
+        ),
+      ),
+    );
+  }
 }
 
 /// Canonical Neo-Brutalism colors. Keep these deliberately small and loud:
@@ -257,7 +286,12 @@ class NodeQlThemeController extends StateNotifier<NodeQlThemeSettings> {
       if (matched.isNotEmpty) {
         final accentValue = decoded['accentColor'];
         final accent = accentValue is int ? Color(accentValue) : null;
-        state = NodeQlThemeSettings(theme: matched.first, accentColor: accent);
+        state = NodeQlThemeSettings(
+          theme: matched.first == NodeQlTheme.neoBrutalism
+              ? NodeQlTheme.dark
+              : matched.first,
+          accentColor: accent,
+        );
       }
     } catch (_) {}
   }

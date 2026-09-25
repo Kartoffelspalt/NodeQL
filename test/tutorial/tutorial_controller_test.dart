@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +6,46 @@ import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 
 void main() {
+  test(
+    'does not lose a mission saved while startup is still reading',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('nodeql_tutorial_');
+      addTearDown(() => temp.delete(recursive: true));
+      final file = File('${temp.path}/tutorial.json');
+      await file.writeAsString('{"completed":false}');
+
+      final gate = Completer<void>();
+      final controller = TutorialController(
+        storageFile: () async {
+          await gate.future;
+          return file;
+        },
+      );
+
+      final save = controller.saveLessonProgress(
+        TutorialKnowledgeMode.beginner,
+        const TutorialLessonProgress(completedPracticeSteps: {0}),
+      );
+      gate.complete();
+      await save;
+
+      expect(
+        controller.state
+            .progressFor(TutorialKnowledgeMode.beginner)
+            .completedPracticeSteps,
+        {0},
+      );
+      final restored = TutorialController(storageFile: () async => file);
+      await restored.initialize();
+      expect(
+        restored.state
+            .progressFor(TutorialKnowledgeMode.beginner)
+            .completedPracticeSteps,
+        {0},
+      );
+    },
+  );
+
   test('persists and restores tutorial completion', () async {
     final temp = await Directory.systemTemp.createTemp('nodeql_tutorial_');
     addTearDown(() => temp.delete(recursive: true));
@@ -70,6 +111,45 @@ void main() {
 
     expect(controller.state.completed, isTrue);
     expect(controller.state.lessonProgress, isEmpty);
+  });
+
+  test('migrates progress from the former broad learning paths', () async {
+    final temp = await Directory.systemTemp.createTemp('nodeql_tutorial_');
+    addTearDown(() => temp.delete(recursive: true));
+    final file = File('${temp.path}/tutorial.json');
+    await file.writeAsString('''
+      {
+        "schemaVersion": 3,
+        "completed": false,
+        "lessons": {
+          "beginner": {"completedPracticeSteps": [0, 1]},
+          "beginnerSyntax": {"completedPracticeSteps": [0]},
+          "intermediate": {"completedPracticeSteps": [0, 1, 2]}
+        }
+      }
+    ''');
+
+    final controller = TutorialController(storageFile: () async => file);
+    await controller.initialize();
+
+    expect(
+      controller.state
+          .progressFor(TutorialKnowledgeMode.selectAndSimpleFilters)
+          .completedPracticeSteps,
+      {0, 1},
+    );
+    expect(
+      controller.state
+          .progressFor(TutorialKnowledgeMode.advancedFilters)
+          .completedPracticeSteps,
+      {0},
+    );
+    expect(
+      controller.state
+          .progressFor(TutorialKnowledgeMode.complexQueries)
+          .completedPracticeSteps,
+      {0, 1, 2},
+    );
   });
 
   test('storage failures never block tutorial startup', () async {

@@ -16,7 +16,8 @@ x64. Web, Android, and iOS are not release targets yet.
 1. Update `CHANGELOG.md`.
 2. Set `version: X.Y.Z+BUILD` in `pubspec.yaml`.
 3. Run the full local verification commands from `CONTRIBUTING.md`.
-4. Commit the version change and merge it into `master` or `main`.
+4. Increase both the release version and build number, then merge the change
+   into `master`.
 
 The merged `pubspec.yaml` change starts the `Desktop Release` workflow. It
 validates that the version has not already been published, builds all three
@@ -24,8 +25,9 @@ desktop targets, packages them, generates `SHA256SUMS.txt`, and creates the
 matching Git tag and GitHub release only after all quality and build jobs
 succeed.
 
-Re-running the workflow for an already published version is safe: the release
-jobs are skipped until `pubspec.yaml` contains a new version.
+The release jobs run only when both parts of `pubspec.yaml`'s version change on
+`master` and the release tag does not already exist. Linux and Windows builds
+run only as part of this release workflow.
 
 ## Signing
 
