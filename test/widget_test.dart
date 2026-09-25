@@ -547,19 +547,13 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
-    final settingsClip = tester.widget<ClipRRect>(
-      find.byKey(const ValueKey<String>('settings-dialog-surface-clip')),
-    );
-    expect(
-      settingsClip.borderRadius,
-      NodeQlSurfaceStyle.standard.largeBorderRadius,
-    );
     final settingsSurface = find.byKey(
-      const ValueKey<String>('settings-dialog-surface-clip'),
+      const ValueKey<String>('settings-dialog'),
     );
-    expect(tester.getSize(settingsSurface).width, lessThanOrEqualTo(380));
+    expect(tester.getSize(settingsSurface).width, closeTo(1600, 1));
+    expect(tester.getSize(settingsSurface).height, closeTo(1000, 1));
     expect(tester.getCenter(settingsSurface).dx, closeTo(800, 1));
-    expect(tester.getTopLeft(settingsSurface).dx, greaterThan(40));
+    expect(tester.getTopLeft(settingsSurface), Offset.zero);
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -687,6 +681,8 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.extension_outlined).first);
+    await tester.pumpAndSettle();
     expect(
       tester
           .widget<FilledButton>(
@@ -704,27 +700,6 @@ void main() {
     expect(
       find.ancestor(
         of: find.byKey(const ValueKey<String>('settings-manage-plugins')),
-        matching: find.byType(ClipRRect),
-      ),
-      findsNothing,
-    );
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey<String>('settings-languages')),
-          )
-          .style
-          ?.shape
-          ?.resolve(<WidgetState>{}),
-      isA<RoundedRectangleBorder>().having(
-        (shape) => shape.borderRadius,
-        'borderRadius',
-        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
-      ),
-    );
-    expect(
-      find.ancestor(
-        of: find.byKey(const ValueKey<String>('settings-languages')),
         matching: find.byType(ClipRRect),
       ),
       findsNothing,
@@ -752,6 +727,8 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.info_outline_rounded).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('About NodeQL and licenses'));
     await tester.pumpAndSettle();
     expect(
@@ -768,6 +745,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.school_outlined).first);
     await tester.pumpAndSettle();
     expect(
       tester

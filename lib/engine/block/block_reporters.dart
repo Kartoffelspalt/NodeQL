@@ -34,6 +34,7 @@ bool isReporterType(BlockType type) {
 
 bool slotAcceptsReporter(String rawToken, String inputKey) {
   if (rawToken.startsWith('{') || rawToken.endsWith('}')) return true;
+  if (RegExp(r'^arg\d+$').hasMatch(inputKey)) return true;
   return const <String>{
     'aggregate',
     'column',
@@ -73,6 +74,7 @@ bool slotAcceptsReporterType(
 String? primaryReporterInputKey(BlockType type) {
   return switch (type) {
     BlockType.sqlAlias => 'value',
+    BlockType.sqlFunction => 'arg0',
     BlockType.sqlCount ||
     BlockType.sqlSum ||
     BlockType.sqlAvg ||

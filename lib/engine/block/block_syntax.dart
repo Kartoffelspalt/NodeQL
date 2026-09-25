@@ -83,6 +83,7 @@ BlockVisualKind blockVisualKindForType(BlockType type) {
     BlockType.sqlColumn ||
     BlockType.sqlText ||
     BlockType.sqlAlias ||
+    BlockType.sqlFunction ||
     BlockType.sqlSubqueryIn ||
     BlockType.sqlSubqueryAny ||
     BlockType.sqlSubqueryAll ||

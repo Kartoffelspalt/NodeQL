@@ -162,6 +162,10 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     }
     File? snapshot;
     var changesDatabase = false;
+    // Do not capture this StateNotifier in an Isolate.run closure. The
+    // notifier's Riverpod context contains non-sendable futures, which made
+    // automatic workspace previews fail with "Invalid argument(s)".
+    final readOnly = _readOnly;
     try {
       changesDatabase = await Isolate.run(
         () => _containsWriteStatements(dbPath, sql),
@@ -185,7 +189,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         snapshot = await _createSnapshot(dbPath);
       }
       final result = await Isolate.run(
-        () => _runQuery(dbPath, sql, _maxPreviewRows, readOnly: _readOnly),
+        () => _runQuery(dbPath, sql, _maxPreviewRows, readOnly: readOnly),
       );
       if (!mounted) {
         return const SqlExecutionResult(
