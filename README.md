@@ -9,6 +9,10 @@ remain on the user's device.
 > [Releasing](docs/RELEASING.md) before describing a build as generally
 > available.
 
+> **Latest release:** [NodeQL v0.4.1](docs/releases/v0.4.1.md) adds visual
+> SQLite functions, column aliases, fullscreen and exportable result tables,
+> a refined workspace, and fullscreen settings.
+
 ## Advertisement clip
 
 <video controls preload="metadata" poster="docs/screenshots/nodeql-advertisement-preview.jpg" width="100%">
@@ -62,6 +66,14 @@ Additional screenshots and contribution guidance are available in
 ## Features
 
 - Visual SQLite blocks with snapping, editing, compilation, and execution.
+- SQLite function catalog, including visual Unix timestamp to date/time
+  conversion with `datetime(..., 'unixepoch')`.
+- Per-column SELECT aliases, including multiple aliases in a single query and
+  safer handling of same-named columns in joins.
+- Fullscreen query results with CSV, JSON, and TSV export.
+- A resizable, animated three-area workbench with live database preview.
+- Fullscreen settings organized into Accessibility, Motion, Display, and
+  Personalization.
 - Interactive [NodeQL learning workshop](docs/sql-workshop.html) with twelve
   lessons, guided exercises, knowledge checks, and saved browser progress.
 - Isolated workshop mode with sixteen practical workspace missions: a large
@@ -147,7 +159,7 @@ separately when using the tarball.
 - [Translation guide](docs/localization/README.md)
 - [AI agent guide](docs/ai/README.md)
 - [Release process](docs/RELEASING.md)
-- [0.3.3 release notes](docs/releases/v0.3.3.md)
+- [v0.4.1 release notes](docs/releases/v0.4.1.md)
 - [Changelog](CHANGELOG.md)
 - [Trademark policy](TRADEMARKS.md)
 
