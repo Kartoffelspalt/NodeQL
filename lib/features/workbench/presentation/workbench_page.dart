@@ -751,126 +751,121 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       final paletteWidth = compact
                           ? layout.paletteWidth.clamp(200.0, 280.0)
                           : layout.paletteWidth;
-                      final outputWidth = compact
-                          ? layout.runtimeWidth.clamp(260.0, 360.0)
-                          : layout.runtimeWidth;
-                      return Row(
+                      return Stack(
                         children: [
-                          _CategoryRail(
-                            active: _activeCategory,
-                            hasPlugins: pluginState.entries.isNotEmpty,
-                            catalog: catalog,
-                            onSelect: (next) =>
-                                setState(() => _activeCategory = next),
-                          ),
-                          AnimatedSize(
-                            duration: Duration(
-                              milliseconds: layout.reduceMotion
-                                  ? 0
-                                  : (layout.highRefreshMode ? 240 : 300),
-                            ),
-                            curve: Curves.easeOutQuart,
-                            alignment: Alignment.centerLeft,
-                            clipBehavior: Clip.hardEdge,
-                            child: _Palette(
-                              category: _activeCategory,
-                              runtime: runtime,
-                              mode: mode,
-                              localeCode: locale.languageCode,
-                              catalog: catalog,
-                              width: paletteWidth,
-                              pluginEntries: pluginState.entries,
-                              onAdd: (type, defaults) {
-                                final controller = ref.read(
-                                  workspaceProvider.notifier,
-                                );
-                                controller.addTemplate(
-                                  type,
-                                  controller.suggestedTemplatePosition(type),
-                                  defaults: defaults,
-                                );
-                              },
-                            ),
-                          ),
-                          _ThrottledResizeHandle(
-                            value: layout.paletteWidth,
-                            resetValue: 250,
-                            minValue: 200,
-                            maxValue: 520,
-                            highRefreshMode: layout.highRefreshMode,
-                            reduceMotion: layout.reduceMotion,
-                            onChanged: ref
-                                .read(workbenchLayoutProvider.notifier)
-                                .setPaletteWidth,
-                          ),
-                          Expanded(
-                            child: _showCustomSqlEditor
-                                ? _SqlIdePane(
-                                    controller: _customSqlController,
+                          Positioned.fill(
+                            child: Row(
+                              children: [
+                                _CategoryRail(
+                                  active: _activeCategory,
+                                  hasPlugins: pluginState.entries.isNotEmpty,
+                                  catalog: catalog,
+                                  onSelect: (next) =>
+                                      setState(() => _activeCategory = next),
+                                ),
+                                AnimatedSize(
+                                  duration: Duration(
+                                    milliseconds: layout.reduceMotion
+                                        ? 0
+                                        : (layout.highRefreshMode ? 240 : 300),
+                                  ),
+                                  curve: Curves.easeOutQuart,
+                                  alignment: Alignment.centerLeft,
+                                  clipBehavior: Clip.hardEdge,
+                                  child: _Palette(
+                                    category: _activeCategory,
                                     runtime: runtime,
+                                    mode: mode,
+                                    localeCode: locale.languageCode,
                                     catalog: catalog,
-                                    executing: _executingCustomSql,
-                                    onExecute: _executeCustomSqlFromEditor,
-                                    onClose: () => _toggleCustomSqlEditor(sql),
-                                  )
-                                : Column(
-                                    children: [
-                                      _WorkspaceTabsBar(catalog: catalog),
-                                      Expanded(
-                                        child: _WorkspaceCanvas(
-                                          focusNode: _workspaceFocus,
-                                          transform: _transform,
-                                          paletteWidth: 72.0 + paletteWidth,
-                                          diagnostics: nodeDiagnostics,
-                                          onSaveProject: () =>
-                                              _saveProject(context),
+                                    width: paletteWidth,
+                                    pluginEntries: pluginState.entries,
+                                    onAdd: (type, defaults) {
+                                      final controller = ref.read(
+                                        workspaceProvider.notifier,
+                                      );
+                                      controller.addTemplate(
+                                        type,
+                                        controller.suggestedTemplatePosition(
+                                          type,
                                         ),
+                                        defaults: defaults,
+                                      );
+                                    },
+                                  ),
+                                ),
+                                _ThrottledResizeHandle(
+                                  value: layout.paletteWidth,
+                                  resetValue: 250,
+                                  axis: _ResizeAxis.horizontal,
+                                  deltaMultiplier: 1,
+                                  minValue: 200,
+                                  maxValue: 520,
+                                  highRefreshMode: layout.highRefreshMode,
+                                  reduceMotion: layout.reduceMotion,
+                                  onChanged: ref
+                                      .read(workbenchLayoutProvider.notifier)
+                                      .setPaletteWidth,
+                                ),
+                                Expanded(
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: _showCustomSqlEditor
+                                            ? _SqlIdePane(
+                                                controller:
+                                                    _customSqlController,
+                                                runtime: runtime,
+                                                catalog: catalog,
+                                                executing: _executingCustomSql,
+                                                onExecute:
+                                                    _executeCustomSqlFromEditor,
+                                                onClose: () =>
+                                                    _toggleCustomSqlEditor(sql),
+                                              )
+                                            : Column(
+                                                children: [
+                                                  Expanded(
+                                                    child: _WorkspaceCanvas(
+                                                      focusNode:
+                                                          _workspaceFocus,
+                                                      transform: _transform,
+                                                      paletteWidth:
+                                                          72.0 + paletteWidth,
+                                                      diagnostics:
+                                                          nodeDiagnostics,
+                                                      onSaveProject: () =>
+                                                          _saveProject(context),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                       ),
+                                      if (!_showCustomSqlEditor)
+                                        Positioned(
+                                          top: 0,
+                                          left: 0,
+                                          right: 0,
+                                          child: _WorkspaceTabsBar(
+                                            catalog: catalog,
+                                          ),
+                                        ),
                                     ],
                                   ),
+                                ),
+                              ],
+                            ),
                           ),
-                          _ThrottledResizeHandle(
-                            key: const ValueKey<String>(
-                              'runtime-resize-handle',
-                            ),
-                            value: layout.runtimeWidth,
-                            resetValue: 420,
-                            minValue: 260,
-                            maxValue: 720,
-                            highRefreshMode: layout.highRefreshMode,
-                            reduceMotion: layout.reduceMotion,
-                            deltaMultiplier: -1,
-                            onChanged: ref
-                                .read(workbenchLayoutProvider.notifier)
-                                .setRuntimeWidth,
-                          ),
-                          AnimatedSize(
-                            duration: Duration(
-                              milliseconds: layout.reduceMotion
-                                  ? 0
-                                  : (layout.highRefreshMode ? 240 : 300),
-                            ),
-                            curve: Curves.easeOutQuart,
-                            alignment: Alignment.centerRight,
-                            clipBehavior: Clip.hardEdge,
-                            child: _SqlRuntimePane(
-                              sql: sql,
-                              runtime: runtime,
-                              mode: mode,
-                              localeCode: locale.languageCode,
-                              catalog: catalog,
-                              width: outputWidth,
-                              commandOutputFraction:
-                                  layout.commandOutputFraction,
-                              highRefreshMode: layout.highRefreshMode,
-                              reduceMotion: layout.reduceMotion,
-                              onCommandOutputFractionChanged: (value) => ref
-                                  .read(workbenchLayoutProvider.notifier)
-                                  .setCommandOutputFraction(value),
-                              customMode: _showCustomSqlEditor,
-                              onToggleCustomMode: () =>
-                                  _toggleCustomSqlEditor(sql),
-                            ),
+                          _FloatingRuntimeWindows(
+                            sql: sql,
+                            runtime: runtime,
+                            mode: mode,
+                            localeCode: locale.languageCode,
+                            catalog: catalog,
+                            layout: layout,
+                            customMode: _showCustomSqlEditor,
+                            onToggleCustomMode: () =>
+                                _toggleCustomSqlEditor(sql),
                           ),
                         ],
                       );
@@ -2705,9 +2700,6 @@ class _WorkshopWorkspaceViewState
                   final paletteWidth = compact
                       ? layout.paletteWidth.clamp(200.0, 280.0)
                       : layout.paletteWidth;
-                  final outputWidth = compact
-                      ? layout.runtimeWidth.clamp(260.0, 360.0)
-                      : layout.runtimeWidth;
                   final practicePanelMinHeight = 220.0;
                   final practicePanelMaxHeight = math.max(
                     practicePanelMinHeight,
@@ -2721,154 +2713,147 @@ class _WorkshopWorkspaceViewState
                       (_practicePanelHeight ?? preferredPracticePanelHeight)
                           .clamp(practicePanelMinHeight, practicePanelMaxHeight)
                           .toDouble();
-                  return Row(
+                  return Stack(
                     children: [
-                      _CategoryRail(
-                        active: _activeCategory,
-                        hasPlugins: false,
-                        catalog: catalog,
-                        onSelect: (next) =>
-                            setState(() => _activeCategory = next),
-                      ),
-                      AnimatedSize(
-                        duration: Duration(
-                          milliseconds: layout.reduceMotion
-                              ? 0
-                              : (layout.highRefreshMode ? 240 : 300),
-                        ),
-                        curve: Curves.easeOutQuart,
-                        alignment: Alignment.centerLeft,
-                        clipBehavior: Clip.hardEdge,
-                        child: _Palette(
-                          key: ValueKey<String>(
-                            'workshop-palette-'
-                            '${practice?.mode.name ?? 'overview'}-'
-                            '${practice?.stepIndex ?? 0}-${mode.name}',
-                          ),
-                          category: _activeCategory,
-                          runtime: runtime,
-                          mode: mode,
-                          localeCode: localeCode,
-                          catalog: catalog,
-                          width: paletteWidth,
-                          pluginEntries: const <PluginPaletteEntry>[],
-                          onAdd: (type, defaults) {
-                            final controller = ref.read(
-                              workspaceProvider.notifier,
-                            );
-                            controller.addTemplate(
-                              type,
-                              controller.suggestedTemplatePosition(type),
-                              defaults: defaults,
-                            );
-                          },
-                        ),
-                      ),
-                      _ThrottledResizeHandle(
-                        value: layout.paletteWidth,
-                        resetValue: 250,
-                        minValue: 200,
-                        maxValue: 520,
-                        highRefreshMode: layout.highRefreshMode,
-                        reduceMotion: layout.reduceMotion,
-                        onChanged: ref
-                            .read(workbenchLayoutProvider.notifier)
-                            .setPaletteWidth,
-                      ),
-                      Expanded(
-                        child: Column(
+                      Positioned.fill(
+                        child: Row(
                           children: [
-                            _WorkspaceTabsBar(catalog: catalog),
-                            if (practice != null &&
-                                definition != null &&
-                                result != null)
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 220),
-                                switchInCurve: Curves.easeOutCubic,
-                                child: TutorialPracticePanel(
-                                  key: ValueKey<String>(
-                                    'practice-${practice.mode.name}-'
-                                    '${practice.stepIndex}',
-                                  ),
-                                  catalog: catalog,
-                                  session: practice,
-                                  definition: definition,
-                                  result: result,
-                                  abstractionMode: mode,
-                                  localeCode: localeCode,
-                                  liveSql: compileResult.sql,
-                                  onCheck: () => _checkPractice(
-                                    practice.mode,
-                                    practice.stepIndex,
-                                  ),
-                                  onHint: _showHint,
-                                  onClose: _closePractice,
-                                  height: practicePanelHeight,
-                                  minHeight: practicePanelMinHeight,
-                                  maxHeight: practicePanelMaxHeight,
-                                  onHeightChanged: (nextHeight) => setState(
-                                    () => _practicePanelHeight = nextHeight,
-                                  ),
-                                ),
-                              )
-                            else
-                              _WorkshopEmptyCoach(
-                                catalog: catalog,
-                                onChoosePath: () => _openTutorial(context),
+                            _CategoryRail(
+                              active: _activeCategory,
+                              hasPlugins: false,
+                              catalog: catalog,
+                              onSelect: (next) =>
+                                  setState(() => _activeCategory = next),
+                            ),
+                            AnimatedSize(
+                              duration: Duration(
+                                milliseconds: layout.reduceMotion
+                                    ? 0
+                                    : (layout.highRefreshMode ? 240 : 300),
                               ),
+                              curve: Curves.easeOutQuart,
+                              alignment: Alignment.centerLeft,
+                              clipBehavior: Clip.hardEdge,
+                              child: _Palette(
+                                key: ValueKey<String>(
+                                  'workshop-palette-'
+                                  '${practice?.mode.name ?? 'overview'}-'
+                                  '${practice?.stepIndex ?? 0}-${mode.name}',
+                                ),
+                                category: _activeCategory,
+                                runtime: runtime,
+                                mode: mode,
+                                localeCode: localeCode,
+                                catalog: catalog,
+                                width: paletteWidth,
+                                pluginEntries: const <PluginPaletteEntry>[],
+                                onAdd: (type, defaults) {
+                                  final controller = ref.read(
+                                    workspaceProvider.notifier,
+                                  );
+                                  controller.addTemplate(
+                                    type,
+                                    controller.suggestedTemplatePosition(type),
+                                    defaults: defaults,
+                                  );
+                                },
+                              ),
+                            ),
+                            _ThrottledResizeHandle(
+                              value: layout.paletteWidth,
+                              resetValue: 250,
+                              axis: _ResizeAxis.horizontal,
+                              deltaMultiplier: 1,
+                              minValue: 200,
+                              maxValue: 520,
+                              highRefreshMode: layout.highRefreshMode,
+                              reduceMotion: layout.reduceMotion,
+                              onChanged: ref
+                                  .read(workbenchLayoutProvider.notifier)
+                                  .setPaletteWidth,
+                            ),
                             Expanded(
-                              child: _WorkspaceCanvas(
-                                focusNode: _workspaceFocus,
-                                transform: _transform,
-                                paletteWidth: 72.0 + paletteWidth,
-                                diagnostics: diagnostics,
-                                onSaveProject: () async {},
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: Column(
+                                      children: [
+                                        if (practice != null &&
+                                            definition != null &&
+                                            result != null)
+                                          AnimatedSwitcher(
+                                            duration: const Duration(
+                                              milliseconds: 220,
+                                            ),
+                                            switchInCurve: Curves.easeOutCubic,
+                                            child: TutorialPracticePanel(
+                                              key: ValueKey<String>(
+                                                'practice-${practice.mode.name}-'
+                                                '${practice.stepIndex}',
+                                              ),
+                                              catalog: catalog,
+                                              session: practice,
+                                              definition: definition,
+                                              result: result,
+                                              abstractionMode: mode,
+                                              localeCode: localeCode,
+                                              liveSql: compileResult.sql,
+                                              onCheck: () => _checkPractice(
+                                                practice.mode,
+                                                practice.stepIndex,
+                                              ),
+                                              onHint: _showHint,
+                                              onClose: _closePractice,
+                                              height: practicePanelHeight,
+                                              minHeight: practicePanelMinHeight,
+                                              maxHeight: practicePanelMaxHeight,
+                                              onHeightChanged: (nextHeight) =>
+                                                  setState(
+                                                    () => _practicePanelHeight =
+                                                        nextHeight,
+                                                  ),
+                                            ),
+                                          )
+                                        else
+                                          _WorkshopEmptyCoach(
+                                            catalog: catalog,
+                                            onChoosePath: () =>
+                                                _openTutorial(context),
+                                          ),
+                                        Expanded(
+                                          child: _WorkspaceCanvas(
+                                            focusNode: _workspaceFocus,
+                                            transform: _transform,
+                                            paletteWidth: 72.0 + paletteWidth,
+                                            diagnostics: diagnostics,
+                                            onSaveProject: () async {},
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: _WorkspaceTabsBar(catalog: catalog),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                      _ThrottledResizeHandle(
-                        key: const ValueKey<String>(
-                          'workshop-runtime-resize-handle',
-                        ),
-                        value: layout.runtimeWidth,
-                        resetValue: 420,
-                        minValue: 260,
-                        maxValue: 720,
-                        highRefreshMode: layout.highRefreshMode,
-                        reduceMotion: layout.reduceMotion,
-                        deltaMultiplier: -1,
-                        onChanged: ref
-                            .read(workbenchLayoutProvider.notifier)
-                            .setRuntimeWidth,
-                      ),
-                      AnimatedSize(
-                        duration: Duration(
-                          milliseconds: layout.reduceMotion
-                              ? 0
-                              : (layout.highRefreshMode ? 240 : 300),
-                        ),
-                        curve: Curves.easeOutQuart,
-                        alignment: Alignment.centerRight,
-                        clipBehavior: Clip.hardEdge,
-                        child: _SqlRuntimePane(
-                          sql: compileResult.sql,
-                          runtime: runtime,
-                          mode: mode,
-                          localeCode: localeCode,
-                          catalog: catalog,
-                          width: outputWidth,
-                          commandOutputFraction: layout.commandOutputFraction,
-                          highRefreshMode: layout.highRefreshMode,
-                          reduceMotion: layout.reduceMotion,
-                          onCommandOutputFractionChanged: (value) => ref
-                              .read(workbenchLayoutProvider.notifier)
-                              .setCommandOutputFraction(value),
-                          customMode: false,
-                          showCustomModeToggle: false,
-                          onToggleCustomMode: () {},
-                        ),
+                      _FloatingRuntimeWindows(
+                        sql: compileResult.sql,
+                        runtime: runtime,
+                        mode: mode,
+                        localeCode: localeCode,
+                        catalog: catalog,
+                        layout: layout,
+                        customMode: false,
+                        showCustomModeToggle: false,
+                        onToggleCustomMode: () {},
                       ),
                     ],
                   );
@@ -5513,20 +5498,6 @@ class _WorkspaceCanvas extends ConsumerWidget {
                 ),
               ),
             ),
-            if (selectedColumnLink case final selectedLink?)
-              Positioned(
-                top: 12,
-                right: 12,
-                child: _ColumnLinkManagerCard(
-                  link: selectedLink,
-                  catalog: ref.watch(translationControllerProvider).catalog,
-                  mode: ref.watch(sqlModeProvider),
-                  sourceColor: ropeColors.source,
-                  targetColor: ropeColors.target,
-                  onClose: controller.clearColumnLinkSelection,
-                  onDelete: controller.deleteSelectedColumnLink,
-                ),
-              ),
           ],
         ),
       ),
@@ -9138,12 +9109,11 @@ enum _ResizeAxis { horizontal, vertical }
 /// expensive workspace resize happens once, after the pointer is released.
 class _ThrottledResizeHandle extends StatefulWidget {
   const _ThrottledResizeHandle({
-    super.key,
     required this.value,
     required this.resetValue,
     required this.onChanged,
-    this.axis = _ResizeAxis.horizontal,
-    this.deltaMultiplier = 1,
+    required this.axis,
+    required this.deltaMultiplier,
     this.minValue,
     this.maxValue,
     this.highRefreshMode = true,
@@ -9333,7 +9303,10 @@ class _ThrottledResizeHandleState extends State<_ThrottledResizeHandle>
 
   @override
   Widget build(BuildContext context) {
-    final horizontal = widget.axis == _ResizeAxis.horizontal;
+    final horizontal = switch (widget.axis) {
+      _ResizeAxis.horizontal => true,
+      _ResizeAxis.vertical => false,
+    };
     final colors = NodeQlWorkbenchColors.of(context);
     final settling = !widget.reduceMotion && _settlingOffset != 0;
     final active = _hovering || _dragValue != null || settling;
@@ -9559,7 +9532,10 @@ class _ResizeGhostOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final horizontal = axis == _ResizeAxis.horizontal;
+    final horizontal = switch (axis) {
+      _ResizeAxis.horizontal => true,
+      _ResizeAxis.vertical => false,
+    };
     final accent = Theme.of(context).colorScheme.primary;
     final originEdge = horizontal
         ? origin.dx + handleSize.width / 2
@@ -9640,18 +9616,31 @@ class _ResizeGhostOverlay extends StatelessWidget {
   }
 }
 
-class _SqlRuntimePane extends StatefulWidget {
-  const _SqlRuntimePane({
+String _runtimePanelLayoutLabel(
+  RuntimePanelLayoutMode mode,
+  String localeCode,
+) {
+  final german = localeCode.toLowerCase().startsWith('de');
+  return switch (mode) {
+    RuntimePanelLayoutMode.commandBottom =>
+      german ? 'Command Output unten' : 'Command output at bottom',
+    RuntimePanelLayoutMode.previewBottom =>
+      german ? 'Output Preview unten' : 'Output preview at bottom',
+    RuntimePanelLayoutMode.rightSplit =>
+      german ? 'Rechts: zwei Reihen' : 'Right: two rows',
+  };
+}
+
+enum _RuntimePanel { command, preview }
+
+class _FloatingRuntimeWindows extends ConsumerStatefulWidget {
+  const _FloatingRuntimeWindows({
     required this.sql,
     required this.runtime,
     required this.mode,
     required this.localeCode,
     required this.catalog,
-    required this.width,
-    required this.commandOutputFraction,
-    required this.highRefreshMode,
-    required this.reduceMotion,
-    required this.onCommandOutputFractionChanged,
+    required this.layout,
     required this.customMode,
     required this.onToggleCustomMode,
     this.showCustomModeToggle = true,
@@ -9662,47 +9651,557 @@ class _SqlRuntimePane extends StatefulWidget {
   final SqlAbstractionMode mode;
   final String localeCode;
   final TranslationCatalog catalog;
-  final double width;
-  final double commandOutputFraction;
-  final bool highRefreshMode;
-  final bool reduceMotion;
-  final ValueChanged<double> onCommandOutputFractionChanged;
+  final WorkbenchLayout layout;
   final bool customMode;
   final VoidCallback onToggleCustomMode;
   final bool showCustomModeToggle;
 
   @override
-  State<_SqlRuntimePane> createState() => _SqlRuntimePaneState();
+  ConsumerState<_FloatingRuntimeWindows> createState() =>
+      _FloatingRuntimeWindowsState();
 }
 
-class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
-  final ScrollController _outputHorizontal = ScrollController();
-  final ScrollController _outputVertical = ScrollController();
+class _FloatingRuntimeWindowsState
+    extends ConsumerState<_FloatingRuntimeWindows> {
+  _RuntimePanel? _draggedPanel;
+  Offset? _dragPointer;
 
-  @override
-  void dispose() {
-    _outputHorizontal.dispose();
-    _outputVertical.dispose();
-    super.dispose();
+  void _startDrag(_RuntimePanel panel, Offset pointer) {
+    setState(() {
+      _draggedPanel = panel;
+      _dragPointer = pointer;
+    });
   }
 
-  Future<void> _copySqlToClipboard() async {
-    final sql = widget.sql.trim();
-    if (sql.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: sql));
-    if (!mounted) return;
-    final copied = widget.catalog.text('runtime.copied');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(copied),
-        duration: const Duration(milliseconds: 1200),
-      ),
+  void _updateDrag(Offset pointer) {
+    if (_draggedPanel == null) return;
+    setState(() => _dragPointer = pointer);
+  }
+
+  void _endDrag(
+    Map<RuntimePanelLayoutMode, (Rect, Rect)> layouts,
+    WorkbenchLayoutController controller,
+  ) {
+    final panel = _draggedPanel;
+    final pointer = _dragPointer;
+    if (panel != null && pointer != null) {
+      final nextMode = _nearestDockMode(panel, pointer, layouts);
+      if (nextMode != null) controller.setRuntimePanelLayout(nextMode);
+    }
+    setState(() {
+      _draggedPanel = null;
+      _dragPointer = null;
+    });
+  }
+
+  RuntimePanelLayoutMode? _nearestDockMode(
+    _RuntimePanel panel,
+    Offset pointer,
+    Map<RuntimePanelLayoutMode, (Rect, Rect)> layouts,
+  ) {
+    RuntimePanelLayoutMode? bestMode;
+    var bestDistance = double.infinity;
+    for (final mode in _dropModesFor(panel)) {
+      final panels = layouts[mode]!;
+      final target = panel == _RuntimePanel.command ? panels.$1 : panels.$2;
+      final distance = (target.center - pointer).distance;
+      if (target.inflate(72).contains(pointer) && distance < bestDistance) {
+        bestMode = mode;
+        bestDistance = distance;
+      }
+    }
+    return bestMode;
+  }
+
+  Iterable<RuntimePanelLayoutMode> _dropModesFor(_RuntimePanel panel) {
+    return switch (panel) {
+      _RuntimePanel.command => const [
+        RuntimePanelLayoutMode.commandBottom,
+        RuntimePanelLayoutMode.rightSplit,
+      ],
+      _RuntimePanel.preview => const [
+        RuntimePanelLayoutMode.previewBottom,
+        RuntimePanelLayoutMode.rightSplit,
+      ],
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = ref.read(workbenchLayoutProvider.notifier);
+    final workspaceController = ref.read(workspaceProvider.notifier);
+    final selectedColumnLinkTargetId = ref.watch(
+      workspaceProvider.select((state) => state.selectedColumnLinkTargetId),
+    );
+    final selectedColumnLink = selectedColumnLinkTargetId == null
+        ? null
+        : workspaceController.selectedColumnLink();
+    final ropeColors = _RopeHighlightColors.of(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layouts = <RuntimePanelLayoutMode, (Rect, Rect)>{
+          for (final mode in RuntimePanelLayoutMode.values)
+            mode: _panelRects(size: constraints.biggest, mode: mode),
+        };
+        final panels = layouts[widget.layout.runtimePanelLayout]!;
+        final activePanel = _draggedPanel;
+        final activePointer = _dragPointer;
+        final selectedMode = activePanel == null || activePointer == null
+            ? null
+            : _nearestDockMode(activePanel, activePointer, layouts);
+        Offset toLocal(Offset globalPosition) {
+          final box = context.findRenderObject()! as RenderBox;
+          return box.globalToLocal(globalPosition);
+        }
+
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            _SqlCommandOutputWindow(
+              rect: panels.$1,
+              sql: widget.sql,
+              catalog: widget.catalog,
+              localeCode: widget.localeCode,
+              customMode: widget.customMode,
+              showCustomModeToggle: widget.showCustomModeToggle,
+              runtimePanelLayout: widget.layout.runtimePanelLayout,
+              onRuntimePanelLayoutChanged: controller.setRuntimePanelLayout,
+              onToggleCustomMode: widget.onToggleCustomMode,
+              onHeaderDragStart: (details) => _startDrag(
+                _RuntimePanel.command,
+                toLocal(details.globalPosition),
+              ),
+              onHeaderDragUpdate: (details) =>
+                  _updateDrag(toLocal(details.globalPosition)),
+              onHeaderDragEnd: () => _endDrag(
+                layouts,
+                controller,
+              ),
+            ),
+            _OutputPreviewFloatingWindow(
+              rect: panels.$2,
+              runtime: widget.runtime,
+              mode: widget.mode,
+              localeCode: widget.localeCode,
+              catalog: widget.catalog,
+              onHeaderDragStart: (details) => _startDrag(
+                _RuntimePanel.preview,
+                toLocal(details.globalPosition),
+              ),
+              onHeaderDragUpdate: (details) =>
+                  _updateDrag(toLocal(details.globalPosition)),
+              onHeaderDragEnd: () => _endDrag(
+                layouts,
+                controller,
+              ),
+            ),
+            if (activePanel != null && activePointer != null) ...[
+              for (final mode in _dropModesFor(activePanel))
+                Positioned.fromRect(
+                  rect: activePanel == _RuntimePanel.command
+                      ? layouts[mode]!.$1
+                      : layouts[mode]!.$2,
+                  child: IgnorePointer(
+                    child: _RuntimeDockGhost(
+                      label: _runtimePanelLayoutLabel(mode, widget.localeCode),
+                      highlighted: mode == selectedMode,
+                    ),
+                  ),
+                ),
+              Positioned.fromRect(
+                rect: _dragGhostRect(
+                  pointer: activePointer,
+                  source: activePanel == _RuntimePanel.command
+                      ? panels.$1
+                      : panels.$2,
+                  bounds: constraints.biggest,
+                ),
+                child: const IgnorePointer(child: _RuntimeDragGhost()),
+              ),
+            ],
+            if (selectedColumnLink case final link?)
+              Positioned(
+                top: 64,
+                left: 12,
+                child: _ColumnLinkManagerCard(
+                  link: link,
+                  catalog: widget.catalog,
+                  mode: widget.mode,
+                  sourceColor: ropeColors.source,
+                  targetColor: ropeColors.target,
+                  onClose: workspaceController.clearColumnLinkSelection,
+                  onDelete: workspaceController.deleteSelectedColumnLink,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
-  bool get _hasPreviewRows => widget.runtime.lastRows.isNotEmpty;
+  (Rect, Rect) _panelRects({
+    required Size size,
+    required RuntimePanelLayoutMode mode,
+  }) {
+    const gap = 8.0;
+    const workspaceTabsHeight = 52.0;
+    final width = math.max(1.0, size.width);
+    final height = math.max(1.0, size.height);
+    final contentTop = math.min(workspaceTabsHeight, height);
+    final contentHeight = math.max(1.0, height - contentTop);
+    final bottomHeight = math.min(
+      math.max(180.0, contentHeight * .30),
+      contentHeight,
+    );
+    final sideWidth = math.min(math.max(360.0, width * .31), width);
 
-  String _previewActionText(String action) {
+    final lowerTop = height - bottomHeight;
+    final upperHeight = math.max(1.0, lowerTop - contentTop - gap);
+    final upperRight = Rect.fromLTWH(
+      width - sideWidth,
+      contentTop,
+      sideWidth,
+      upperHeight,
+    );
+    final fullBottom = Rect.fromLTWH(0, lowerTop, width, bottomHeight);
+
+    return switch (mode) {
+      RuntimePanelLayoutMode.commandBottom => (fullBottom, upperRight),
+      RuntimePanelLayoutMode.previewBottom => (upperRight, fullBottom),
+      RuntimePanelLayoutMode.rightSplit => () {
+        final rowHeight = math.max(1.0, (contentHeight - gap) / 2);
+        return (
+          Rect.fromLTWH(width - sideWidth, contentTop, sideWidth, rowHeight),
+          Rect.fromLTWH(
+            width - sideWidth,
+            contentTop + rowHeight + gap,
+            sideWidth,
+            rowHeight,
+          ),
+        );
+      }(),
+    };
+  }
+
+  Rect _dragGhostRect({
+    required Offset pointer,
+    required Rect source,
+    required Size bounds,
+  }) {
+    final width = math.min(source.width, bounds.width);
+    final height = math.min(source.height, bounds.height);
+    final left = (pointer.dx - width / 2)
+        .clamp(0.0, math.max(0.0, bounds.width - width))
+        .toDouble();
+    final top = (pointer.dy - 19)
+        .clamp(0.0, math.max(0.0, bounds.height - height))
+        .toDouble();
+    return Rect.fromLTWH(left, top, width, height);
+  }
+}
+
+class _RuntimeDockGhost extends StatelessWidget {
+  const _RuntimeDockGhost({required this.label, required this.highlighted});
+
+  final String label;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 90),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: highlighted ? .22 : .07),
+        border: Border.all(
+          color: accent.withValues(alpha: highlighted ? .96 : .35),
+          width: highlighted ? 2 : 1,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RuntimeDragGhost extends StatelessWidget {
+  const _RuntimeDragGhost();
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Opacity(
+      opacity: .48,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: .18),
+          border: Border.all(color: accent, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .28),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FloatingRuntimeWindow extends StatelessWidget {
+  const _FloatingRuntimeWindow({
+    super.key,
+    required this.rect,
+    required this.icon,
+    required this.title,
+    required this.child,
+    this.actions = const <Widget>[],
+    this.onHeaderDragStart,
+    this.onHeaderDragUpdate,
+    this.onHeaderDragEnd,
+    this.onHeaderDragCancel,
+  });
+
+  final Rect rect;
+  final IconData icon;
+  final String title;
+  final Widget child;
+  final List<Widget> actions;
+  final GestureDragStartCallback? onHeaderDragStart;
+  final GestureDragUpdateCallback? onHeaderDragUpdate;
+  final GestureDragEndCallback? onHeaderDragEnd;
+  final VoidCallback? onHeaderDragCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    return Positioned(
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      child: Container(
+        decoration: surfaceStyle.surfaceDecoration(
+          color: colors.panel,
+          borderColor: colors.border,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: onHeaderDragStart,
+                onPanUpdate: onHeaderDragUpdate,
+                onPanEnd: onHeaderDragEnd,
+                onPanCancel: onHeaderDragCancel,
+                child: Container(
+                  height: 38,
+                  padding: const EdgeInsets.only(left: 12, right: 4),
+                  decoration: BoxDecoration(
+                    color: colors.panelElevated,
+                    border: Border(bottom: BorderSide(color: colors.border)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(icon, size: 18, color: accent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      ...actions,
+                      const Icon(Icons.drag_indicator_rounded, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SqlCommandOutputWindow extends StatefulWidget {
+  const _SqlCommandOutputWindow({
+    required this.rect,
+    required this.sql,
+    required this.catalog,
+    required this.localeCode,
+    required this.customMode,
+    required this.showCustomModeToggle,
+    required this.runtimePanelLayout,
+    required this.onRuntimePanelLayoutChanged,
+    required this.onToggleCustomMode,
+    required this.onHeaderDragStart,
+    required this.onHeaderDragUpdate,
+    required this.onHeaderDragEnd,
+  });
+
+  final Rect rect;
+  final String sql;
+  final TranslationCatalog catalog;
+  final String localeCode;
+  final bool customMode;
+  final bool showCustomModeToggle;
+  final RuntimePanelLayoutMode runtimePanelLayout;
+  final ValueChanged<RuntimePanelLayoutMode> onRuntimePanelLayoutChanged;
+  final VoidCallback onToggleCustomMode;
+  final GestureDragStartCallback onHeaderDragStart;
+  final GestureDragUpdateCallback onHeaderDragUpdate;
+  final VoidCallback onHeaderDragEnd;
+
+  @override
+  State<_SqlCommandOutputWindow> createState() =>
+      _SqlCommandOutputWindowState();
+}
+
+class _SqlCommandOutputWindowState extends State<_SqlCommandOutputWindow> {
+  Future<void> _copySql() async {
+    if (widget.sql.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: widget.sql.trim()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(widget.catalog.text('runtime.copied'))),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return _FloatingRuntimeWindow(
+      key: const ValueKey<String>('sqlite-command-output-window'),
+      rect: widget.rect,
+      icon: Icons.terminal_rounded,
+      title: widget.catalog.text('runtime.sqlCommandOutput'),
+      onHeaderDragStart: widget.onHeaderDragStart,
+      onHeaderDragUpdate: widget.onHeaderDragUpdate,
+      onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
+      onHeaderDragCancel: widget.onHeaderDragEnd,
+      actions: [
+        SizedBox(
+          width: 38,
+          height: 38,
+          child: PopupMenuButton<RuntimePanelLayoutMode>(
+            key: const ValueKey<String>('runtime-panel-layout-menu'),
+            tooltip: widget.localeCode.toLowerCase().startsWith('de')
+                ? 'Ausgabe anordnen'
+                : 'Arrange output',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 220),
+            icon: const Icon(Icons.dashboard_customize_rounded, size: 19),
+            onSelected: widget.onRuntimePanelLayoutChanged,
+            itemBuilder: (context) => [
+              for (final mode in RuntimePanelLayoutMode.values)
+                CheckedPopupMenuItem<RuntimePanelLayoutMode>(
+                  value: mode,
+                  checked: mode == widget.runtimePanelLayout,
+                  child: Text(
+                    _runtimePanelLayoutLabel(mode, widget.localeCode),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (widget.showCustomModeToggle)
+          IconButton(
+            key: const ValueKey<String>('toggle-custom-sql'),
+            onPressed: widget.onToggleCustomMode,
+            tooltip: widget.catalog.text(
+              widget.customMode
+                  ? 'runtime.showNodeWorkspace'
+                  : 'runtime.customSql',
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+            icon: Icon(
+              widget.customMode
+                  ? Icons.account_tree_outlined
+                  : Icons.edit_note_rounded,
+              size: 20,
+            ),
+          ),
+        IconButton(
+          key: const ValueKey<String>('copy-sql-command'),
+          onPressed: widget.sql.trim().isEmpty ? null : _copySql,
+          tooltip: widget.catalog.text('runtime.copySql'),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+          icon: const Icon(Icons.copy_rounded, size: 19),
+        ),
+      ],
+      child: ColoredBox(
+        color: colors.panel,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(14),
+          child: SelectionArea(
+            child: Text(
+              widget.sql.isEmpty
+                  ? widget.catalog.text('runtime.sqlOutput')
+                  : widget.sql,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                color: colors.sqlText,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OutputPreviewFloatingWindow extends StatefulWidget {
+  const _OutputPreviewFloatingWindow({
+    required this.rect,
+    required this.runtime,
+    required this.mode,
+    required this.localeCode,
+    required this.catalog,
+    required this.onHeaderDragStart,
+    required this.onHeaderDragUpdate,
+    required this.onHeaderDragEnd,
+  });
+
+  final Rect rect;
+  final SqlRuntimeState runtime;
+  final SqlAbstractionMode mode;
+  final String localeCode;
+  final TranslationCatalog catalog;
+  final GestureDragStartCallback onHeaderDragStart;
+  final GestureDragUpdateCallback onHeaderDragUpdate;
+  final VoidCallback onHeaderDragEnd;
+
+  @override
+  State<_OutputPreviewFloatingWindow> createState() =>
+      _OutputPreviewFloatingWindowState();
+}
+
+class _OutputPreviewFloatingWindowState
+    extends State<_OutputPreviewFloatingWindow> {
+  bool get _hasRows => widget.runtime.lastRows.isNotEmpty;
+
+  String _actionText(String action) {
     final german = widget.localeCode.toLowerCase().startsWith('de');
     return switch (action) {
       'fullscreen' =>
@@ -9719,11 +10218,11 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     };
   }
 
-  Future<void> _exportPreview(SqlResultExportFormat format) async {
-    if (!_hasPreviewRows) return;
+  Future<void> _export(SqlResultExportFormat format) async {
+    if (!_hasRows) return;
     final extension = sqlResultExportExtension(format);
     final path = await FilePicker.platform.saveFile(
-      dialogTitle: _previewActionText('export'),
+      dialogTitle: _actionText('export'),
       fileName: 'nodeql-result.$extension',
       type: FileType.custom,
       allowedExtensions: <String>[extension],
@@ -9735,12 +10234,12 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${_previewActionText('exported')}: $path')),
+      SnackBar(content: Text('${_actionText('exported')}: $path')),
     );
   }
 
-  Future<void> _copyPreviewAsTsv() async {
-    if (!_hasPreviewRows) return;
+  Future<void> _copyAsTsv() async {
+    if (!_hasRows) return;
     await Clipboard.setData(
       ClipboardData(
         text: encodeSqlResultRows(
@@ -9752,11 +10251,11 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(_previewActionText('copied'))));
+    ).showSnackBar(SnackBar(content: Text(_actionText('copied'))));
   }
 
-  Future<void> _showFullscreenPreview() async {
-    if (!_hasPreviewRows) return;
+  Future<void> _showFullscreen() async {
+    if (!_hasRows) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog.fullscreen(
@@ -9769,261 +10268,94 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
     );
   }
 
-  List<Widget> _previewActions() => <Widget>[
-    IconButton(
-      key: const ValueKey<String>('preview-fullscreen'),
-      onPressed: _hasPreviewRows ? _showFullscreenPreview : null,
-      tooltip: _previewActionText('fullscreen'),
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-      icon: const Icon(Icons.fullscreen_rounded, size: 20),
-    ),
-    PopupMenuButton<String>(
-      key: const ValueKey<String>('preview-export-menu'),
-      enabled: _hasPreviewRows,
-      tooltip: _previewActionText('export'),
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-      icon: const Icon(Icons.ios_share_rounded, size: 19),
-      onSelected: (value) {
-        switch (value) {
-          case 'csv':
-            _exportPreview(SqlResultExportFormat.csv);
-          case 'json':
-            _exportPreview(SqlResultExportFormat.json);
-          case 'tsv':
-            _exportPreview(SqlResultExportFormat.tsv);
-          case 'copy-tsv':
-            _copyPreviewAsTsv();
-        }
-      },
-      itemBuilder: (context) => <PopupMenuEntry<String>>[
-        for (final format in SqlResultExportFormat.values)
-          PopupMenuItem<String>(
-            value: format.name,
-            child: Text('Export ${sqlResultExportLabel(format)}'),
-          ),
-        PopupMenuItem<String>(
-          value: 'copy-tsv',
-          child: Text(_previewActionText('copy')),
-        ),
-      ],
-    ),
-  ];
-
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.width,
-      child: Padding(
-        padding: const EdgeInsets.all(NodeQlDesign.space3),
-        child: widget.customMode
-            ? _buildFullOutputPreview()
-            : _buildSplitOutput(),
+  Widget build(BuildContext context) => _FloatingRuntimeWindow(
+    key: const ValueKey<String>('full-output-preview'),
+    rect: widget.rect,
+    icon: Icons.table_rows_rounded,
+    title: widget.catalog.text('runtime.outputPreview'),
+    onHeaderDragStart: widget.onHeaderDragStart,
+    onHeaderDragUpdate: widget.onHeaderDragUpdate,
+    onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
+    onHeaderDragCancel: widget.onHeaderDragEnd,
+    actions: [
+      IconButton(
+        key: const ValueKey<String>('preview-fullscreen'),
+        onPressed: _hasRows ? _showFullscreen : null,
+        tooltip: _actionText('fullscreen'),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+        icon: const Icon(Icons.fullscreen_rounded, size: 20),
       ),
-    );
-  }
-
-  Widget _buildFullOutputPreview() {
-    final colors = NodeQlWorkbenchColors.of(context);
-    final surfaceStyle = NodeQlSurfaceStyle.of(context);
-    return Container(
-      key: const ValueKey<String>('full-output-preview'),
-      decoration: surfaceStyle.surfaceDecoration(
-        color: colors.panel,
-        borderColor: colors.border,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Container(
-            height: 38,
-            padding: const EdgeInsets.only(left: 14, right: 4),
-            decoration: BoxDecoration(
-              color: colors.panelElevated,
-              border: Border(bottom: BorderSide(color: colors.border)),
+      PopupMenuButton<String>(
+        key: const ValueKey<String>('preview-export-menu'),
+        enabled: _hasRows,
+        tooltip: _actionText('export'),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+        icon: const Icon(Icons.ios_share_rounded, size: 19),
+        onSelected: (value) {
+          switch (value) {
+            case 'csv':
+              _export(SqlResultExportFormat.csv);
+            case 'json':
+              _export(SqlResultExportFormat.json);
+            case 'tsv':
+              _export(SqlResultExportFormat.tsv);
+            case 'copy-tsv':
+              _copyAsTsv();
+          }
+        },
+        itemBuilder: (context) => <PopupMenuEntry<String>>[
+          for (final format in SqlResultExportFormat.values)
+            PopupMenuItem<String>(
+              value: format.name,
+              child: Text('Export ${sqlResultExportLabel(format)}'),
             ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.table_rows_rounded,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    widget.catalog.text('runtime.outputPreview'),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                if (widget.showCustomModeToggle)
-                  IconButton(
-                    key: const ValueKey<String>('toggle-custom-sql'),
-                    onPressed: widget.onToggleCustomMode,
-                    tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 38,
-                      height: 38,
-                    ),
-                    icon: const Icon(Icons.account_tree_outlined, size: 20),
-                  ),
-                ..._previewActions(),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: _buildOutputBody(),
-            ),
+          PopupMenuItem<String>(
+            value: 'copy-tsv',
+            child: Text(_actionText('copy')),
           ),
         ],
       ),
-    );
+    ],
+    child: _SqlResultTable(
+      runtime: widget.runtime,
+      mode: widget.mode,
+      catalog: widget.catalog,
+    ),
+  );
+}
+
+class _SqlResultTable extends StatefulWidget {
+  const _SqlResultTable({
+    required this.runtime,
+    required this.mode,
+    required this.catalog,
+  });
+
+  final SqlRuntimeState runtime;
+  final SqlAbstractionMode mode;
+  final TranslationCatalog catalog;
+
+  @override
+  State<_SqlResultTable> createState() => _SqlResultTableState();
+}
+
+class _SqlResultTableState extends State<_SqlResultTable> {
+  final ScrollController _horizontal = ScrollController();
+  final ScrollController _vertical = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontal.dispose();
+    _vertical.dispose();
+    super.dispose();
   }
 
-  Widget _buildSplitOutput() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final workbenchColors = NodeQlWorkbenchColors.of(context);
-        const handleHeight = 6.0;
-        const minimumPreviewHeight = 110.0;
-        final sql = widget.sql.isEmpty
-            ? widget.catalog.text('runtime.sqlOutput')
-            : widget.sql;
-        final maxSqlHeight =
-            (constraints.maxHeight - minimumPreviewHeight - handleHeight)
-                .clamp(112.0, double.infinity)
-                .toDouble();
-        final sqlHeight = (constraints.maxHeight * widget.commandOutputFraction)
-            .clamp(112.0, maxSqlHeight)
-            .toDouble();
-        return Column(
-          key: const ValueKey('split'),
-          children: [
-            TweenAnimationBuilder<double>(
-              duration: Duration(
-                milliseconds: widget.reduceMotion
-                    ? 0
-                    : (widget.highRefreshMode ? 240 : 300),
-              ),
-              curve: Curves.easeOutQuart,
-              tween: Tween<double>(end: sqlHeight),
-              builder: (context, animatedHeight, child) =>
-                  SizedBox(height: animatedHeight, child: child),
-              child: Column(
-                children: [
-                  Container(
-                    height: 38,
-                    padding: const EdgeInsets.only(left: 14, right: 4),
-                    decoration: BoxDecoration(
-                      color: workbenchColors.panelElevated,
-                      border: Border(
-                        bottom: BorderSide(color: workbenchColors.border),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.terminal_rounded,
-                          size: 18,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 9),
-                        Expanded(
-                          child: Text(
-                            widget.catalog.text('runtime.sqlCommandOutput'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (widget.showCustomModeToggle)
-                          IconButton(
-                            key: const ValueKey<String>('toggle-custom-sql'),
-                            onPressed: widget.onToggleCustomMode,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            tooltip: widget.catalog.text('runtime.customSql'),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints.tightFor(
-                              width: 38,
-                              height: 38,
-                            ),
-                            icon: const Icon(Icons.edit_note_rounded, size: 20),
-                          ),
-                        IconButton(
-                          key: const ValueKey('copy-sql-command'),
-                          onPressed: widget.sql.trim().isEmpty
-                              ? null
-                              : _copySqlToClipboard,
-                          color: Theme.of(context).colorScheme.onSurface,
-                          tooltip: widget.catalog.text('runtime.copySql'),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 38,
-                            height: 38,
-                          ),
-                          icon: const Icon(Icons.copy_rounded, size: 19),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ColoredBox(
-                      color: workbenchColors.panel,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(14),
-                        child: Align(
-                          alignment: AlignmentDirectional.topStart,
-                          child: SelectionArea(
-                            child: Text(
-                              sql,
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                color: workbenchColors.sqlText,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              height: handleHeight,
-              child: _ThrottledResizeHandle(
-                key: const ValueKey<String>('command-output-resize-handle'),
-                axis: _ResizeAxis.vertical,
-                value: widget.commandOutputFraction,
-                resetValue: .42,
-                minValue: .18,
-                maxValue: .78,
-                highRefreshMode: widget.highRefreshMode,
-                reduceMotion: widget.reduceMotion,
-                deltaMultiplier: constraints.maxHeight <= 0
-                    ? 0
-                    : 1 / constraints.maxHeight,
-                onChanged: widget.onCommandOutputFractionChanged,
-              ),
-            ),
-            Expanded(child: _buildDatabasePreviewPanel()),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildOutputBody() {
-    final workbenchColors = NodeQlWorkbenchColors.of(context);
-    final surfaceStyle = NodeQlSurfaceStyle.of(context);
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     if (widget.runtime.lastRows.isEmpty) {
       final message = widget.runtime.lastMessage == null
@@ -10032,14 +10364,12 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
               mode: widget.mode,
               message: widget.runtime.lastMessage!,
             );
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: surfaceStyle.surfaceDecoration(
-          color: workbenchColors.panel,
-          borderColor: workbenchColors.border,
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Text(message, style: TextStyle(color: colorScheme.onSurface)),
         ),
-        child: Text(message, style: TextStyle(color: colorScheme.onSurface)),
       );
     }
     return ScrollConfiguration(
@@ -10053,38 +10383,36 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
         },
       ),
       child: Scrollbar(
-        controller: _outputHorizontal,
+        controller: _horizontal,
         thumbVisibility: true,
         trackVisibility: true,
         notificationPredicate: (n) => n.metrics.axis == Axis.horizontal,
         child: SingleChildScrollView(
-          controller: _outputHorizontal,
+          controller: _horizontal,
           scrollDirection: Axis.horizontal,
           child: Scrollbar(
-            controller: _outputVertical,
+            controller: _vertical,
             thumbVisibility: true,
             trackVisibility: true,
             notificationPredicate: (n) => n.metrics.axis == Axis.vertical,
             child: SingleChildScrollView(
-              controller: _outputVertical,
+              controller: _vertical,
               child: DataTable(
                 headingTextStyle: TextStyle(
                   color: colorScheme.onSurface,
                   fontWeight: FontWeight.w700,
                 ),
                 dataTextStyle: TextStyle(color: colorScheme.onSurface),
-                headingRowColor: WidgetStateProperty.all(
-                  workbenchColors.panelElevated,
-                ),
-                dataRowColor: WidgetStateProperty.all(workbenchColors.panel),
+                headingRowColor: WidgetStateProperty.all(colors.panelElevated),
+                dataRowColor: WidgetStateProperty.all(colors.panel),
                 columns: widget.runtime.lastRows.first.keys
-                    .map((k) => DataColumn(label: Text(k)))
+                    .map((key) => DataColumn(label: Text(key)))
                     .toList(),
                 rows: widget.runtime.lastRows
                     .map(
                       (row) => DataRow(
                         cells: row.values
-                            .map((v) => DataCell(Text(v)))
+                            .map((value) => DataCell(Text(value)))
                             .toList(),
                       ),
                     )
@@ -10094,35 +10422,6 @@ class _SqlRuntimePaneState extends State<_SqlRuntimePane> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildDatabasePreviewPanel() {
-    final workbenchColors = NodeQlWorkbenchColors.of(context);
-    return Column(
-      children: [
-        Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: workbenchColors.panelElevated,
-            border: Border(bottom: BorderSide(color: workbenchColors.border)),
-          ),
-          alignment: Alignment.centerLeft,
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.catalog.text('runtime.outputPreview'),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-              ..._previewActions(),
-            ],
-          ),
-        ),
-        Expanded(child: _buildOutputBody()),
-      ],
     );
   }
 }

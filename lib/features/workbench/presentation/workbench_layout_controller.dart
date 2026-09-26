@@ -5,11 +5,15 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// Fixed, space-filling arrangements for the two runtime panels.
+enum RuntimePanelLayoutMode { commandBottom, previewBottom, rightSplit }
+
 class WorkbenchLayout {
   const WorkbenchLayout({
     this.paletteWidth = 250,
     this.runtimeWidth = 420,
     this.commandOutputFraction = .42,
+    this.runtimePanelLayout = RuntimePanelLayoutMode.rightSplit,
     this.highRefreshMode = true,
     this.reduceMotion = false,
   });
@@ -17,6 +21,7 @@ class WorkbenchLayout {
   final double paletteWidth;
   final double runtimeWidth;
   final double commandOutputFraction;
+  final RuntimePanelLayoutMode runtimePanelLayout;
   final bool highRefreshMode;
   final bool reduceMotion;
 
@@ -24,12 +29,14 @@ class WorkbenchLayout {
     double? paletteWidth,
     double? runtimeWidth,
     double? commandOutputFraction,
+    RuntimePanelLayoutMode? runtimePanelLayout,
     bool? highRefreshMode,
     bool? reduceMotion,
   }) => WorkbenchLayout(
     paletteWidth: paletteWidth ?? this.paletteWidth,
     runtimeWidth: runtimeWidth ?? this.runtimeWidth,
     commandOutputFraction: commandOutputFraction ?? this.commandOutputFraction,
+    runtimePanelLayout: runtimePanelLayout ?? this.runtimePanelLayout,
     highRefreshMode: highRefreshMode ?? this.highRefreshMode,
     reduceMotion: reduceMotion ?? this.reduceMotion,
   );
@@ -74,6 +81,12 @@ class WorkbenchLayoutController extends StateNotifier<WorkbenchLayout> {
     _scheduleSave();
   }
 
+  void setRuntimePanelLayout(RuntimePanelLayoutMode mode) {
+    if (state.runtimePanelLayout == mode) return;
+    state = state.copyWith(runtimePanelLayout: mode);
+    _scheduleSave();
+  }
+
   void setHighRefreshMode(bool enabled) {
     if (state.highRefreshMode == enabled) return;
     state = state.copyWith(highRefreshMode: enabled);
@@ -107,6 +120,9 @@ class WorkbenchLayoutController extends StateNotifier<WorkbenchLayout> {
         runtimeWidth: (decoded['runtimeWidth'] as num?)?.toDouble() ?? 420,
         commandOutputFraction:
             (decoded['commandOutputFraction'] as num?)?.toDouble() ?? .42,
+        runtimePanelLayout: _decodeRuntimePanelLayout(
+          decoded['runtimePanelLayout'],
+        ),
         highRefreshMode: decoded['highRefreshMode'] as bool? ?? true,
         reduceMotion: decoded['reduceMotion'] as bool? ?? false,
       );
@@ -123,6 +139,7 @@ class WorkbenchLayoutController extends StateNotifier<WorkbenchLayout> {
           'paletteWidth': state.paletteWidth,
           'runtimeWidth': state.runtimeWidth,
           'commandOutputFraction': state.commandOutputFraction,
+          'runtimePanelLayout': state.runtimePanelLayout.name,
           'highRefreshMode': state.highRefreshMode,
           'reduceMotion': state.reduceMotion,
         }),
@@ -132,6 +149,16 @@ class WorkbenchLayoutController extends StateNotifier<WorkbenchLayout> {
       // Layout persistence is a convenience, not a condition for working.
     }
   }
+
+  static RuntimePanelLayoutMode _decodeRuntimePanelLayout(Object? value) =>
+      RuntimePanelLayoutMode.values.firstWhere(
+        (mode) => mode.name == value,
+        // The former generic `bottom` and `right` options correspond to the
+        // command output occupying the lower dock in the new two-layout model.
+        orElse: () => value == 'bottom' || value == 'right'
+            ? RuntimePanelLayoutMode.commandBottom
+            : RuntimePanelLayoutMode.rightSplit,
+      );
 
   @override
   void dispose() {
