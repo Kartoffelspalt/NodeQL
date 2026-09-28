@@ -10471,7 +10471,6 @@ class _SqlCommandOutputWindowState extends State<_SqlCommandOutputWindow> {
       onLeftResizeUpdate: widget.onLeftResizeUpdate,
       onLeftResizeEnd: widget.onLeftResizeEnd,
       actions: [
-        
         if (widget.showCustomModeToggle)
           IconButton(
             key: const ValueKey<String>('toggle-custom-sql'),
