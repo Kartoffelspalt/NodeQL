@@ -42,6 +42,26 @@ void main() {
     expect(controller.state.reduceMotion, isFalse);
   });
 
+  test('persists the selected docked runtime panel layout', () async {
+    final directory = await Directory.systemTemp.createTemp('nodeql_layout');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/layout.json');
+    final controller = WorkbenchLayoutController(storageFile: () async => file);
+    addTearDown(controller.dispose);
+
+    controller.setRuntimePanelLayout(RuntimePanelLayoutMode.commandBottom);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    final restored = WorkbenchLayoutController(storageFile: () async => file);
+    addTearDown(restored.dispose);
+    await restored.restored;
+
+    expect(
+      restored.state.runtimePanelLayout,
+      RuntimePanelLayoutMode.commandBottom,
+    );
+  });
+
   test('restores the persisted high refresh preference', () async {
     final directory = await Directory.systemTemp.createTemp('nodeql_layout');
     addTearDown(() => directory.delete(recursive: true));

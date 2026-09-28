@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - No unreleased changes yet.
 
+## [0.4.2+4] - 2026-09-28
+
+### Improved
+
+This update improves the SQL workspace experience, especially when working with output panels and columns.
+
+- `datetime()` is now available directly in the alias settings for selected columns, making Unix timestamp conversion easier.
+- The query result export menu is properly sized and supports CSV, JSON, TSV, and copying to the clipboard.
+- Command Output and Output Preview can be resized using their dock edges.
+- The workspace, node palette, and output panels now adapt to the selected dock layout, so lower panels no longer cover content.
+- Output windows and resize handles have been visually refined with a consistent square design.
+- Improved rendering and interaction performance while dragging and resizing docked panels.
+
 ## [0.4.1] - 2026-09-25
 
 ### Added

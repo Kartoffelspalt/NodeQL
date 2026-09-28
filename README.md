@@ -9,7 +9,7 @@ remain on the user's device.
 > [Releasing](docs/RELEASING.md) before describing a build as generally
 > available.
 
-> **Latest release:** [NodeQL v0.4.1](docs/releases/v0.4.1.md) adds visual
+> **Latest release:** [NodeQL v0.4.2](docs/releases/v0.4.2+4.md) adds visual
 > SQLite functions, column aliases, fullscreen and exportable result tables,
 > a refined workspace, and fullscreen settings.
 
@@ -159,7 +159,7 @@ separately when using the tarball.
 - [Translation guide](docs/localization/README.md)
 - [AI agent guide](docs/ai/README.md)
 - [Release process](docs/RELEASING.md)
-- [v0.4.1 release notes](docs/releases/v0.4.1.md)
+- [v0.4.2 release notes](docs/releases/v0.4.2+4.md)
 - [Changelog](CHANGELOG.md)
 - [Trademark policy](TRADEMARKS.md)
 
