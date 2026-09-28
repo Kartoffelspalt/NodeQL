@@ -57,6 +57,24 @@ void main() {
     },
   );
 
+  test('compiles a datetime projection with its column alias', () {
+    final root = EventBlock(id: 'run', position: Offset.zero)
+      ..next = OperatorBlock(
+        id: 'select',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSelect,
+        inputs: <String, dynamic>{
+          'columns': "datetime(created_at, 'unixepoch') AS \"created at\"",
+          'table': 'events',
+        },
+      );
+
+    expect(
+      const SqlCompiler().compileWorkspace(<BlockNode>[root]).sql,
+      "SELECT datetime(created_at, 'unixepoch') AS \"created at\" FROM events;",
+    );
+  });
+
   test('compiles variable function arguments and nested reporters', () {
     final root = EventBlock(id: 'run', position: Offset.zero)
       ..next = OperatorBlock(

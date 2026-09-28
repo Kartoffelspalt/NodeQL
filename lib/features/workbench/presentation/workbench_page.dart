@@ -751,9 +751,31 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       final paletteWidth = compact
                           ? layout.paletteWidth.clamp(200.0, 280.0)
                           : layout.paletteWidth;
+                      final runtimeExtents = _runtimeDockExtents(
+                        size: constraints.biggest,
+                        layout: layout,
+                      );
+                      final workspaceWidth = math.max(
+                        0.0,
+                        constraints.maxWidth - 78.0 - paletteWidth,
+                      );
+                      final workspaceRightInset = runtimeExtents.$1
+                          .clamp(0.0, math.max(0.0, workspaceWidth - 120.0))
+                          .toDouble();
+                      final workspaceBottomInset =
+                          switch (layout.runtimePanelLayout) {
+                            RuntimePanelLayoutMode.rightSplit => 0.0,
+                            RuntimePanelLayoutMode.commandBottom ||
+                            RuntimePanelLayoutMode.previewBottom =>
+                              runtimeExtents.$2,
+                          };
                       return Stack(
                         children: [
-                          Positioned.fill(
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: workspaceBottomInset,
                             child: Row(
                               children: [
                                 _CategoryRail(
@@ -810,7 +832,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                 Expanded(
                                   child: Stack(
                                     children: [
-                                      Positioned.fill(
+                                      Positioned(
+                                        top: 0,
+                                        left: 0,
+                                        right: workspaceRightInset,
+                                        bottom: 0,
                                         child: _showCustomSqlEditor
                                             ? _SqlIdePane(
                                                 controller:
@@ -845,7 +871,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                         Positioned(
                                           top: 0,
                                           left: 0,
-                                          right: 0,
+                                          right: workspaceRightInset,
                                           child: _WorkspaceTabsBar(
                                             catalog: catalog,
                                           ),
@@ -2700,6 +2726,23 @@ class _WorkshopWorkspaceViewState
                   final paletteWidth = compact
                       ? layout.paletteWidth.clamp(200.0, 280.0)
                       : layout.paletteWidth;
+                  final runtimeExtents = _runtimeDockExtents(
+                    size: constraints.biggest,
+                    layout: layout,
+                  );
+                  final workspaceWidth = math.max(
+                    0.0,
+                    constraints.maxWidth - 78.0 - paletteWidth,
+                  );
+                  final workspaceRightInset = runtimeExtents.$1
+                      .clamp(0.0, math.max(0.0, workspaceWidth - 120.0))
+                      .toDouble();
+                  final workspaceBottomInset = switch (layout
+                      .runtimePanelLayout) {
+                    RuntimePanelLayoutMode.rightSplit => 0.0,
+                    RuntimePanelLayoutMode.commandBottom ||
+                    RuntimePanelLayoutMode.previewBottom => runtimeExtents.$2,
+                  };
                   final practicePanelMinHeight = 220.0;
                   final practicePanelMaxHeight = math.max(
                     practicePanelMinHeight,
@@ -2715,7 +2758,11 @@ class _WorkshopWorkspaceViewState
                           .toDouble();
                   return Stack(
                     children: [
-                      Positioned.fill(
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: workspaceBottomInset,
                         child: Row(
                           children: [
                             _CategoryRail(
@@ -2775,7 +2822,11 @@ class _WorkshopWorkspaceViewState
                             Expanded(
                               child: Stack(
                                 children: [
-                                  Positioned.fill(
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: workspaceRightInset,
+                                    bottom: 0,
                                     child: Column(
                                       children: [
                                         if (practice != null &&
@@ -2835,7 +2886,7 @@ class _WorkshopWorkspaceViewState
                                   Positioned(
                                     top: 0,
                                     left: 0,
-                                    right: 0,
+                                    right: workspaceRightInset,
                                     child: _WorkspaceTabsBar(catalog: catalog),
                                   ),
                                 ],
@@ -4101,7 +4152,6 @@ class _PaletteState extends State<_Palette> {
       SqlPaletteCategory.queryLanguage => <_PaletteItem>[
         native(BlockType.eventGreenFlag),
         native(BlockType.sqlSelect),
-        native(BlockType.sqlFunction),
         native(BlockType.sqlFrom),
         native(BlockType.sqlWhere),
         native(BlockType.sqlAnd),
@@ -8155,9 +8205,21 @@ class _NodeView extends ConsumerWidget {
   }) {
     final catalog = translationCatalogOf(context);
     var selectAll = currentValue.trim() == '*';
-    final projections = _projectionAliases(currentValue);
-    final selectedColumns = projections.keys.toSet();
-    final aliases = Map<String, String>.from(projections);
+    final selectedColumns = <String>{};
+    final aliases = <String, String>{};
+    final dateTimeColumns = <String>{};
+    for (final projection in _selectedColumns(currentValue)) {
+      final parts = _projectionParts(projection);
+      final dateTimeMatch = RegExp(
+        r"^datetime\(\s*(.+?)\s*,\s*'unixepoch'\s*\)$",
+        caseSensitive: false,
+      ).firstMatch(parts.expression);
+      final column = dateTimeMatch?.group(1)?.trim() ?? parts.expression;
+      if (column.isEmpty) continue;
+      selectedColumns.add(column);
+      aliases[column] = parts.alias;
+      if (dateTimeMatch != null) dateTimeColumns.add(column);
+    }
 
     return showDialog<String>(
       context: context,
@@ -8186,7 +8248,11 @@ class _NodeView extends ConsumerWidget {
                   onChanged: (selected) {
                     setDialogState(() {
                       selectAll = selected == true;
-                      if (selectAll) selectedColumns.clear();
+                      if (selectAll) {
+                        selectedColumns.clear();
+                        aliases.clear();
+                        dateTimeColumns.clear();
+                      }
                     });
                   },
                 ),
@@ -8211,6 +8277,7 @@ class _NodeView extends ConsumerWidget {
                                   } else {
                                     selectedColumns.remove(column);
                                     aliases.remove(column);
+                                    dateTimeColumns.remove(column);
                                   }
                                 });
                               },
@@ -8218,22 +8285,51 @@ class _NodeView extends ConsumerWidget {
                       if (!selectAll && selectedColumns.contains(column))
                         Padding(
                           padding: const EdgeInsets.fromLTRB(56, 0, 16, 8),
-                          child: TextFormField(
-                            key: ValueKey<String>(
-                              'select-column-alias-$column',
-                            ),
-                            initialValue: aliases[column] ?? '',
-                            decoration: InputDecoration(
-                              isDense: true,
-                              prefixIcon: const Icon(
-                                Icons.label_outline_rounded,
+                          child: Column(
+                            children: [
+                              TextFormField(
+                                key: ValueKey<String>(
+                                  'select-column-alias-$column',
+                                ),
+                                initialValue: aliases[column] ?? '',
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  prefixIcon: const Icon(
+                                    Icons.label_outline_rounded,
+                                  ),
+                                  labelText: localeCode == 'de'
+                                      ? 'Alias für $column (optional)'
+                                      : 'Alias for $column (optional)',
+                                ),
+                                onChanged: (alias) =>
+                                    aliases[column] = alias.trim(),
                               ),
-                              labelText: localeCode == 'de'
-                                  ? 'Alias für $column (optional)'
-                                  : 'Alias for $column (optional)',
-                            ),
-                            onChanged: (alias) =>
-                                aliases[column] = alias.trim(),
+                              const SizedBox(height: 4),
+                              CheckboxListTile(
+                                key: ValueKey<String>(
+                                  'select-column-datetime-$column',
+                                ),
+                                contentPadding: EdgeInsets.zero,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                value: dateTimeColumns.contains(column),
+                                title: Text("datetime($column, 'unixepoch')"),
+                                subtitle: Text(
+                                  localeCode == 'de'
+                                      ? 'Unix-Zeitstempel in Datum und Uhrzeit umwandeln'
+                                      : 'Convert a Unix timestamp to date and time',
+                                ),
+                                onChanged: (enabled) {
+                                  setDialogState(() {
+                                    if (enabled == true) {
+                                      dateTimeColumns.add(column);
+                                    } else {
+                                      dateTimeColumns.remove(column);
+                                    }
+                                  });
+                                },
+                              ),
+                            ],
                           ),
                         ),
                     ],
@@ -8260,7 +8356,9 @@ class _NodeView extends ConsumerWidget {
                                 .where(selectedColumns.contains)
                                 .map(
                                   (column) => _projectionWithAlias(
-                                    column,
+                                    dateTimeColumns.contains(column)
+                                        ? "datetime($column, 'unixepoch')"
+                                        : column,
                                     aliases[column],
                                   ),
                                 )
@@ -8275,21 +8373,16 @@ class _NodeView extends ConsumerWidget {
     );
   }
 
-  Map<String, String> _projectionAliases(String value) {
-    final aliases = <String, String>{};
-    for (final item in _selectedColumns(value)) {
-      final match = RegExp(
-        r'^(.+?)\s+AS\s+(?:"((?:[^"]|"")*)"|([A-Za-z_][A-Za-z0-9_]*))$',
-        caseSensitive: false,
-      ).firstMatch(item);
-      if (match == null) {
-        aliases[item] = '';
-      } else {
-        aliases[match.group(1)!.trim()] =
-            (match.group(2) ?? match.group(3) ?? '').replaceAll('""', '"');
-      }
-    }
-    return aliases;
+  _ProjectionParts _projectionParts(String value) {
+    final match = RegExp(
+      r'^(.+?)\s+AS\s+(?:"((?:[^"]|"")*)"|([A-Za-z_][A-Za-z0-9_]*))$',
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (match == null) return _ProjectionParts(value.trim(), '');
+    return _ProjectionParts(
+      match.group(1)!.trim(),
+      (match.group(2) ?? match.group(3) ?? '').replaceAll('""', '"'),
+    );
   }
 
   String _projectionWithAlias(String expression, String? rawAlias) {
@@ -8914,6 +9007,13 @@ class _ColumnReporterEditResult {
 
   final String? value;
   final bool removeReporter;
+}
+
+class _ProjectionParts {
+  const _ProjectionParts(this.expression, this.alias);
+
+  final String expression;
+  final String alias;
 }
 
 class _SqliteFunctionEditResult {
@@ -9633,6 +9733,24 @@ String _runtimePanelLayoutLabel(
 
 enum _RuntimePanel { command, preview }
 
+/// Keeps the workspace visible beside and above the docked runtime panels.
+(double sideWidth, double bottomHeight) _runtimeDockExtents({
+  required Size size,
+  required WorkbenchLayout layout,
+}) {
+  final width = math.max(1.0, size.width);
+  final height = math.max(1.0, size.height);
+  final maxSideWidth = math.max(1.0, width - 240.0);
+  final minSideWidth = math.min(260.0, maxSideWidth);
+  final sideWidth = layout.runtimeWidth
+      .clamp(minSideWidth, math.min(720.0, maxSideWidth))
+      .toDouble();
+  final bottomHeight = (height * layout.commandOutputFraction)
+      .clamp(math.min(180.0, height), height)
+      .toDouble();
+  return (sideWidth, bottomHeight);
+}
+
 class _FloatingRuntimeWindows extends ConsumerStatefulWidget {
   const _FloatingRuntimeWindows({
     required this.sql,
@@ -9665,6 +9783,10 @@ class _FloatingRuntimeWindowsState
     extends ConsumerState<_FloatingRuntimeWindows> {
   _RuntimePanel? _draggedPanel;
   Offset? _dragPointer;
+  bool _dragFrameScheduled = false;
+  bool _resizeFrameScheduled = false;
+  double? _pendingRuntimeWidth;
+  double? _pendingCommandOutputFraction;
 
   void _startDrag(_RuntimePanel panel, Offset pointer) {
     setState(() {
@@ -9675,7 +9797,13 @@ class _FloatingRuntimeWindowsState
 
   void _updateDrag(Offset pointer) {
     if (_draggedPanel == null) return;
-    setState(() => _dragPointer = pointer);
+    _dragPointer = pointer;
+    if (_dragFrameScheduled) return;
+    _dragFrameScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _dragFrameScheduled = false;
+      if (mounted && _draggedPanel != null) setState(() {});
+    });
   }
 
   void _endDrag(
@@ -9692,6 +9820,68 @@ class _FloatingRuntimeWindowsState
       _draggedPanel = null;
       _dragPointer = null;
     });
+  }
+
+  void _resizeRuntimeWidth({
+    required Offset delta,
+    required WorkbenchLayout layout,
+    required Size bounds,
+    required WorkbenchLayoutController controller,
+  }) {
+    final maxWidth = math.max(1.0, bounds.width - 240.0);
+    final minWidth = math.min(260.0, maxWidth);
+    final current = _pendingRuntimeWidth ?? layout.runtimeWidth;
+    _pendingRuntimeWidth = (current - delta.dx)
+        .clamp(minWidth, math.min(720.0, maxWidth))
+        .toDouble();
+    _scheduleResize(controller);
+  }
+
+  void _resizeVerticalDock({
+    required Offset delta,
+    required WorkbenchLayout layout,
+    required Size bounds,
+    required bool stacked,
+    required WorkbenchLayoutController controller,
+  }) {
+    const gap = 8.0;
+    final contentHeight = math.max(1.0, bounds.height);
+    final usableHeight = stacked
+        ? math.max(1.0, contentHeight - gap)
+        : contentHeight;
+    final current =
+        _pendingCommandOutputFraction ?? layout.commandOutputFraction;
+    _pendingCommandOutputFraction =
+        (current + (stacked ? delta.dy : -delta.dy) / usableHeight)
+            .clamp(.18, .78)
+            .toDouble();
+    _scheduleResize(controller);
+  }
+
+  void _scheduleResize(WorkbenchLayoutController controller) {
+    if (_resizeFrameScheduled) return;
+    _resizeFrameScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _resizeFrameScheduled = false;
+      if (!mounted) return;
+      final runtimeWidth = _pendingRuntimeWidth;
+      final outputFraction = _pendingCommandOutputFraction;
+      if (runtimeWidth != null) controller.setRuntimeWidth(runtimeWidth);
+      if (outputFraction != null) {
+        controller.setCommandOutputFraction(outputFraction);
+      }
+    });
+  }
+
+  void _endResize(WorkbenchLayoutController controller) {
+    final runtimeWidth = _pendingRuntimeWidth;
+    final outputFraction = _pendingCommandOutputFraction;
+    _pendingRuntimeWidth = null;
+    _pendingCommandOutputFraction = null;
+    if (runtimeWidth != null) controller.setRuntimeWidth(runtimeWidth);
+    if (outputFraction != null) {
+      controller.setCommandOutputFraction(outputFraction);
+    }
   }
 
   RuntimePanelLayoutMode? _nearestDockMode(
@@ -9742,9 +9932,15 @@ class _FloatingRuntimeWindowsState
       builder: (context, constraints) {
         final layouts = <RuntimePanelLayoutMode, (Rect, Rect)>{
           for (final mode in RuntimePanelLayoutMode.values)
-            mode: _panelRects(size: constraints.biggest, mode: mode),
+            mode: _panelRects(
+              size: constraints.biggest,
+              mode: mode,
+              layout: widget.layout,
+            ),
         };
         final panels = layouts[widget.layout.runtimePanelLayout]!;
+        final commandRect = panels.$1;
+        final previewRect = panels.$2;
         final activePanel = _draggedPanel;
         final activePointer = _dragPointer;
         final selectedMode = activePanel == null || activePointer == null
@@ -9759,7 +9955,7 @@ class _FloatingRuntimeWindowsState
           clipBehavior: Clip.hardEdge,
           children: [
             _SqlCommandOutputWindow(
-              rect: panels.$1,
+              rect: commandRect,
               sql: widget.sql,
               catalog: widget.catalog,
               localeCode: widget.localeCode,
@@ -9774,13 +9970,45 @@ class _FloatingRuntimeWindowsState
               ),
               onHeaderDragUpdate: (details) =>
                   _updateDrag(toLocal(details.globalPosition)),
-              onHeaderDragEnd: () => _endDrag(
-                layouts,
-                controller,
-              ),
+              onHeaderDragEnd: () => _endDrag(layouts, controller),
+              onTopResizeUpdate:
+                  widget.layout.runtimePanelLayout ==
+                      RuntimePanelLayoutMode.commandBottom
+                  ? (details) => _resizeVerticalDock(
+                      delta: details.delta,
+                      layout: widget.layout,
+                      bounds: constraints.biggest,
+                      stacked: false,
+                      controller: controller,
+                    )
+                  : null,
+              onTopResizeEnd:
+                  widget.layout.runtimePanelLayout ==
+                      RuntimePanelLayoutMode.commandBottom
+                  ? () => _endResize(controller)
+                  : null,
+              onLeftResizeUpdate:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? (details) => _resizeRuntimeWidth(
+                      delta: details.delta,
+                      layout: widget.layout,
+                      bounds: constraints.biggest,
+                      controller: controller,
+                    )
+                  : null,
+              onLeftResizeEnd:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? () => _endResize(controller)
+                  : null,
             ),
             _OutputPreviewFloatingWindow(
-              rect: panels.$2,
+              rect: previewRect,
               runtime: widget.runtime,
               mode: widget.mode,
               localeCode: widget.localeCode,
@@ -9791,10 +10019,48 @@ class _FloatingRuntimeWindowsState
               ),
               onHeaderDragUpdate: (details) =>
                   _updateDrag(toLocal(details.globalPosition)),
-              onHeaderDragEnd: () => _endDrag(
-                layouts,
-                controller,
-              ),
+              onHeaderDragEnd: () => _endDrag(layouts, controller),
+              onTopResizeUpdate:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? (details) => _resizeVerticalDock(
+                      delta: details.delta,
+                      layout: widget.layout,
+                      bounds: constraints.biggest,
+                      stacked:
+                          widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit,
+                      controller: controller,
+                    )
+                  : null,
+              onTopResizeEnd:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? () => _endResize(controller)
+                  : null,
+              onLeftResizeUpdate:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.commandBottom
+                  ? (details) => _resizeRuntimeWidth(
+                      delta: details.delta,
+                      layout: widget.layout,
+                      bounds: constraints.biggest,
+                      controller: controller,
+                    )
+                  : null,
+              onLeftResizeEnd:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.commandBottom
+                  ? () => _endResize(controller)
+                  : null,
             ),
             if (activePanel != null && activePointer != null) ...[
               for (final mode in _dropModesFor(activePanel))
@@ -9813,8 +10079,8 @@ class _FloatingRuntimeWindowsState
                 rect: _dragGhostRect(
                   pointer: activePointer,
                   source: activePanel == _RuntimePanel.command
-                      ? panels.$1
-                      : panels.$2,
+                      ? commandRect
+                      : previewRect,
                   bounds: constraints.biggest,
                 ),
                 child: const IgnorePointer(child: _RuntimeDragGhost()),
@@ -9843,18 +10109,16 @@ class _FloatingRuntimeWindowsState
   (Rect, Rect) _panelRects({
     required Size size,
     required RuntimePanelLayoutMode mode,
+    required WorkbenchLayout layout,
   }) {
     const gap = 8.0;
-    const workspaceTabsHeight = 52.0;
     final width = math.max(1.0, size.width);
     final height = math.max(1.0, size.height);
-    final contentTop = math.min(workspaceTabsHeight, height);
-    final contentHeight = math.max(1.0, height - contentTop);
-    final bottomHeight = math.min(
-      math.max(180.0, contentHeight * .30),
-      contentHeight,
-    );
-    final sideWidth = math.min(math.max(360.0, width * .31), width);
+    const contentTop = 0.0;
+    final contentHeight = height;
+    final dockExtents = _runtimeDockExtents(size: size, layout: layout);
+    final bottomHeight = dockExtents.$2;
+    final sideWidth = dockExtents.$1;
 
     final lowerTop = height - bottomHeight;
     final upperHeight = math.max(1.0, lowerTop - contentTop - gap);
@@ -9870,14 +10134,23 @@ class _FloatingRuntimeWindowsState
       RuntimePanelLayoutMode.commandBottom => (fullBottom, upperRight),
       RuntimePanelLayoutMode.previewBottom => (upperRight, fullBottom),
       RuntimePanelLayoutMode.rightSplit => () {
-        final rowHeight = math.max(1.0, (contentHeight - gap) / 2);
+        final usableHeight = math.max(1.0, contentHeight - gap);
+        final commandHeight = (usableHeight * layout.commandOutputFraction)
+            .clamp(usableHeight * .18, usableHeight * .78)
+            .toDouble();
+        final previewHeight = math.max(1.0, usableHeight - commandHeight);
         return (
-          Rect.fromLTWH(width - sideWidth, contentTop, sideWidth, rowHeight),
           Rect.fromLTWH(
             width - sideWidth,
-            contentTop + rowHeight + gap,
+            contentTop,
             sideWidth,
-            rowHeight,
+            commandHeight,
+          ),
+          Rect.fromLTWH(
+            width - sideWidth,
+            contentTop + commandHeight + gap,
+            sideWidth,
+            previewHeight,
           ),
         );
       }(),
@@ -9969,6 +10242,10 @@ class _FloatingRuntimeWindow extends StatelessWidget {
     this.onHeaderDragUpdate,
     this.onHeaderDragEnd,
     this.onHeaderDragCancel,
+    this.onTopResizeUpdate,
+    this.onTopResizeEnd,
+    this.onLeftResizeUpdate,
+    this.onLeftResizeEnd,
   });
 
   final Rect rect;
@@ -9980,6 +10257,10 @@ class _FloatingRuntimeWindow extends StatelessWidget {
   final GestureDragUpdateCallback? onHeaderDragUpdate;
   final GestureDragEndCallback? onHeaderDragEnd;
   final VoidCallback? onHeaderDragCancel;
+  final GestureDragUpdateCallback? onTopResizeUpdate;
+  final VoidCallback? onTopResizeEnd;
+  final GestureDragUpdateCallback? onLeftResizeUpdate;
+  final VoidCallback? onLeftResizeEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -9991,50 +10272,130 @@ class _FloatingRuntimeWindow extends StatelessWidget {
       top: rect.top,
       width: rect.width,
       height: rect.height,
-      child: Container(
-        decoration: surfaceStyle.surfaceDecoration(
-          color: colors.panel,
-          borderColor: colors.border,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            MouseRegion(
-              cursor: SystemMouseCursors.grab,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanStart: onHeaderDragStart,
-                onPanUpdate: onHeaderDragUpdate,
-                onPanEnd: onHeaderDragEnd,
-                onPanCancel: onHeaderDragCancel,
-                child: Container(
-                  height: 38,
-                  padding: const EdgeInsets.only(left: 12, right: 4),
-                  decoration: BoxDecoration(
-                    color: colors.panelElevated,
-                    border: Border(bottom: BorderSide(color: colors.border)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(icon, size: 18, color: accent),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+      child: RepaintBoundary(
+        child: Container(
+          decoration: surfaceStyle.surfaceDecoration(
+            color: colors.panel,
+            borderColor: colors.border,
+            radius: 0,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  MouseRegion(
+                    cursor: SystemMouseCursors.grab,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanStart: onHeaderDragStart,
+                      onPanUpdate: onHeaderDragUpdate,
+                      onPanEnd: onHeaderDragEnd,
+                      onPanCancel: onHeaderDragCancel,
+                      child: Container(
+                        height: 38,
+                        padding: const EdgeInsets.only(left: 12, right: 4),
+                        decoration: BoxDecoration(
+                          color: colors.panelElevated,
+                          border: Border(
+                            bottom: BorderSide(color: colors.border),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(icon, size: 18, color: accent),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            ...actions,
+                            const Icon(Icons.drag_indicator_rounded, size: 18),
+                          ],
                         ),
                       ),
-                      ...actions,
-                      const Icon(Icons.drag_indicator_rounded, size: 18),
-                    ],
+                    ),
+                  ),
+                  Expanded(child: RepaintBoundary(child: child)),
+                ],
+              ),
+              if (onTopResizeUpdate != null)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeUpDown,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanUpdate: onTopResizeUpdate,
+                      onPanEnd: (_) => onTopResizeEnd?.call(),
+                      onPanCancel: onTopResizeEnd,
+                      child: Semantics(
+                        label: 'Fensterhöhe anpassen',
+                        child: Container(
+                          height: 8,
+                          alignment: Alignment.topCenter,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                colors.panelElevated.withValues(alpha: 0),
+                                colors.border.withValues(alpha: .82),
+                                colors.panelElevated.withValues(alpha: 0),
+                              ],
+                            ),
+                          ),
+                          child: Container(
+                            width: 34,
+                            height: 3,
+                            margin: const EdgeInsets.only(top: 2),
+                            decoration: BoxDecoration(
+                              color: accent.withValues(alpha: .72),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            Expanded(child: child),
-          ],
+              if (onLeftResizeUpdate != null)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeLeftRight,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanUpdate: onLeftResizeUpdate,
+                      onPanEnd: (_) => onLeftResizeEnd?.call(),
+                      onPanCancel: onLeftResizeEnd,
+                      child: Semantics(
+                        label: 'Fensterbreite anpassen',
+                        child: Container(
+                          width: 8,
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            width: 3,
+                            height: 34,
+                            margin: const EdgeInsets.only(left: 2),
+                            decoration: BoxDecoration(
+                              color: accent.withValues(alpha: .55),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -10055,6 +10416,10 @@ class _SqlCommandOutputWindow extends StatefulWidget {
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    this.onTopResizeUpdate,
+    this.onTopResizeEnd,
+    this.onLeftResizeUpdate,
+    this.onLeftResizeEnd,
   });
 
   final Rect rect;
@@ -10069,6 +10434,10 @@ class _SqlCommandOutputWindow extends StatefulWidget {
   final GestureDragStartCallback onHeaderDragStart;
   final GestureDragUpdateCallback onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
+  final GestureDragUpdateCallback? onTopResizeUpdate;
+  final VoidCallback? onTopResizeEnd;
+  final GestureDragUpdateCallback? onLeftResizeUpdate;
+  final VoidCallback? onLeftResizeEnd;
 
   @override
   State<_SqlCommandOutputWindow> createState() =>
@@ -10097,31 +10466,12 @@ class _SqlCommandOutputWindowState extends State<_SqlCommandOutputWindow> {
       onHeaderDragUpdate: widget.onHeaderDragUpdate,
       onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
       onHeaderDragCancel: widget.onHeaderDragEnd,
+      onTopResizeUpdate: widget.onTopResizeUpdate,
+      onTopResizeEnd: widget.onTopResizeEnd,
+      onLeftResizeUpdate: widget.onLeftResizeUpdate,
+      onLeftResizeEnd: widget.onLeftResizeEnd,
       actions: [
-        SizedBox(
-          width: 38,
-          height: 38,
-          child: PopupMenuButton<RuntimePanelLayoutMode>(
-            key: const ValueKey<String>('runtime-panel-layout-menu'),
-            tooltip: widget.localeCode.toLowerCase().startsWith('de')
-                ? 'Ausgabe anordnen'
-                : 'Arrange output',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 220),
-            icon: const Icon(Icons.dashboard_customize_rounded, size: 19),
-            onSelected: widget.onRuntimePanelLayoutChanged,
-            itemBuilder: (context) => [
-              for (final mode in RuntimePanelLayoutMode.values)
-                CheckedPopupMenuItem<RuntimePanelLayoutMode>(
-                  value: mode,
-                  checked: mode == widget.runtimePanelLayout,
-                  child: Text(
-                    _runtimePanelLayoutLabel(mode, widget.localeCode),
-                  ),
-                ),
-            ],
-          ),
-        ),
+        
         if (widget.showCustomModeToggle)
           IconButton(
             key: const ValueKey<String>('toggle-custom-sql'),
@@ -10181,6 +10531,10 @@ class _OutputPreviewFloatingWindow extends StatefulWidget {
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    this.onTopResizeUpdate,
+    this.onTopResizeEnd,
+    this.onLeftResizeUpdate,
+    this.onLeftResizeEnd,
   });
 
   final Rect rect;
@@ -10191,6 +10545,10 @@ class _OutputPreviewFloatingWindow extends StatefulWidget {
   final GestureDragStartCallback onHeaderDragStart;
   final GestureDragUpdateCallback onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
+  final GestureDragUpdateCallback? onTopResizeUpdate;
+  final VoidCallback? onTopResizeEnd;
+  final GestureDragUpdateCallback? onLeftResizeUpdate;
+  final VoidCallback? onLeftResizeEnd;
 
   @override
   State<_OutputPreviewFloatingWindow> createState() =>
@@ -10278,6 +10636,10 @@ class _OutputPreviewFloatingWindowState
     onHeaderDragUpdate: widget.onHeaderDragUpdate,
     onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
     onHeaderDragCancel: widget.onHeaderDragEnd,
+    onTopResizeUpdate: widget.onTopResizeUpdate,
+    onTopResizeEnd: widget.onTopResizeEnd,
+    onLeftResizeUpdate: widget.onLeftResizeUpdate,
+    onLeftResizeEnd: widget.onLeftResizeEnd,
     actions: [
       IconButton(
         key: const ValueKey<String>('preview-fullscreen'),
@@ -10287,36 +10649,40 @@ class _OutputPreviewFloatingWindowState
         constraints: const BoxConstraints.tightFor(width: 38, height: 38),
         icon: const Icon(Icons.fullscreen_rounded, size: 20),
       ),
-      PopupMenuButton<String>(
-        key: const ValueKey<String>('preview-export-menu'),
-        enabled: _hasRows,
-        tooltip: _actionText('export'),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-        icon: const Icon(Icons.ios_share_rounded, size: 19),
-        onSelected: (value) {
-          switch (value) {
-            case 'csv':
-              _export(SqlResultExportFormat.csv);
-            case 'json':
-              _export(SqlResultExportFormat.json);
-            case 'tsv':
-              _export(SqlResultExportFormat.tsv);
-            case 'copy-tsv':
-              _copyAsTsv();
-          }
-        },
-        itemBuilder: (context) => <PopupMenuEntry<String>>[
-          for (final format in SqlResultExportFormat.values)
+      SizedBox(
+        width: 38,
+        height: 38,
+        child: PopupMenuButton<String>(
+          key: const ValueKey<String>('preview-export-menu'),
+          enabled: _hasRows,
+          tooltip: _actionText('export'),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 264, maxWidth: 360),
+          icon: const Icon(Icons.ios_share_rounded, size: 19),
+          onSelected: (value) {
+            switch (value) {
+              case 'csv':
+                _export(SqlResultExportFormat.csv);
+              case 'json':
+                _export(SqlResultExportFormat.json);
+              case 'tsv':
+                _export(SqlResultExportFormat.tsv);
+              case 'copy-tsv':
+                _copyAsTsv();
+            }
+          },
+          itemBuilder: (context) => <PopupMenuEntry<String>>[
+            for (final format in SqlResultExportFormat.values)
+              PopupMenuItem<String>(
+                value: format.name,
+                child: Text('Export ${sqlResultExportLabel(format)}'),
+              ),
             PopupMenuItem<String>(
-              value: format.name,
-              child: Text('Export ${sqlResultExportLabel(format)}'),
+              value: 'copy-tsv',
+              child: Text(_actionText('copy')),
             ),
-          PopupMenuItem<String>(
-            value: 'copy-tsv',
-            child: Text(_actionText('copy')),
-          ),
-        ],
+          ],
+        ),
       ),
     ],
     child: _SqlResultTable(
