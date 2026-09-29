@@ -5399,13 +5399,22 @@ class _WorkspaceCanvas extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final workspace = ref.watch(workspaceProvider);
     final controller = ref.read(workspaceProvider.notifier);
-    final selectedColumnLink = controller.selectedColumnLink();
+    // Structural edits rebuild the list of block elements. Pointer movement is
+    // intentionally excluded here: each block subscribes to its own visual
+    // state below, so a drag does not rebuild and re-measure every node.
+    ref.watch(workspaceProvider.select((state) => state.revision));
+    final columnLinkMode = ref.watch(
+      workspaceProvider.select((state) => state.columnLinkMode),
+    );
+    final selectedColumnLinkTargetId = ref.watch(
+      workspaceProvider.select((state) => state.selectedColumnLinkTargetId),
+    );
+    final selectedColumnLink = selectedColumnLinkTargetId == null
+        ? null
+        : controller.selectedColumnLink();
     final ropeColors = _RopeHighlightColors.of(context);
-    transform.value = Matrix4.identity()
-      ..translateByDouble(workspace.pan.dx, workspace.pan.dy, 0, 1)
-      ..scaleByDouble(workspace.scale, workspace.scale, workspace.scale, 1);
+    final blocks = controller.allBlocks();
 
     return DragTarget<_PaletteDragData>(
       onWillAcceptWithDetails: (_) => true,
@@ -5470,76 +5479,38 @@ class _WorkspaceCanvas extends ConsumerWidget {
           fit: StackFit.expand,
           children: [
             _PointerWorkspaceLayer(
-              workspace: workspace,
+              columnLinkMode: columnLinkMode,
               transform: transform,
               paletteWidth: paletteWidth,
               focusNode: focusNode,
               child: Container(
                 color: NodeQlWorkbenchColors.of(context).workspace,
                 child: ClipRect(
-                  child: RepaintBoundary(
-                    child: Transform(
-                      transform: transform.value,
-                      alignment: Alignment.topLeft,
+                  child: _WorkspaceViewportTransform(
+                    transform: transform,
+                    child: RepaintBoundary(
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          CustomPaint(
-                            size: const Size(4000, 4000),
-                            painter: _ColumnLinksPainter(
-                              links: controller.columnLinks(),
-                              source: workspace.columnLinkSourceId == null
-                                  ? null
-                                  : controller.findById(
-                                      workspace.columnLinkSourceId!,
-                                    ),
-                              pointer: workspace.columnLinkPointer,
-                              validTarget: workspace.columnLinkTargetId != null,
-                              selectedTargetId:
-                                  workspace.selectedColumnLinkTargetId,
-                              nodeWidth: controller.nodeWidth,
-                              nodeHeight: controller.blockHeight,
-                              color: Theme.of(context).colorScheme.primary,
+                          RepaintBoundary(
+                            child: _WorkspaceColumnLinks(
                               sourceColor: ropeColors.source,
                               targetColor: ropeColors.target,
                               haloColor: ropeColors.halo,
                             ),
                           ),
-                          for (final block in controller.allBlocks())
-                            Positioned(
-                              left: block.position.dx,
-                              top: block.position.dy,
-                              child: RepaintBoundary(
-                                child: _NodeView(
-                                  node: block,
-                                  diagnostic: diagnostics[block.id],
-                                  highlighted:
-                                      workspace.highlightTargetId == block.id,
-                                  rejected:
-                                      workspace.rejectedTargetId == block.id,
-                                  innerHighlighted:
-                                      workspace.highlightTargetId == block.id &&
-                                      (workspace.highlightZone ==
-                                              SnapZone.innerTop ||
-                                          workspace.highlightZone ==
-                                              SnapZone.innerBottom),
-                                  selected:
-                                      workspace.selectedBlockIds.contains(
-                                        block.id,
-                                      ) ||
-                                      workspace.columnLinkSourceId ==
-                                          block.id ||
-                                      workspace.columnLinkTargetId == block.id,
-                                  columnLinkEndpointColor:
-                                      selectedColumnLink?.source.id == block.id
-                                      ? ropeColors.source
-                                      : selectedColumnLink?.target.id ==
-                                            block.id
-                                      ? ropeColors.target
-                                      : null,
-                                  columnLinkEndpointHaloColor: ropeColors.halo,
-                                ),
-                              ),
+                          for (final block in blocks)
+                            _WorkspaceBlock(
+                              key: ValueKey<String>(block.id),
+                              node: block,
+                              diagnostic: diagnostics[block.id],
+                              columnLinkEndpointColor:
+                                  selectedColumnLink?.source.id == block.id
+                                  ? ropeColors.source
+                                  : selectedColumnLink?.target.id == block.id
+                                  ? ropeColors.target
+                                  : null,
+                              columnLinkEndpointHaloColor: ropeColors.halo,
                             ),
                         ],
                       ),
@@ -5557,6 +5528,130 @@ class _WorkspaceCanvas extends ConsumerWidget {
   Offset _toWorld(Offset local) {
     final matrix = transform.value.clone()..invert();
     return MatrixUtils.transformPoint(matrix, local);
+  }
+}
+
+/// Rebuilds only the transform when the viewport moves or zooms. The canvas
+/// subtree is passed as AnimatedBuilder's child, keeping expensive node layout
+/// work out of the high-frequency pan path.
+class _WorkspaceViewportTransform extends ConsumerWidget {
+  const _WorkspaceViewportTransform({
+    required this.transform,
+    required this.child,
+  });
+
+  final TransformationController transform;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewport = ref.watch(
+      workspaceProvider.select((state) => (pan: state.pan, scale: state.scale)),
+    );
+    final next = Matrix4.identity()
+      ..translateByDouble(viewport.pan.dx, viewport.pan.dy, 0, 1)
+      ..scaleByDouble(viewport.scale, viewport.scale, viewport.scale, 1);
+    if (transform.value != next) transform.value = next;
+
+    return AnimatedBuilder(
+      animation: transform,
+      child: child,
+      builder: (context, child) => Transform(
+        transform: transform.value,
+        alignment: Alignment.topLeft,
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Keeps link painting reactive without rebuilding individual block widgets.
+class _WorkspaceColumnLinks extends ConsumerWidget {
+  const _WorkspaceColumnLinks({
+    required this.sourceColor,
+    required this.targetColor,
+    required this.haloColor,
+  });
+
+  final Color sourceColor;
+  final Color targetColor;
+  final Color haloColor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final workspace = ref.watch(workspaceProvider);
+    final controller = ref.read(workspaceProvider.notifier);
+    return CustomPaint(
+      size: const Size(4000, 4000),
+      painter: _ColumnLinksPainter(
+        links: controller.columnLinks(),
+        source: workspace.columnLinkSourceId == null
+            ? null
+            : controller.findById(workspace.columnLinkSourceId!),
+        pointer: workspace.columnLinkPointer,
+        validTarget: workspace.columnLinkTargetId != null,
+        selectedTargetId: workspace.selectedColumnLinkTargetId,
+        nodeWidth: controller.nodeWidth,
+        nodeHeight: controller.blockHeight,
+        color: Theme.of(context).colorScheme.primary,
+        sourceColor: sourceColor,
+        targetColor: targetColor,
+        haloColor: haloColor,
+      ),
+    );
+  }
+}
+
+class _WorkspaceBlock extends ConsumerWidget {
+  const _WorkspaceBlock({
+    super.key,
+    required this.node,
+    required this.diagnostic,
+    required this.columnLinkEndpointColor,
+    required this.columnLinkEndpointHaloColor,
+  });
+
+  final BlockNode node;
+  final _SimpleNodeDiagnostic? diagnostic;
+  final Color? columnLinkEndpointColor;
+  final Color columnLinkEndpointHaloColor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visual = ref.watch(
+      workspaceProvider.select((state) {
+        final highlighted = state.highlightTargetId == node.id;
+        return (
+          position: node.position,
+          highlighted: highlighted,
+          rejected: state.rejectedTargetId == node.id,
+          innerHighlighted:
+              highlighted &&
+              (state.highlightZone == SnapZone.innerTop ||
+                  state.highlightZone == SnapZone.innerBottom),
+          selected:
+              state.selectedBlockIds.contains(node.id) ||
+              state.columnLinkSourceId == node.id ||
+              state.columnLinkTargetId == node.id,
+        );
+      }),
+    );
+    return Positioned(
+      left: visual.position.dx,
+      top: visual.position.dy,
+      child: RepaintBoundary(
+        child: _NodeView(
+          node: node,
+          diagnostic: diagnostic,
+          highlighted: visual.highlighted,
+          rejected: visual.rejected,
+          innerHighlighted: visual.innerHighlighted,
+          selected: visual.selected,
+          columnLinkEndpointColor: columnLinkEndpointColor,
+          columnLinkEndpointHaloColor: columnLinkEndpointHaloColor,
+        ),
+      ),
+    );
   }
 }
 
@@ -5889,14 +5984,14 @@ double _inlineCenterOffsetForNode({
 
 class _PointerWorkspaceLayer extends ConsumerStatefulWidget {
   const _PointerWorkspaceLayer({
-    required this.workspace,
+    required this.columnLinkMode,
     required this.transform,
     required this.paletteWidth,
     required this.focusNode,
     required this.child,
   });
 
-  final WorkspaceState workspace;
+  final bool columnLinkMode;
   final TransformationController transform;
   final double paletteWidth;
   final FocusNode focusNode;
@@ -5922,6 +6017,82 @@ class _PointerWorkspaceLayerState
   Rect? _marqueeRectLocal;
   double? _panZoomStartScale;
   double? _scaleGestureStartScale;
+  Offset _pendingDragDelta = Offset.zero;
+  Offset _pendingPanDelta = Offset.zero;
+  Offset? _pendingColumnLinkPointer;
+  Rect? _pendingMarqueeRect;
+  bool _dragUpdateScheduled = false;
+  bool _panUpdateScheduled = false;
+  bool _columnLinkUpdateScheduled = false;
+  bool _marqueeUpdateScheduled = false;
+
+  /// macOS can report many more pointer samples than the display can draw.
+  /// Coalescing them preserves the final position while limiting state changes
+  /// and widget work to one update per frame.
+  void _queueDragUpdate(Offset delta) {
+    _pendingDragDelta += delta;
+    if (_dragUpdateScheduled) return;
+    _dragUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _dragUpdateScheduled = false;
+      _flushDragUpdate();
+    });
+  }
+
+  void _flushDragUpdate() {
+    final delta = _pendingDragDelta;
+    _pendingDragDelta = Offset.zero;
+    if (!mounted || delta == Offset.zero) return;
+    final scale = ref.read(workspaceProvider).scale;
+    ref.read(workspaceProvider.notifier).updateDrag(delta / scale);
+  }
+
+  void _queuePanUpdate(Offset delta) {
+    _pendingPanDelta += delta;
+    if (_panUpdateScheduled) return;
+    _panUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _panUpdateScheduled = false;
+      _flushPanUpdate();
+    });
+  }
+
+  void _flushPanUpdate() {
+    final delta = _pendingPanDelta;
+    _pendingPanDelta = Offset.zero;
+    if (!mounted || delta == Offset.zero) return;
+    ref.read(workspaceProvider.notifier).panBy(delta);
+  }
+
+  void _queueColumnLinkUpdate(Offset pointer) {
+    _pendingColumnLinkPointer = pointer;
+    if (_columnLinkUpdateScheduled) return;
+    _columnLinkUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _columnLinkUpdateScheduled = false;
+      _flushColumnLinkUpdate();
+    });
+  }
+
+  void _flushColumnLinkUpdate() {
+    final pointer = _pendingColumnLinkPointer;
+    _pendingColumnLinkPointer = null;
+    if (!mounted || pointer == null) return;
+    ref.read(workspaceProvider.notifier).updateColumnLink(pointer);
+  }
+
+  void _queueMarqueeUpdate(Rect rect) {
+    _pendingMarqueeRect = rect;
+    if (_marqueeUpdateScheduled) return;
+    _marqueeUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _marqueeUpdateScheduled = false;
+      final pending = _pendingMarqueeRect;
+      _pendingMarqueeRect = null;
+      if (!mounted || pending == null) return;
+      setState(() => _marqueeRectLocal = pending);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -5998,7 +6169,7 @@ class _PointerWorkspaceLayerState
       onPointerMove: (event) {
         final workspace = ref.read(workspaceProvider);
         if (workspace.columnLinkMode && workspace.columnLinkSourceId != null) {
-          engine.updateColumnLink(_toWorld(event.localPosition));
+          _queueColumnLinkUpdate(_toWorld(event.localPosition));
           return;
         }
         if (_secondaryPending &&
@@ -6008,7 +6179,7 @@ class _PointerWorkspaceLayerState
           _secondaryPending = false;
         }
         if (_rightPanning) {
-          engine.panBy(event.delta);
+          _queuePanUpdate(event.delta);
           return;
         }
         if (_primaryPending &&
@@ -6030,18 +6201,17 @@ class _PointerWorkspaceLayerState
         }
         if (_leftDraggingBlock) {
           if (event.delta.distanceSquared > 0) _leftMoved = true;
-          engine.updateDrag(event.delta / ref.read(workspaceProvider).scale);
+          _queueDragUpdate(event.delta);
         } else if (_marqueeSelecting) {
           final start = _primaryDownLocal ?? event.localPosition;
-          setState(() {
-            _marqueeRectLocal = Rect.fromPoints(start, event.localPosition);
-          });
+          _queueMarqueeUpdate(Rect.fromPoints(start, event.localPosition));
         }
       },
       onPointerUp: (event) {
         final workspace = ref.read(workspaceProvider);
         if (workspace.columnLinkMode) {
           if (workspace.columnLinkSourceId != null) {
+            _flushColumnLinkUpdate();
             engine.finishColumnLink(_toWorld(event.localPosition));
           } else {
             engine.cancelColumnLink();
@@ -6053,6 +6223,7 @@ class _PointerWorkspaceLayerState
           return;
         }
         if (_rightPanning) {
+          _flushPanUpdate();
           _rightPanning = false;
           _secondaryPending = false;
           _secondaryDownWorld = null;
@@ -6078,6 +6249,7 @@ class _PointerWorkspaceLayerState
           return;
         }
         if (_leftDraggingBlock) {
+          _flushDragUpdate();
           final deleteByPalette = event.position.dx <= widget.paletteWidth;
           engine.endDrag(deleteDragged: deleteByPalette);
           _leftDraggingBlock = false;
@@ -6092,6 +6264,9 @@ class _PointerWorkspaceLayerState
           return;
         }
         if (_marqueeSelecting) {
+          final pendingMarquee = _pendingMarqueeRect;
+          _pendingMarqueeRect = null;
+          if (pendingMarquee != null) _marqueeRectLocal = pendingMarquee;
           final rect = _marqueeRectLocal;
           if (rect != null && rect.width > 4 && rect.height > 4) {
             final worldA = _toWorld(rect.topLeft);
@@ -6123,7 +6298,7 @@ class _PointerWorkspaceLayerState
         }
       },
       child: MouseRegion(
-        cursor: widget.workspace.columnLinkMode
+        cursor: widget.columnLinkMode
             ? SystemMouseCursors.precise
             : MouseCursor.defer,
         child: GestureDetector(
