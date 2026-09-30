@@ -9959,9 +9959,20 @@ class _FloatingRuntimeWindowsState
   _RuntimePanel? _draggedPanel;
   Offset? _dragPointer;
   bool _dragFrameScheduled = false;
-  bool _resizePreviewFrameScheduled = false;
   double? _pendingRuntimeWidth;
   double? _pendingCommandOutputFraction;
+  OverlayEntry? _resizeGhostOverlay;
+  Offset _resizeGhostOrigin = Offset.zero;
+  Size _resizeGhostHandleSize = Size.zero;
+  _ResizeAxis? _resizeGhostAxis;
+  double _resizeGhostOffset = 0;
+  String? _resizeGhostLabel;
+
+  @override
+  void dispose() {
+    _removeResizeGhost();
+    super.dispose();
+  }
 
   void _startDrag(_RuntimePanel panel, Offset pointer) {
     setState(() {
@@ -10008,7 +10019,10 @@ class _FloatingRuntimeWindowsState
     _pendingRuntimeWidth = (current - delta.dx)
         .clamp(minWidth, math.min(720.0, maxWidth))
         .toDouble();
-    _scheduleResizePreview();
+    _updateResizeGhost(
+      physicalDelta: current - _pendingRuntimeWidth!,
+      label: '${_pendingRuntimeWidth!.round()} px',
+    );
   }
 
   void _resizeVerticalDock({
@@ -10028,30 +10042,70 @@ class _FloatingRuntimeWindowsState
         (current + (stacked ? delta.dy : -delta.dy) / usableHeight)
             .clamp(.18, .78)
             .toDouble();
-    _scheduleResizePreview();
+    _updateResizeGhost(
+      physicalDelta:
+          (stacked ? 1 : -1) *
+          (_pendingCommandOutputFraction! - current) *
+          usableHeight,
+      label: '${(_pendingCommandOutputFraction! * 100).round()}%',
+    );
   }
 
-  void _scheduleResizePreview() {
-    if (_resizePreviewFrameScheduled) return;
-    _resizePreviewFrameScheduled = true;
-    SchedulerBinding.instance.scheduleFrameCallback((_) {
-      _resizePreviewFrameScheduled = false;
-      if (!mounted ||
-          (_pendingRuntimeWidth == null &&
-              _pendingCommandOutputFraction == null)) {
-        return;
-      }
-      setState(() {});
-    });
+  void _startResizeGhost({required Rect rect, required _ResizeAxis axis}) {
+    _removeResizeGhost();
+    final renderBox = context.findRenderObject();
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final overlayBox = overlay.context.findRenderObject();
+    if (renderBox is! RenderBox || overlayBox is! RenderBox) return;
+
+    final localOrigin = axis == _ResizeAxis.horizontal
+        ? Offset(rect.left, rect.top)
+        : Offset(rect.left, rect.top);
+    _resizeGhostOrigin = renderBox.localToGlobal(
+      localOrigin,
+      ancestor: overlayBox,
+    );
+    _resizeGhostHandleSize = axis == _ResizeAxis.horizontal
+        ? Size(3, rect.height)
+        : Size(rect.width, 3);
+    _resizeGhostAxis = axis;
+    _resizeGhostOffset = 0;
+    _resizeGhostLabel = null;
+    _resizeGhostOverlay = OverlayEntry(
+      builder: (_) => _ResizeGhostOverlay(
+        origin: _resizeGhostOrigin,
+        handleSize: _resizeGhostHandleSize,
+        axis: _resizeGhostAxis!,
+        offset: _resizeGhostOffset,
+        opacity: 1,
+        label: _resizeGhostLabel,
+      ),
+    );
+    overlay.insert(_resizeGhostOverlay!);
+  }
+
+  void _updateResizeGhost({
+    required double physicalDelta,
+    required String label,
+  }) {
+    if (_resizeGhostOverlay == null) return;
+    _resizeGhostOffset += physicalDelta;
+    _resizeGhostLabel = label;
+    _resizeGhostOverlay!.markNeedsBuild();
+  }
+
+  void _removeResizeGhost() {
+    _resizeGhostOverlay?.remove();
+    _resizeGhostOverlay = null;
+    _resizeGhostAxis = null;
   }
 
   void _endResize(WorkbenchLayoutController controller) {
     final runtimeWidth = _pendingRuntimeWidth;
     final outputFraction = _pendingCommandOutputFraction;
-    setState(() {
-      _pendingRuntimeWidth = null;
-      _pendingCommandOutputFraction = null;
-    });
+    _pendingRuntimeWidth = null;
+    _pendingCommandOutputFraction = null;
+    _removeResizeGhost();
     if (runtimeWidth != null) controller.setRuntimeWidth(runtimeWidth);
     if (outputFraction != null) {
       controller.setCommandOutputFraction(outputFraction);
@@ -10115,26 +10169,6 @@ class _FloatingRuntimeWindowsState
         final panels = layouts[widget.layout.runtimePanelLayout]!;
         final commandRect = panels.$1;
         final previewRect = panels.$2;
-        final previewLayout =
-            _pendingRuntimeWidth == null &&
-                _pendingCommandOutputFraction == null
-            ? null
-            : widget.layout.copyWith(
-                runtimeWidth: _pendingRuntimeWidth,
-                commandOutputFraction: _pendingCommandOutputFraction,
-              );
-        final resizePanels = previewLayout == null
-            ? null
-            : _panelRects(
-                size: constraints.biggest,
-                mode: previewLayout.runtimePanelLayout,
-                layout: previewLayout,
-              );
-        final resizeLabel = _pendingRuntimeWidth != null
-            ? '${_pendingRuntimeWidth!.round()} px'
-            : _pendingCommandOutputFraction == null
-            ? null
-            : '${(_pendingCommandOutputFraction! * 100).round()}%';
         final activePanel = _draggedPanel;
         final activePointer = _dragPointer;
         final selectedMode = activePanel == null || activePointer == null
@@ -10165,6 +10199,14 @@ class _FloatingRuntimeWindowsState
               onHeaderDragUpdate: (details) =>
                   _updateDrag(toLocal(details.globalPosition)),
               onHeaderDragEnd: () => _endDrag(layouts, controller),
+              onTopResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                      RuntimePanelLayoutMode.commandBottom
+                  ? (_) => _startResizeGhost(
+                      rect: commandRect,
+                      axis: _ResizeAxis.vertical,
+                    )
+                  : null,
               onTopResizeUpdate:
                   widget.layout.runtimePanelLayout ==
                       RuntimePanelLayoutMode.commandBottom
@@ -10191,6 +10233,16 @@ class _FloatingRuntimeWindowsState
                       bounds: constraints.biggest,
                     )
                   : null,
+              onLeftResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? (_) => _startResizeGhost(
+                      rect: commandRect,
+                      axis: _ResizeAxis.horizontal,
+                    )
+                  : null,
               onLeftResizeEnd:
                   widget.layout.runtimePanelLayout ==
                           RuntimePanelLayoutMode.rightSplit ||
@@ -10212,6 +10264,16 @@ class _FloatingRuntimeWindowsState
               onHeaderDragUpdate: (details) =>
                   _updateDrag(toLocal(details.globalPosition)),
               onHeaderDragEnd: () => _endDrag(layouts, controller),
+              onTopResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? (_) => _startResizeGhost(
+                      rect: previewRect,
+                      axis: _ResizeAxis.vertical,
+                    )
+                  : null,
               onTopResizeUpdate:
                   widget.layout.runtimePanelLayout ==
                           RuntimePanelLayoutMode.rightSplit ||
@@ -10244,6 +10306,16 @@ class _FloatingRuntimeWindowsState
                       bounds: constraints.biggest,
                     )
                   : null,
+              onLeftResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.commandBottom
+                  ? (_) => _startResizeGhost(
+                      rect: previewRect,
+                      axis: _ResizeAxis.horizontal,
+                    )
+                  : null,
               onLeftResizeEnd:
                   widget.layout.runtimePanelLayout ==
                           RuntimePanelLayoutMode.rightSplit ||
@@ -10252,20 +10324,6 @@ class _FloatingRuntimeWindowsState
                   ? () => _endResize(controller)
                   : null,
             ),
-            if (resizePanels != null) ...[
-              Positioned.fromRect(
-                rect: resizePanels.$1,
-                child: IgnorePointer(
-                  child: _RuntimeResizeGhost(label: resizeLabel),
-                ),
-              ),
-              Positioned.fromRect(
-                rect: resizePanels.$2,
-                child: IgnorePointer(
-                  child: _RuntimeResizeGhost(label: resizeLabel),
-                ),
-              ),
-            ],
             if (activePanel != null && activePointer != null) ...[
               for (final mode in _dropModesFor(activePanel))
                 Positioned.fromRect(
@@ -10434,44 +10492,6 @@ class _RuntimeDragGhost extends StatelessWidget {
   }
 }
 
-/// Preview shown while resizing a dock. The real panels deliberately keep
-/// their dimensions until the pointer is released, avoiding expensive relayout
-/// work while still making the destination size unambiguous.
-class _RuntimeResizeGhost extends StatelessWidget {
-  const _RuntimeResizeGhost({this.label});
-
-  final String? label;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return RepaintBoundary(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: accent.withValues(alpha: .09),
-          border: Border.all(color: accent.withValues(alpha: .9), width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: .24),
-              blurRadius: 18,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: label == null
-            ? null
-            : Align(
-                alignment: Alignment.topRight,
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: _ResizeGhostBadge(label: label!, horizontal: true),
-                ),
-              ),
-      ),
-    );
-  }
-}
-
 class _FloatingRuntimeWindow extends StatelessWidget {
   const _FloatingRuntimeWindow({
     super.key,
@@ -10484,8 +10504,10 @@ class _FloatingRuntimeWindow extends StatelessWidget {
     this.onHeaderDragUpdate,
     this.onHeaderDragEnd,
     this.onHeaderDragCancel,
+    this.onTopResizeStart,
     this.onTopResizeUpdate,
     this.onTopResizeEnd,
+    this.onLeftResizeStart,
     this.onLeftResizeUpdate,
     this.onLeftResizeEnd,
   });
@@ -10499,8 +10521,10 @@ class _FloatingRuntimeWindow extends StatelessWidget {
   final GestureDragUpdateCallback? onHeaderDragUpdate;
   final GestureDragEndCallback? onHeaderDragEnd;
   final VoidCallback? onHeaderDragCancel;
+  final GestureDragStartCallback? onTopResizeStart;
   final GestureDragUpdateCallback? onTopResizeUpdate;
   final VoidCallback? onTopResizeEnd;
+  final GestureDragStartCallback? onLeftResizeStart;
   final GestureDragUpdateCallback? onLeftResizeUpdate;
   final VoidCallback? onLeftResizeEnd;
 
@@ -10576,6 +10600,7 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                     cursor: SystemMouseCursors.resizeUpDown,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
+                      onPanStart: onTopResizeStart,
                       onPanUpdate: onTopResizeUpdate,
                       onPanEnd: (_) => onTopResizeEnd?.call(),
                       onPanCancel: onTopResizeEnd,
@@ -10615,6 +10640,7 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                     cursor: SystemMouseCursors.resizeLeftRight,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
+                      onPanStart: onLeftResizeStart,
                       onPanUpdate: onLeftResizeUpdate,
                       onPanEnd: (_) => onLeftResizeEnd?.call(),
                       onPanCancel: onLeftResizeEnd,
@@ -10658,8 +10684,10 @@ class _SqlCommandOutputWindow extends StatefulWidget {
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    this.onTopResizeStart,
     this.onTopResizeUpdate,
     this.onTopResizeEnd,
+    this.onLeftResizeStart,
     this.onLeftResizeUpdate,
     this.onLeftResizeEnd,
   });
@@ -10676,8 +10704,10 @@ class _SqlCommandOutputWindow extends StatefulWidget {
   final GestureDragStartCallback onHeaderDragStart;
   final GestureDragUpdateCallback onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
+  final GestureDragStartCallback? onTopResizeStart;
   final GestureDragUpdateCallback? onTopResizeUpdate;
   final VoidCallback? onTopResizeEnd;
+  final GestureDragStartCallback? onLeftResizeStart;
   final GestureDragUpdateCallback? onLeftResizeUpdate;
   final VoidCallback? onLeftResizeEnd;
 
@@ -10708,8 +10738,10 @@ class _SqlCommandOutputWindowState extends State<_SqlCommandOutputWindow> {
       onHeaderDragUpdate: widget.onHeaderDragUpdate,
       onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
       onHeaderDragCancel: widget.onHeaderDragEnd,
+      onTopResizeStart: widget.onTopResizeStart,
       onTopResizeUpdate: widget.onTopResizeUpdate,
       onTopResizeEnd: widget.onTopResizeEnd,
+      onLeftResizeStart: widget.onLeftResizeStart,
       onLeftResizeUpdate: widget.onLeftResizeUpdate,
       onLeftResizeEnd: widget.onLeftResizeEnd,
       actions: [
@@ -10772,8 +10804,10 @@ class _OutputPreviewFloatingWindow extends StatefulWidget {
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    this.onTopResizeStart,
     this.onTopResizeUpdate,
     this.onTopResizeEnd,
+    this.onLeftResizeStart,
     this.onLeftResizeUpdate,
     this.onLeftResizeEnd,
   });
@@ -10786,8 +10820,10 @@ class _OutputPreviewFloatingWindow extends StatefulWidget {
   final GestureDragStartCallback onHeaderDragStart;
   final GestureDragUpdateCallback onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
+  final GestureDragStartCallback? onTopResizeStart;
   final GestureDragUpdateCallback? onTopResizeUpdate;
   final VoidCallback? onTopResizeEnd;
+  final GestureDragStartCallback? onLeftResizeStart;
   final GestureDragUpdateCallback? onLeftResizeUpdate;
   final VoidCallback? onLeftResizeEnd;
 
@@ -10877,8 +10913,10 @@ class _OutputPreviewFloatingWindowState
     onHeaderDragUpdate: widget.onHeaderDragUpdate,
     onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
     onHeaderDragCancel: widget.onHeaderDragEnd,
+    onTopResizeStart: widget.onTopResizeStart,
     onTopResizeUpdate: widget.onTopResizeUpdate,
     onTopResizeEnd: widget.onTopResizeEnd,
+    onLeftResizeStart: widget.onLeftResizeStart,
     onLeftResizeUpdate: widget.onLeftResizeUpdate,
     onLeftResizeEnd: widget.onLeftResizeEnd,
     actions: [
