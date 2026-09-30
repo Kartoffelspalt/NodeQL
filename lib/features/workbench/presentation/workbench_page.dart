@@ -9959,7 +9959,7 @@ class _FloatingRuntimeWindowsState
   _RuntimePanel? _draggedPanel;
   Offset? _dragPointer;
   bool _dragFrameScheduled = false;
-  bool _resizeFrameScheduled = false;
+  bool _resizePreviewFrameScheduled = false;
   double? _pendingRuntimeWidth;
   double? _pendingCommandOutputFraction;
 
@@ -10001,7 +10001,6 @@ class _FloatingRuntimeWindowsState
     required Offset delta,
     required WorkbenchLayout layout,
     required Size bounds,
-    required WorkbenchLayoutController controller,
   }) {
     final maxWidth = math.max(1.0, bounds.width - 240.0);
     final minWidth = math.min(260.0, maxWidth);
@@ -10009,7 +10008,7 @@ class _FloatingRuntimeWindowsState
     _pendingRuntimeWidth = (current - delta.dx)
         .clamp(minWidth, math.min(720.0, maxWidth))
         .toDouble();
-    _scheduleResize(controller);
+    _scheduleResizePreview();
   }
 
   void _resizeVerticalDock({
@@ -10017,7 +10016,6 @@ class _FloatingRuntimeWindowsState
     required WorkbenchLayout layout,
     required Size bounds,
     required bool stacked,
-    required WorkbenchLayoutController controller,
   }) {
     const gap = 8.0;
     final contentHeight = math.max(1.0, bounds.height);
@@ -10030,29 +10028,30 @@ class _FloatingRuntimeWindowsState
         (current + (stacked ? delta.dy : -delta.dy) / usableHeight)
             .clamp(.18, .78)
             .toDouble();
-    _scheduleResize(controller);
+    _scheduleResizePreview();
   }
 
-  void _scheduleResize(WorkbenchLayoutController controller) {
-    if (_resizeFrameScheduled) return;
-    _resizeFrameScheduled = true;
+  void _scheduleResizePreview() {
+    if (_resizePreviewFrameScheduled) return;
+    _resizePreviewFrameScheduled = true;
     SchedulerBinding.instance.scheduleFrameCallback((_) {
-      _resizeFrameScheduled = false;
-      if (!mounted) return;
-      final runtimeWidth = _pendingRuntimeWidth;
-      final outputFraction = _pendingCommandOutputFraction;
-      if (runtimeWidth != null) controller.setRuntimeWidth(runtimeWidth);
-      if (outputFraction != null) {
-        controller.setCommandOutputFraction(outputFraction);
+      _resizePreviewFrameScheduled = false;
+      if (!mounted ||
+          (_pendingRuntimeWidth == null &&
+              _pendingCommandOutputFraction == null)) {
+        return;
       }
+      setState(() {});
     });
   }
 
   void _endResize(WorkbenchLayoutController controller) {
     final runtimeWidth = _pendingRuntimeWidth;
     final outputFraction = _pendingCommandOutputFraction;
-    _pendingRuntimeWidth = null;
-    _pendingCommandOutputFraction = null;
+    setState(() {
+      _pendingRuntimeWidth = null;
+      _pendingCommandOutputFraction = null;
+    });
     if (runtimeWidth != null) controller.setRuntimeWidth(runtimeWidth);
     if (outputFraction != null) {
       controller.setCommandOutputFraction(outputFraction);
@@ -10116,6 +10115,26 @@ class _FloatingRuntimeWindowsState
         final panels = layouts[widget.layout.runtimePanelLayout]!;
         final commandRect = panels.$1;
         final previewRect = panels.$2;
+        final previewLayout =
+            _pendingRuntimeWidth == null &&
+                _pendingCommandOutputFraction == null
+            ? null
+            : widget.layout.copyWith(
+                runtimeWidth: _pendingRuntimeWidth,
+                commandOutputFraction: _pendingCommandOutputFraction,
+              );
+        final resizePanels = previewLayout == null
+            ? null
+            : _panelRects(
+                size: constraints.biggest,
+                mode: previewLayout.runtimePanelLayout,
+                layout: previewLayout,
+              );
+        final resizeLabel = _pendingRuntimeWidth != null
+            ? '${_pendingRuntimeWidth!.round()} px'
+            : _pendingCommandOutputFraction == null
+            ? null
+            : '${(_pendingCommandOutputFraction! * 100).round()}%';
         final activePanel = _draggedPanel;
         final activePointer = _dragPointer;
         final selectedMode = activePanel == null || activePointer == null
@@ -10154,7 +10173,6 @@ class _FloatingRuntimeWindowsState
                       layout: widget.layout,
                       bounds: constraints.biggest,
                       stacked: false,
-                      controller: controller,
                     )
                   : null,
               onTopResizeEnd:
@@ -10171,7 +10189,6 @@ class _FloatingRuntimeWindowsState
                       delta: details.delta,
                       layout: widget.layout,
                       bounds: constraints.biggest,
-                      controller: controller,
                     )
                   : null,
               onLeftResizeEnd:
@@ -10207,7 +10224,6 @@ class _FloatingRuntimeWindowsState
                       stacked:
                           widget.layout.runtimePanelLayout ==
                           RuntimePanelLayoutMode.rightSplit,
-                      controller: controller,
                     )
                   : null,
               onTopResizeEnd:
@@ -10226,7 +10242,6 @@ class _FloatingRuntimeWindowsState
                       delta: details.delta,
                       layout: widget.layout,
                       bounds: constraints.biggest,
-                      controller: controller,
                     )
                   : null,
               onLeftResizeEnd:
@@ -10237,6 +10252,20 @@ class _FloatingRuntimeWindowsState
                   ? () => _endResize(controller)
                   : null,
             ),
+            if (resizePanels != null) ...[
+              Positioned.fromRect(
+                rect: resizePanels.$1,
+                child: IgnorePointer(
+                  child: _RuntimeResizeGhost(label: resizeLabel),
+                ),
+              ),
+              Positioned.fromRect(
+                rect: resizePanels.$2,
+                child: IgnorePointer(
+                  child: _RuntimeResizeGhost(label: resizeLabel),
+                ),
+              ),
+            ],
             if (activePanel != null && activePointer != null) ...[
               for (final mode in _dropModesFor(activePanel))
                 Positioned.fromRect(
@@ -10400,6 +10429,44 @@ class _RuntimeDragGhost extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Preview shown while resizing a dock. The real panels deliberately keep
+/// their dimensions until the pointer is released, avoiding expensive relayout
+/// work while still making the destination size unambiguous.
+class _RuntimeResizeGhost extends StatelessWidget {
+  const _RuntimeResizeGhost({this.label});
+
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: .09),
+          border: Border.all(color: accent.withValues(alpha: .9), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: .24),
+              blurRadius: 18,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: label == null
+            ? null
+            : Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: _ResizeGhostBadge(label: label!, horizontal: true),
+                ),
+              ),
       ),
     );
   }
