@@ -10492,6 +10492,97 @@ class _RuntimeDragGhost extends StatelessWidget {
   }
 }
 
+/// The dock edge mirrors the palette's resize affordance: it grows and glows
+/// on hover, while the actual resize work remains in the lightweight overlay.
+class _RuntimeWindowResizeHandle extends StatefulWidget {
+  const _RuntimeWindowResizeHandle({
+    required this.axis,
+    required this.label,
+    this.onStart,
+    this.onUpdate,
+    this.onEnd,
+  });
+
+  final _ResizeAxis axis;
+  final String label;
+  final GestureDragStartCallback? onStart;
+  final GestureDragUpdateCallback? onUpdate;
+  final VoidCallback? onEnd;
+
+  @override
+  State<_RuntimeWindowResizeHandle> createState() =>
+      _RuntimeWindowResizeHandleState();
+}
+
+class _RuntimeWindowResizeHandleState
+    extends State<_RuntimeWindowResizeHandle> {
+  bool _hovering = false;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontal = widget.axis == _ResizeAxis.horizontal;
+    final active = _hovering || _dragging;
+    final accent = Theme.of(context).colorScheme.primary;
+    final colors = NodeQlWorkbenchColors.of(context);
+    final indicator = AnimatedContainer(
+      duration: const Duration(milliseconds: 90),
+      curve: Curves.easeOutCubic,
+      width: horizontal ? (active ? 4 : 3) : (active ? 54 : 34),
+      height: horizontal ? (active ? 54 : 34) : (active ? 4 : 3),
+      decoration: BoxDecoration(
+        color: active ? accent : colors.border,
+        boxShadow: active
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: accent.withValues(alpha: .5),
+                  blurRadius: 14,
+                  spreadRadius: 1,
+                ),
+              ]
+            : const <BoxShadow>[],
+      ),
+    );
+
+    return MouseRegion(
+      cursor: horizontal
+          ? SystemMouseCursors.resizeLeftRight
+          : SystemMouseCursors.resizeUpDown,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: (details) {
+          setState(() => _dragging = true);
+          widget.onStart?.call(details);
+        },
+        onPanUpdate: widget.onUpdate,
+        onPanEnd: (_) {
+          setState(() => _dragging = false);
+          widget.onEnd?.call();
+        },
+        onPanCancel: () {
+          setState(() => _dragging = false);
+          widget.onEnd?.call();
+        },
+        child: Semantics(
+          label: widget.label,
+          child: SizedBox(
+            width: horizontal ? 8 : double.infinity,
+            height: horizontal ? double.infinity : 8,
+            child: Align(
+              alignment: horizontal
+                  ? Alignment.centerLeft
+                  : Alignment.topCenter,
+              child: indicator,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FloatingRuntimeWindow extends StatelessWidget {
   const _FloatingRuntimeWindow({
     super.key,
@@ -10596,39 +10687,12 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                   top: 0,
                   left: 0,
                   right: 0,
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.resizeUpDown,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanStart: onTopResizeStart,
-                      onPanUpdate: onTopResizeUpdate,
-                      onPanEnd: (_) => onTopResizeEnd?.call(),
-                      onPanCancel: onTopResizeEnd,
-                      child: Semantics(
-                        label: 'Fensterhöhe anpassen',
-                        child: Container(
-                          height: 8,
-                          alignment: Alignment.topCenter,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                colors.panelElevated.withValues(alpha: 0),
-                                colors.border.withValues(alpha: .82),
-                                colors.panelElevated.withValues(alpha: 0),
-                              ],
-                            ),
-                          ),
-                          child: Container(
-                            width: 34,
-                            height: 3,
-                            margin: const EdgeInsets.only(top: 2),
-                            decoration: BoxDecoration(
-                              color: accent.withValues(alpha: .72),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  child: _RuntimeWindowResizeHandle(
+                    axis: _ResizeAxis.vertical,
+                    label: 'Fensterhöhe anpassen',
+                    onStart: onTopResizeStart,
+                    onUpdate: onTopResizeUpdate,
+                    onEnd: onTopResizeEnd,
                   ),
                 ),
               if (onLeftResizeUpdate != null)
@@ -10636,30 +10700,12 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                   top: 0,
                   left: 0,
                   bottom: 0,
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.resizeLeftRight,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanStart: onLeftResizeStart,
-                      onPanUpdate: onLeftResizeUpdate,
-                      onPanEnd: (_) => onLeftResizeEnd?.call(),
-                      onPanCancel: onLeftResizeEnd,
-                      child: Semantics(
-                        label: 'Fensterbreite anpassen',
-                        child: Container(
-                          width: 8,
-                          alignment: Alignment.centerLeft,
-                          child: Container(
-                            width: 3,
-                            height: 34,
-                            margin: const EdgeInsets.only(left: 2),
-                            decoration: BoxDecoration(
-                              color: accent.withValues(alpha: .55),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  child: _RuntimeWindowResizeHandle(
+                    axis: _ResizeAxis.horizontal,
+                    label: 'Fensterbreite anpassen',
+                    onStart: onLeftResizeStart,
+                    onUpdate: onLeftResizeUpdate,
+                    onEnd: onLeftResizeEnd,
                   ),
                 ),
             ],
