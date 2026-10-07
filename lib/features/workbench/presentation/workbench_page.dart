@@ -2710,6 +2710,18 @@ class _WorkshopWorkspaceViewState
           children: [
             _WorkshopModeTopBar(
               catalog: catalog,
+              languageChoices: <SupportedLanguage>[
+                ...supportedLanguages,
+                for (final package in translationState.installed.values)
+                  if (!supportedLanguages.any(
+                    (language) => language.code == package.locale,
+                  ))
+                    SupportedLanguage(package.locale, package.locale),
+              ],
+              localeCode: localeCode,
+              onLocale: (code) => ref
+                  .read(translationControllerProvider.notifier)
+                  .setLocaleTag(code),
               mode: mode,
               running: _runningSql,
               onRun: () => unawaited(_runWorkshopSql()),
@@ -2882,12 +2894,6 @@ class _WorkshopWorkspaceViewState
                                         ),
                                       ],
                                     ),
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: workspaceRightInset,
-                                    child: _WorkspaceTabsBar(catalog: catalog),
                                   ),
                                 ],
                               ),
@@ -3148,6 +3154,9 @@ class _WorkshopWorkspaceViewState
 class _WorkshopModeTopBar extends StatelessWidget {
   const _WorkshopModeTopBar({
     required this.catalog,
+    required this.languageChoices,
+    required this.localeCode,
+    required this.onLocale,
     required this.mode,
     required this.running,
     required this.onRun,
@@ -3157,6 +3166,9 @@ class _WorkshopModeTopBar extends StatelessWidget {
   });
 
   final TranslationCatalog catalog;
+  final List<SupportedLanguage> languageChoices;
+  final String localeCode;
+  final ValueChanged<String> onLocale;
   final SqlAbstractionMode mode;
   final bool running;
   final VoidCallback onRun;
@@ -3221,6 +3233,29 @@ class _WorkshopModeTopBar extends StatelessWidget {
             ],
             selected: <SqlAbstractionMode>{mode},
             onSelectionChanged: (selection) => onModeChanged(selection.first),
+          ),
+          const SizedBox(width: 10),
+          DropdownButton<String>(
+            key: const ValueKey<String>('workshop-language-selector'),
+            value: localeCode,
+            dropdownColor: colors.panelElevated,
+            iconEnabledColor: colors.topBarForeground,
+            underline: const SizedBox.shrink(),
+            style: TextStyle(color: colors.topBarForeground),
+            items: languageChoices
+                .map(
+                  (language) => DropdownMenuItem<String>(
+                    value: language.code,
+                    child: Text(
+                      language.nativeName,
+                      style: TextStyle(color: colors.topBarForeground),
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) onLocale(value);
+            },
           ),
           const SizedBox(width: 10),
           FilledButton.icon(
