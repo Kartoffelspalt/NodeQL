@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
@@ -269,6 +270,8 @@ class TutorialDialog extends StatefulWidget {
     this.initialProgress = const {},
     this.onProgressChanged,
     this.onStartPractice,
+    this.authoredPaths = const <AuthoredLearningPath>[],
+    this.onStartAuthoredPath,
     this.startOnOverview = true,
     super.key,
   });
@@ -282,6 +285,8 @@ class TutorialDialog extends StatefulWidget {
   )?
   onProgressChanged;
   final Future<void> Function(TutorialKnowledgeMode mode)? onStartPractice;
+  final List<AuthoredLearningPath> authoredPaths;
+  final Future<void> Function(AuthoredLearningPath path)? onStartAuthoredPath;
   final bool startOnOverview;
 
   @override
@@ -340,7 +345,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
                   progressText: _showOverview
                       ? catalog.text('tutorial.overview.progress', {
                           'completed': _completedLessonCount,
-                          'total': TutorialKnowledgeMode.values.length,
+                          'total': workshopTutorialCatalog.tutorials.length,
                         })
                       : catalog.text('tutorial.progress', {
                           'current': _step + 1,
@@ -354,7 +359,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
                 LinearProgressIndicator(
                   value: _showOverview
                       ? _completedLessonCount /
-                            TutorialKnowledgeMode.values.length
+                            workshopTutorialCatalog.tutorials.length
                       : (_step + 1) / _stepCount,
                   minHeight: 4,
                   backgroundColor: workbenchColors.border,
@@ -364,22 +369,10 @@ class _TutorialDialogState extends State<TutorialDialog> {
                       ? _LessonOverview(
                           catalog: catalog,
                           progress: _progress,
-                          challengeCounts: {
-                            for (final mode in TutorialKnowledgeMode.values)
-                              mode:
-                                  tutorialPracticeDefinitions[mode]
-                                      ?.stepCount ??
-                                  0,
-                          },
-                          estimatedMinutes: {
-                            for (final mode in TutorialKnowledgeMode.values)
-                              mode: mode.hasWorkspacePractice
-                                  ? tutorialPracticeDefinitions[mode]
-                                            ?.estimatedMinutes ??
-                                        0
-                                  : 8,
-                          },
+                          tutorials: workshopTutorialCatalog.tutorials,
                           onLesson: _openLesson,
+                          authoredPaths: widget.authoredPaths,
+                          onAuthoredPath: _startAuthoredPath,
                         )
                       : compact
                       ? _buildCompactContent()
@@ -472,7 +465,9 @@ class _TutorialDialogState extends State<TutorialDialog> {
             solved: _solvedSteps.length,
             total: _challengeCount(_mode),
           ),
-          if (_mode.hasWorkspacePractice && widget.onStartPractice != null) ...[
+          if ((workshopTutorialCatalog.byMode(_mode)?.hasWorkspacePractice ??
+                  _mode.hasWorkspacePractice) &&
+              widget.onStartPractice != null) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
@@ -597,8 +592,11 @@ class _TutorialDialogState extends State<TutorialDialog> {
     _saveProgress();
   }
 
-  int get _completedLessonCount => TutorialKnowledgeMode.values
-      .where((mode) => _practicePathCompleted(mode, _progress[mode]!))
+  int get _completedLessonCount => workshopTutorialCatalog.tutorials
+      .where(
+        (tutorial) =>
+            _practicePathCompleted(tutorial.mode, _progress[tutorial.mode]!),
+      )
       .length;
 
   int _challengeCount(TutorialKnowledgeMode mode) =>
@@ -613,7 +611,9 @@ class _TutorialDialogState extends State<TutorialDialog> {
   }
 
   void _openLesson(TutorialKnowledgeMode mode) {
-    if (mode.hasWorkspacePractice && widget.onStartPractice != null) {
+    if ((workshopTutorialCatalog.byMode(mode)?.hasWorkspacePractice ??
+            mode.hasWorkspacePractice) &&
+        widget.onStartPractice != null) {
       _startPractice(mode);
       return;
     }
@@ -651,6 +651,13 @@ class _TutorialDialogState extends State<TutorialDialog> {
     final callback = widget.onStartPractice;
     if (callback == null) return;
     await callback(mode);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _startAuthoredPath(AuthoredLearningPath path) async {
+    final callback = widget.onStartAuthoredPath;
+    if (callback == null) return;
+    await callback(path);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -904,24 +911,26 @@ class _LessonOverview extends StatelessWidget {
   const _LessonOverview({
     required this.catalog,
     required this.progress,
-    required this.challengeCounts,
-    required this.estimatedMinutes,
+    required this.tutorials,
     required this.onLesson,
+    required this.authoredPaths,
+    required this.onAuthoredPath,
   });
 
   final TranslationCatalog catalog;
   final Map<TutorialKnowledgeMode, TutorialLessonProgress> progress;
-  final Map<TutorialKnowledgeMode, int> challengeCounts;
-  final Map<TutorialKnowledgeMode, int> estimatedMinutes;
+  final List<WorkshopTutorialDefinition> tutorials;
   final ValueChanged<TutorialKnowledgeMode> onLesson;
+  final List<AuthoredLearningPath> authoredPaths;
+  final ValueChanged<AuthoredLearningPath> onAuthoredPath;
 
   @override
   Widget build(BuildContext context) {
-    final completed = TutorialKnowledgeMode.values
+    final completed = tutorials
         .where(
-          (mode) => _practicePathCompleted(
-            mode,
-            progress[mode] ?? const TutorialLessonProgress(),
+          (tutorial) => _practicePathCompleted(
+            tutorial.mode,
+            progress[tutorial.mode] ?? const TutorialLessonProgress(),
           ),
         )
         .length;
@@ -949,9 +958,9 @@ class _LessonOverview extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             catalog.text('tutorial.overview.body', {
-              'missions': challengeCounts.values.fold<int>(
+              'missions': tutorials.fold<int>(
                 0,
-                (total, count) => total + count,
+                (total, tutorial) => total + tutorial.missionCount,
               ),
             }),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -960,7 +969,11 @@ class _LessonOverview extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          _WorkshopSummary(catalog: catalog, completed: completed),
+          _WorkshopSummary(
+            catalog: catalog,
+            completed: completed,
+            total: tutorials.length,
+          ),
           const SizedBox(height: 22),
           Text(
             catalog.text('tutorial.overview.curriculum'),
@@ -989,20 +1002,18 @@ class _LessonOverview extends StatelessWidget {
                         spacing: 16,
                         runSpacing: 16,
                         children: [
-                          for (final mode in TutorialKnowledgeMode.values.where(
-                            (mode) => mode.area == workshopArea,
+                          for (final tutorial in tutorials.where(
+                            (tutorial) => tutorial.area == workshopArea,
                           ))
                             SizedBox(
                               width: width,
                               child: _LessonCard(
                                 catalog: catalog,
-                                mode: mode,
+                                tutorial: tutorial,
                                 progress:
-                                    progress[mode] ??
+                                    progress[tutorial.mode] ??
                                     const TutorialLessonProgress(),
-                                exerciseCount: challengeCounts[mode] ?? 0,
-                                estimatedMinutes: estimatedMinutes[mode] ?? 0,
-                                onTap: () => onLesson(mode),
+                                onTap: () => onLesson(tutorial.mode),
                               ),
                             ),
                         ],
@@ -1021,6 +1032,31 @@ class _LessonOverview extends StatelessWidget {
                     TutorialWorkshopArea.nodeQl,
                     'tutorial.overview.area.nodeQl',
                   ),
+                  if (authoredPaths.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      catalog.text('tutorial.overview.area.custom'),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        for (final path in authoredPaths)
+                          SizedBox(
+                            width: width,
+                            child: _AuthoredLearningPathCard(
+                              catalog: catalog,
+                              path: path,
+                              onTap: () => onAuthoredPath(path),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               );
             },
@@ -1097,6 +1133,78 @@ class _LessonOverview extends StatelessWidget {
   }
 }
 
+class _AuthoredLearningPathCard extends StatelessWidget {
+  const _AuthoredLearningPathCard({
+    required this.catalog,
+    required this.path,
+    required this.onTap,
+  });
+
+  final TranslationCatalog catalog;
+  final AuthoredLearningPath path;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      color: colors.panel,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: ValueKey('authored-learning-path-${path.id}'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: colorScheme.tertiaryContainer,
+                    foregroundColor: colorScheme.onTertiaryContainer,
+                    child: const Icon(Icons.timeline_rounded),
+                  ),
+                  const Spacer(),
+                  Chip(label: Text(catalog.text('tutorial.lesson.custom'))),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                path.title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                path.description,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.muted, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                catalog.text('tutorial.lesson.customMeta', {
+                  'steps': path.steps.length,
+                  'callouts': path.calloutCount,
+                }),
+                style: TextStyle(
+                  color: colors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _WorkshopSchemaCard extends StatelessWidget {
   const _WorkshopSchemaCard({
     required this.catalog,
@@ -1142,15 +1250,19 @@ class _WorkshopSchemaCard extends StatelessWidget {
 }
 
 class _WorkshopSummary extends StatelessWidget {
-  const _WorkshopSummary({required this.catalog, required this.completed});
+  const _WorkshopSummary({
+    required this.catalog,
+    required this.completed,
+    required this.total,
+  });
 
   final TranslationCatalog catalog;
   final int completed;
+  final int total;
 
   @override
   Widget build(BuildContext context) {
     final colors = NodeQlWorkbenchColors.of(context);
-    final total = TutorialKnowledgeMode.values.length;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1200,19 +1312,19 @@ class _WorkshopSummary extends StatelessWidget {
 class _LessonCard extends StatelessWidget {
   const _LessonCard({
     required this.catalog,
-    required this.mode,
+    required this.tutorial,
     required this.progress,
-    required this.exerciseCount,
-    required this.estimatedMinutes,
     required this.onTap,
   });
 
   final TranslationCatalog catalog;
-  final TutorialKnowledgeMode mode;
+  final WorkshopTutorialDefinition tutorial;
   final TutorialLessonProgress progress;
-  final int exerciseCount;
-  final int estimatedMinutes;
   final VoidCallback onTap;
+
+  TutorialKnowledgeMode get mode => tutorial.mode;
+  int get exerciseCount => tutorial.missionCount;
+  int get estimatedMinutes => tutorial.resolvedEstimatedMinutes;
 
   @override
   Widget build(BuildContext context) {
@@ -1224,7 +1336,7 @@ class _LessonCard extends StatelessWidget {
     );
     final courseComplete = _practicePathCompleted(mode, progress);
     final started = solved > 0;
-    final actionKey = mode.hasWorkspacePractice
+    final actionKey = tutorial.hasWorkspacePractice
         ? courseComplete
               ? 'tutorial.lesson.repeat'
               : started
@@ -1278,7 +1390,7 @@ class _LessonCard extends StatelessWidget {
                         ),
                       ),
                     )
-                  else if (mode == TutorialKnowledgeMode.selectAndSimpleFilters)
+                  else if (tutorial.recommended)
                     Flexible(
                       child: Align(
                         alignment: Alignment.centerRight,
@@ -1365,7 +1477,7 @@ class _LessonCard extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       catalog.text(
-                        mode.hasWorkspacePractice
+                        tutorial.hasWorkspacePractice
                             ? 'tutorial.lesson.practiceDone'
                             : 'tutorial.lesson.moduleDone',
                       ),

@@ -15,6 +15,7 @@ import 'package:nodeql/data/project/project_file_upgrade_service.dart';
 import 'package:nodeql/data/project/project_file_paths.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_backwards_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_to_nodes_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sqlite_function_catalog.dart';
@@ -31,6 +32,9 @@ import 'package:nodeql/features/workbench/presentation/widgets/database_browser_
 import 'package:nodeql/features/workbench/presentation/widgets/sql_code_editor.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
+import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
+import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
+import 'package:nodeql/features/tutorial/workshop_admin_extension.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
@@ -50,6 +54,32 @@ import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
 const String _appIconAsset = 'assets/appicon/iconv4dark.png';
+
+class _NodeQlAppIcon extends StatelessWidget {
+  const _NodeQlAppIcon({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+    _appIconAsset,
+    width: size,
+    height: size,
+    fit: BoxFit.cover,
+    errorBuilder: (context, error, stackTrace) => Image.asset(
+      _appIconAsset,
+      package: 'nodeql',
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => SizedBox.square(
+        dimension: size,
+        child: const Icon(Icons.account_tree_rounded),
+      ),
+    ),
+  );
+}
+
 const double _inlineLineHeight = 28;
 const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
@@ -762,6 +792,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       final workspaceRightInset = runtimeExtents.$1
                           .clamp(0.0, math.max(0.0, workspaceWidth - 120.0))
                           .toDouble();
+                      final ideRightInset = runtimeExtents.$1
+                          .clamp(
+                            0.0,
+                            math.max(0.0, constraints.maxWidth - 120.0),
+                          )
+                          .toDouble();
                       final workspaceBottomInset =
                           switch (layout.runtimePanelLayout) {
                             RuntimePanelLayoutMode.rightSplit => 0.0,
@@ -776,83 +812,102 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             left: 0,
                             right: 0,
                             bottom: workspaceBottomInset,
-                            child: Row(
-                              children: [
-                                _CategoryRail(
-                                  active: _activeCategory,
-                                  hasPlugins: pluginState.entries.isNotEmpty,
-                                  catalog: catalog,
-                                  onSelect: (next) =>
-                                      setState(() => _activeCategory = next),
-                                ),
-                                AnimatedSize(
-                                  duration: Duration(
-                                    milliseconds: layout.reduceMotion
-                                        ? 0
-                                        : (layout.highRefreshMode ? 240 : 300),
-                                  ),
-                                  curve: Curves.easeOutQuart,
-                                  alignment: Alignment.centerLeft,
-                                  clipBehavior: Clip.hardEdge,
-                                  child: _Palette(
-                                    category: _activeCategory,
-                                    runtime: runtime,
-                                    mode: mode,
-                                    localeCode: locale.languageCode,
-                                    catalog: catalog,
-                                    width: paletteWidth,
-                                    pluginEntries: pluginState.entries,
-                                    onAdd: (type, defaults) {
-                                      final controller = ref.read(
-                                        workspaceProvider.notifier,
-                                      );
-                                      controller.addTemplate(
-                                        type,
-                                        controller.suggestedTemplatePosition(
-                                          type,
-                                        ),
-                                        defaults: defaults,
-                                      );
-                                    },
-                                  ),
-                                ),
-                                _ThrottledResizeHandle(
-                                  value: layout.paletteWidth,
-                                  resetValue: 250,
-                                  axis: _ResizeAxis.horizontal,
-                                  deltaMultiplier: 1,
-                                  minValue: 200,
-                                  maxValue: 520,
-                                  highRefreshMode: layout.highRefreshMode,
-                                  reduceMotion: layout.reduceMotion,
-                                  onChanged: ref
-                                      .read(workbenchLayoutProvider.notifier)
-                                      .setPaletteWidth,
-                                ),
-                                Expanded(
-                                  child: Stack(
+                            child: _showCustomSqlEditor
+                                ? Padding(
+                                    padding: EdgeInsets.only(
+                                      right: ideRightInset,
+                                    ),
+                                    child: _SqlIdePane(
+                                      controller: _customSqlController,
+                                      runtime: runtime,
+                                      catalog: catalog,
+                                      executing: _executingCustomSql,
+                                      onExecute: _executeCustomSqlFromEditor,
+                                      onCreateNodes: _createNodesFromCustomSql,
+                                      onClear: _clearCustomSqlEditor,
+                                      onClose: () =>
+                                          _toggleCustomSqlEditor(sql),
+                                    ),
+                                  )
+                                : Row(
                                     children: [
-                                      Positioned(
-                                        top: 0,
-                                        left: 0,
-                                        right: workspaceRightInset,
-                                        bottom: 0,
-                                        child: _showCustomSqlEditor
-                                            ? _SqlIdePane(
-                                                controller:
-                                                    _customSqlController,
-                                                runtime: runtime,
-                                                catalog: catalog,
-                                                executing: _executingCustomSql,
-                                                onExecute:
-                                                    _executeCustomSqlFromEditor,
-                                                onClose: () =>
-                                                    _toggleCustomSqlEditor(sql),
-                                              )
-                                            : Column(
+                                      _CategoryRail(
+                                        active: _activeCategory,
+                                        hasPlugins:
+                                            pluginState.entries.isNotEmpty,
+                                        catalog: catalog,
+                                        onSelect: (next) => setState(
+                                          () => _activeCategory = next,
+                                        ),
+                                      ),
+                                      AnimatedSize(
+                                        duration: Duration(
+                                          milliseconds: layout.reduceMotion
+                                              ? 0
+                                              : (layout.highRefreshMode
+                                                    ? 240
+                                                    : 300),
+                                        ),
+                                        curve: Curves.easeOutQuart,
+                                        alignment: Alignment.centerLeft,
+                                        clipBehavior: Clip.hardEdge,
+                                        child: _Palette(
+                                          key: const ValueKey<String>(
+                                            'node-palette',
+                                          ),
+                                          category: _activeCategory,
+                                          runtime: runtime,
+                                          mode: mode,
+                                          localeCode: locale.languageCode,
+                                          catalog: catalog,
+                                          width: paletteWidth,
+                                          pluginEntries: pluginState.entries,
+                                          onAdd: (type, defaults) {
+                                            final controller = ref.read(
+                                              workspaceProvider.notifier,
+                                            );
+                                            controller.addTemplate(
+                                              type,
+                                              controller
+                                                  .suggestedTemplatePosition(
+                                                    type,
+                                                  ),
+                                              defaults: defaults,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      _ThrottledResizeHandle(
+                                        value: layout.paletteWidth,
+                                        resetValue: 250,
+                                        axis: _ResizeAxis.horizontal,
+                                        deltaMultiplier: 1,
+                                        minValue: 200,
+                                        maxValue: 520,
+                                        highRefreshMode: layout.highRefreshMode,
+                                        reduceMotion: layout.reduceMotion,
+                                        onChanged: ref
+                                            .read(
+                                              workbenchLayoutProvider.notifier,
+                                            )
+                                            .setPaletteWidth,
+                                      ),
+                                      Expanded(
+                                        child: Stack(
+                                          children: [
+                                            Positioned(
+                                              top: 0,
+                                              left: 0,
+                                              right: workspaceRightInset,
+                                              bottom: 0,
+                                              child: Column(
                                                 children: [
                                                   Expanded(
                                                     child: _WorkspaceCanvas(
+                                                      key:
+                                                          const ValueKey<
+                                                            String
+                                                          >('workspace-canvas'),
                                                       focusNode:
                                                           _workspaceFocus,
                                                       transform: _transform,
@@ -866,21 +921,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                                   ),
                                                 ],
                                               ),
-                                      ),
-                                      if (!_showCustomSqlEditor)
-                                        Positioned(
-                                          top: 0,
-                                          left: 0,
-                                          right: workspaceRightInset,
-                                          child: _WorkspaceTabsBar(
-                                            catalog: catalog,
-                                          ),
+                                            ),
+                                            Positioned(
+                                              top: 0,
+                                              left: 0,
+                                              right: workspaceRightInset,
+                                              child: _WorkspaceTabsBar(
+                                                catalog: catalog,
+                                              ),
+                                            ),
+                                          ],
                                         ),
+                                      ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
                           _FloatingRuntimeWindows(
                             sql: sql,
@@ -966,6 +1020,44 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     setState(() => _executingCustomSql = true);
     await ref.read(sqlRuntimeProvider.notifier).executeWithSnapshot(sql);
     if (mounted) setState(() => _executingCustomSql = false);
+  }
+
+  void _clearCustomSqlEditor() {
+    _customSqlController.clear();
+    setState(() {});
+  }
+
+  void _createNodesFromCustomSql() {
+    final result = SqlToNodesCompiler().compile(_customSqlController.text);
+    final catalog = ref.read(translationControllerProvider).catalog;
+    if (!result.hasNodes) {
+      final detail = result.warnings.isEmpty
+          ? catalog.text('runtime.ideImportNone')
+          : result.warnings.first;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(detail)));
+      return;
+    }
+    ref
+        .read(workspaceTabsProvider.notifier)
+        .addImportedWorkspace(
+          result.roots,
+          name: catalog.text('runtime.ideImportTab'),
+        );
+    setState(() => _showCustomSqlEditor = false);
+    final warningSuffix = result.warnings.isEmpty
+        ? ''
+        : catalog.text('runtime.ideImportPartial', <String, Object?>{
+            'count': result.warnings.length,
+          });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${catalog.text('runtime.ideImportSuccess', <String, Object?>{'count': result.importedStatementCount})}$warningSuffix',
+        ),
+      ),
+    );
   }
 
   Future<void> _initializeAutosave() async {
@@ -1544,12 +1636,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       applicationLegalese: 'Copyright © 2026 NodeQL contributors\nMIT License',
       applicationIcon: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.asset(
-          _appIconAsset,
-          width: 64,
-          height: 64,
-          fit: BoxFit.cover,
-        ),
+        child: const _NodeQlAppIcon(size: 64),
       ),
     );
   }
@@ -2666,6 +2753,9 @@ class _WorkshopWorkspaceViewState
   SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
   double? _practicePanelHeight;
   TutorialPracticeSession? _practice;
+  AuthoredLearningPath? _authoredPath;
+  int _authoredStepIndex = 0;
+  Map<String, String> _authoredNodeIds = const <String, String>{};
   bool _runningSql = false;
 
   @override
@@ -2685,6 +2775,10 @@ class _WorkshopWorkspaceViewState
     final mode = ref.watch(sqlModeProvider);
     final roots = workspace.roots;
     final practice = _practice;
+    final authoredPath = _authoredPath;
+    final authoredStep = authoredPath == null
+        ? null
+        : authoredPath.steps[_authoredStepIndex];
     final definition = practice == null
         ? null
         : tutorialPracticeDefinitions[practice.mode];
@@ -2702,6 +2796,7 @@ class _WorkshopWorkspaceViewState
       runtime: runtime,
       compileResult: compileResult,
     );
+    final adminActionBuilder = ref.watch(workshopAdminActionProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -2728,6 +2823,11 @@ class _WorkshopWorkspaceViewState
               onModeChanged: (next) =>
                   unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
               onLessons: () => _openTutorial(context),
+              adminAction: adminActionBuilder?.call(
+                context,
+                ref,
+                _startAuthoredPath,
+              ),
               onClose: widget.onExit,
             ),
             Expanded(
@@ -2841,7 +2941,16 @@ class _WorkshopWorkspaceViewState
                                     bottom: 0,
                                     child: Column(
                                       children: [
-                                        if (practice != null &&
+                                        if (authoredPath != null &&
+                                            authoredStep != null)
+                                          LearningPathTimelinePanel(
+                                            catalog: catalog,
+                                            path: authoredPath,
+                                            stepIndex: _authoredStepIndex,
+                                            onStep: _showAuthoredStep,
+                                            onClose: _closeAuthoredPath,
+                                          )
+                                        else if (practice != null &&
                                             definition != null &&
                                             result != null)
                                           AnimatedSwitcher(
@@ -2889,6 +2998,13 @@ class _WorkshopWorkspaceViewState
                                             transform: _transform,
                                             paletteWidth: 72.0 + paletteWidth,
                                             diagnostics: diagnostics,
+                                            learningPathCallouts:
+                                                authoredStep?.callouts ??
+                                                const <
+                                                  LearningPathNodeCallout
+                                                >[],
+                                            learningPathNodeIds:
+                                                _authoredNodeIds,
                                             onSaveProject: () async {},
                                           ),
                                         ),
@@ -2947,11 +3063,16 @@ class _WorkshopWorkspaceViewState
 
   Future<void> _openTutorial(BuildContext context) async {
     final tutorial = ref.read(tutorialControllerProvider.notifier);
-    final initialization = tutorial.initialize();
+    final initialization = Future.wait<void>([
+      tutorial.initialize(),
+      ref.read(learningPathLibraryProvider.notifier).initialize(),
+    ]);
     final catalog = ref.read(translationControllerProvider).catalog;
     Widget buildTutorial() => TutorialDialog(
       catalog: catalog,
       initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
+      authoredPaths: ref.read(learningPathLibraryProvider).paths,
+      onStartAuthoredPath: (path) async => _startAuthoredPath(path),
       onProgressChanged: (mode, progress) => ref
           .read(tutorialControllerProvider.notifier)
           .saveLessonProgress(mode, progress),
@@ -2962,7 +3083,9 @@ class _WorkshopWorkspaceViewState
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => !ref.read(tutorialControllerProvider).loading
+      builder: (_) =>
+          !ref.read(tutorialControllerProvider).loading &&
+              !ref.read(learningPathLibraryProvider).loading
           ? buildTutorial()
           : FutureBuilder<void>(
               future: initialization,
@@ -3017,6 +3140,8 @@ class _WorkshopWorkspaceViewState
     _transform.value = Matrix4.identity();
     if (!mounted) return;
     setState(() {
+      _authoredPath = null;
+      _authoredNodeIds = const <String, String>{};
       _activeCategory = _categoryForPracticeStep(definition.steps[stepIndex]);
       _practice = TutorialPracticeSession(
         mode: mode,
@@ -3112,6 +3237,48 @@ class _WorkshopWorkspaceViewState
 
   void _closePractice() => setState(() => _practice = null);
 
+  void _startAuthoredPath(AuthoredLearningPath path) {
+    if (path.steps.isEmpty) return;
+    setState(() {
+      _practice = null;
+      _authoredPath = path;
+      _authoredStepIndex = 0;
+    });
+    _loadAuthoredStep(path, 0);
+  }
+
+  void _showAuthoredStep(int index) {
+    final path = _authoredPath;
+    if (path == null || index < 0 || index >= path.steps.length) return;
+    setState(() => _authoredStepIndex = index);
+    _loadAuthoredStep(path, index);
+  }
+
+  void _loadAuthoredStep(AuthoredLearningPath path, int index) {
+    ref.read(sqlRuntimeProvider.notifier).clearResults();
+    final workspace = ref.read(workspaceProvider.notifier)
+      ..resetWithRoot(recordUndo: false, clearHistory: true);
+    final ids = <String, String>{};
+    for (final template in path.steps[index].nodes) {
+      final node = workspace.addTemplate(
+        template.type,
+        workspace.suggestedTemplatePosition(template.type),
+        defaults: template.defaults,
+        recordUndo: false,
+      );
+      ids[template.ref] = node.id;
+    }
+    _transform.value = Matrix4.identity();
+    if (mounted) setState(() => _authoredNodeIds = Map.unmodifiable(ids));
+  }
+
+  void _closeAuthoredPath() {
+    setState(() {
+      _authoredPath = null;
+      _authoredNodeIds = const <String, String>{};
+    });
+  }
+
   SqlPaletteCategory _categoryForPracticeStep(TutorialPracticeStep step) {
     if (step.focusNodes.contains(BlockType.sqlText)) {
       return SqlPaletteCategory.dataTypes;
@@ -3162,6 +3329,7 @@ class _WorkshopModeTopBar extends StatelessWidget {
     required this.onRun,
     required this.onModeChanged,
     required this.onLessons,
+    this.adminAction,
     required this.onClose,
   });
 
@@ -3174,6 +3342,7 @@ class _WorkshopModeTopBar extends StatelessWidget {
   final VoidCallback onRun;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onLessons;
+  final Widget? adminAction;
   final VoidCallback onClose;
 
   @override
@@ -3190,12 +3359,7 @@ class _WorkshopModeTopBar extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(9),
-            child: Image.asset(
-              _appIconAsset,
-              width: 36,
-              height: 36,
-              fit: BoxFit.cover,
-            ),
+            child: const _NodeQlAppIcon(size: 36),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -3277,6 +3441,7 @@ class _WorkshopModeTopBar extends StatelessWidget {
             label: Text(catalog.text('tutorial.window.paths')),
           ),
           const SizedBox(width: 6),
+          if (adminAction != null) ...[adminAction!, const SizedBox(width: 6)],
           IconButton(
             key: const ValueKey('workshop-mode-exit'),
             onPressed: onClose,
@@ -3479,12 +3644,7 @@ class _TopBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(
                       surfaceStyle.radiusSmall,
                     ),
-                    child: Image.asset(
-                      _appIconAsset,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.cover,
-                    ),
+                    child: const _NodeQlAppIcon(size: 36),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
                   Text(
@@ -5419,11 +5579,14 @@ class _RenameWorkspaceTabDialogState extends State<_RenameWorkspaceTabDialog> {
 
 class _WorkspaceCanvas extends ConsumerWidget {
   const _WorkspaceCanvas({
+    super.key,
     required this.focusNode,
     required this.transform,
     required this.paletteWidth,
     required this.diagnostics,
     required this.onSaveProject,
+    this.learningPathCallouts = const <LearningPathNodeCallout>[],
+    this.learningPathNodeIds = const <String, String>{},
   });
 
   final FocusNode focusNode;
@@ -5431,6 +5594,8 @@ class _WorkspaceCanvas extends ConsumerWidget {
   final double paletteWidth;
   final Map<String, _SimpleNodeDiagnostic> diagnostics;
   final Future<void> Function() onSaveProject;
+  final List<LearningPathNodeCallout> learningPathCallouts;
+  final Map<String, String> learningPathNodeIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -5547,6 +5712,19 @@ class _WorkspaceCanvas extends ConsumerWidget {
                                   : null,
                               columnLinkEndpointHaloColor: ropeColors.halo,
                             ),
+                          for (
+                            var index = 0;
+                            index < learningPathCallouts.length;
+                            index++
+                          )
+                            if (learningPathNodeIds[learningPathCallouts[index]
+                                    .targetRef]
+                                case final targetId?)
+                              _LearningPathCanvasCallout(
+                                sequence: index + 1,
+                                targetId: targetId,
+                                callout: learningPathCallouts[index],
+                              ),
                         ],
                       ),
                     ),
@@ -5684,6 +5862,118 @@ class _WorkspaceBlock extends ConsumerWidget {
           selected: visual.selected,
           columnLinkEndpointColor: columnLinkEndpointColor,
           columnLinkEndpointHaloColor: columnLinkEndpointHaloColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _LearningPathCanvasCallout extends ConsumerWidget {
+  const _LearningPathCanvasCallout({
+    required this.sequence,
+    required this.targetId,
+    required this.callout,
+  });
+
+  final int sequence;
+  final String targetId;
+  final LearningPathNodeCallout callout;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(workspaceProvider);
+    final controller = ref.read(workspaceProvider.notifier);
+    final node = controller.findById(targetId);
+    if (node == null) return const SizedBox.shrink();
+    final colors = NodeQlWorkbenchColors.of(context);
+    final nodeWidth = controller.nodeWidth(node);
+    const cardWidth = 276.0;
+    const connectorWidth = 34.0;
+    final rightSide = callout.side == LearningPathCalloutSide.right;
+    final left = rightSide
+        ? node.position.dx + nodeWidth
+        : math.max(0.0, node.position.dx - cardWidth - connectorWidth);
+    final verticalOffset = ((sequence - 1) % 3) * 12.0;
+    return Positioned(
+      left: left,
+      top: node.position.dy + verticalOffset,
+      child: IgnorePointer(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (rightSide)
+              Container(
+                width: connectorWidth,
+                height: 2,
+                margin: const EdgeInsets.only(top: 24),
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            Container(
+              key: ValueKey('learning-path-callout-${callout.id}'),
+              width: cardWidth,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.panelElevated,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 1.5,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 12,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    child: Text(
+                      '$sequence',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          callout.title,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          callout.body,
+                          style: TextStyle(
+                            color: colors.muted,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!rightSide)
+              Container(
+                width: connectorWidth,
+                height: 2,
+                margin: const EdgeInsets.only(top: 24),
+                color: Theme.of(context).colorScheme.primary,
+              ),
+          ],
         ),
       ),
     );
@@ -9295,6 +9585,8 @@ class _SqlIdePane extends StatefulWidget {
     required this.catalog,
     required this.executing,
     required this.onExecute,
+    required this.onCreateNodes,
+    required this.onClear,
     required this.onClose,
   });
 
@@ -9303,6 +9595,8 @@ class _SqlIdePane extends StatefulWidget {
   final TranslationCatalog catalog;
   final bool executing;
   final VoidCallback onExecute;
+  final VoidCallback onCreateNodes;
+  final VoidCallback onClear;
   final VoidCallback onClose;
 
   @override
@@ -9330,84 +9624,381 @@ class _SqlIdePaneState extends State<_SqlIdePane> {
         child: Column(
           children: [
             Container(
-              height: 58,
-              padding: const EdgeInsets.only(left: 16, right: 6),
+              constraints: const BoxConstraints(minHeight: 68),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[
+                    colors.panelElevated,
+                    colors.panelElevated.withValues(alpha: 0.72),
+                  ],
+                ),
+                border: Border(bottom: BorderSide(color: colors.border)),
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 840;
+                  final actions = <Widget>[
+                    FilledButton.icon(
+                      key: const ValueKey<String>('run-custom-sql'),
+                      onPressed: canExecute ? widget.onExecute : null,
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      icon: widget.executing
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.play_arrow_rounded, size: 18),
+                      label: Text(
+                        compact
+                            ? widget.catalog.text('runtime.ideRun')
+                            : '${widget.catalog.text('runtime.ideRun')}  ⌘↵',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      key: const ValueKey<String>('create-nodes-from-sql'),
+                      onPressed: widget.controller.text.trim().isEmpty
+                          ? null
+                          : widget.onCreateNodes,
+                      icon: const Icon(Icons.account_tree_outlined, size: 18),
+                      label: Text(
+                        compact
+                            ? 'Nodes'
+                            : widget.catalog.text('runtime.ideCreateNodes'),
+                      ),
+                    ),
+                    IconButton(
+                      key: const ValueKey<String>('clear-custom-sql'),
+                      onPressed: widget.controller.text.isEmpty
+                          ? null
+                          : widget.onClear,
+                      tooltip: widget.catalog.text('runtime.ideClear'),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                    IconButton(
+                      key: const ValueKey<String>('close-sql-ide'),
+                      onPressed: widget.onClose,
+                      tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
+                      icon: const Icon(Icons.account_tree_outlined),
+                    ),
+                  ];
+                  return Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: surfaceStyle.mediumBorderRadius,
+                        ),
+                        child: Icon(
+                          Icons.terminal_rounded,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.catalog.text('runtime.ideTitle'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.runtime.dbPath == null
+                                  ? widget.catalog.text('runtime.ideNoDatabase')
+                                  : '${widget.catalog.text('runtime.ideTablesAvailable', <String, Object?>{'count': widget.runtime.schemas.length})} · ${widget.catalog.text('runtime.ideLocalExecution')}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (compact)
+                        PopupMenuButton<int>(
+                          icon: const Icon(Icons.more_horiz_rounded),
+                          onSelected: (value) {
+                            if (value == 0) widget.onCreateNodes();
+                            if (value == 1) widget.onClear();
+                          },
+                          itemBuilder: (_) => <PopupMenuEntry<int>>[
+                            PopupMenuItem(
+                              value: 0,
+                              child: Text(
+                                widget.catalog.text('runtime.ideCreateNodes'),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 1,
+                              child: Text(
+                                widget.catalog.text('runtime.ideClear'),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        ...actions,
+                      if (compact)
+                        IconButton(
+                          key: const ValueKey<String>('close-sql-ide'),
+                          onPressed: widget.onClose,
+                          tooltip: widget.catalog.text(
+                            'runtime.showNodeWorkspace',
+                          ),
+                          icon: const Icon(Icons.account_tree_outlined),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final editor = SqlCodeEditor(
+                    controller: widget.controller,
+                    schemas: widget.runtime.schemas,
+                    onChanged: (_) => setState(() {}),
+                    onRun: canExecute ? widget.onExecute : null,
+                    hintText: widget.catalog.text('runtime.customSqlHint'),
+                    localModelLabel: widget.catalog.text(
+                      'runtime.localCompletion',
+                    ),
+                    externalError:
+                        widget.runtime.lastSql.trim() ==
+                            widget.controller.text.trim()
+                        ? widget.runtime.lastMessage
+                        : null,
+                  );
+                  return Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: constraints.maxWidth < 840
+                        ? editor
+                        : Row(
+                            children: [
+                              Expanded(child: editor),
+                              const SizedBox(width: 12),
+                              _SqlSchemaRail(
+                                schemas: widget.runtime.schemas,
+                                catalog: widget.catalog,
+                              ),
+                            ],
+                          ),
+                  );
+                },
+              ),
+            ),
+            Container(
+              height: 34,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: colors.panelElevated,
-                border: Border(bottom: BorderSide(color: colors.border)),
+                border: Border(top: BorderSide(color: colors.border)),
               ),
               child: Row(
                 children: [
                   Icon(
-                    Icons.data_object_rounded,
+                    Icons.auto_awesome_rounded,
+                    size: 15,
                     color: Theme.of(context).colorScheme.primary,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 7),
                   Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.catalog.text('runtime.ideTitle'),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        Text(
-                          widget.catalog.text('runtime.ideSubtitle'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    child: Text(
+                      widget.catalog.text('runtime.ideKeyboardHelp'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  _SqlIdeStatusChip(
+                    label: widget.runtime.dbPath == null
+                        ? widget.catalog.text('runtime.ideNoDatabase')
+                        : widget.catalog.text('runtime.ideReady'),
+                    active: widget.runtime.dbPath != null,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SqlSchemaRail extends StatelessWidget {
+  const _SqlSchemaRail({required this.schemas, required this.catalog});
+
+  final List<TableSchema> schemas;
+  final TranslationCatalog catalog;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return SizedBox(
+      width: 230,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.panelElevated,
+          border: Border.all(color: colors.border),
+          borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.storage_rounded,
+                    size: 17,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      catalog.text('runtime.ideSchema'),
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Text(
+                    '${schemas.length}',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: schemas.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          catalog.text('runtime.ideNoDatabase'),
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 11,
                             color: Theme.of(
                               context,
                             ).colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: schemas.length,
+                      itemBuilder: (context, index) {
+                        final schema = schemas[index];
+                        return Material(
+                          type: MaterialType.transparency,
+                          child: ExpansionTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.table_chart_outlined,
+                              size: 17,
+                            ),
+                            title: Text(
+                              schema.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            childrenPadding: const EdgeInsets.only(
+                              left: 16,
+                              right: 8,
+                              bottom: 8,
+                            ),
+                            children: [
+                              for (final column in schema.columns)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 3,
+                                    ),
+                                    child: Text(
+                                      column,
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                  IconButton(
-                    key: const ValueKey<String>('run-custom-sql'),
-                    onPressed: canExecute ? widget.onExecute : null,
-                    tooltip: widget.catalog.text('runtime.runCustomSql'),
-                    icon: widget.executing
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.play_arrow_rounded),
-                  ),
-                  IconButton(
-                    key: const ValueKey<String>('close-sql-ide'),
-                    onPressed: widget.onClose,
-                    tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
-                    icon: const Icon(Icons.account_tree_outlined),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: SqlCodeEditor(
-                  controller: widget.controller,
-                  schemas: widget.runtime.schemas,
-                  onChanged: (_) => setState(() {}),
-                  onRun: canExecute ? widget.onExecute : null,
-                  hintText: widget.catalog.text('runtime.customSqlHint'),
-                  localModelLabel: widget.catalog.text(
-                    'runtime.localCompletion',
-                  ),
-                  externalError:
-                      widget.runtime.lastSql.trim() ==
-                          widget.controller.text.trim()
-                      ? widget.runtime.lastMessage
-                      : null,
-                ),
-              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SqlIdeStatusChip extends StatelessWidget {
+  const _SqlIdeStatusChip({required this.label, required this.active});
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active
+        ? const Color(0xFF22C55E)
+        : Theme.of(context).colorScheme.outline;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -10383,12 +10974,12 @@ class _FloatingRuntimeWindowsState
                 child: const IgnorePointer(child: _RuntimeDragGhost()),
               ),
             ],
-            if (selectedColumnLink case final link?)
+            if (!widget.customMode && selectedColumnLink != null)
               Positioned(
                 top: 64,
                 left: 12,
                 child: _ColumnLinkManagerCard(
-                  link: link,
+                  link: selectedColumnLink,
                   catalog: widget.catalog,
                   mode: widget.mode,
                   sourceColor: ropeColors.source,

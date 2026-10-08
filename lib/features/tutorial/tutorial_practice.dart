@@ -72,22 +72,94 @@ enum TutorialPracticeCheck {
   queryExecuted,
 }
 
+/// The information available while a workshop mission is checked.
+///
+/// Custom requirements receive this context, so a tutorial author can add a
+/// focused check without coupling a lesson to the workshop UI.
+class TutorialPracticeContext {
+  const TutorialPracticeContext({
+    this.currentSql,
+    this.executedSql,
+    this.executionSucceeded = false,
+  });
+
+  final String? currentSql;
+  final String? executedSql;
+  final bool executionSucceeded;
+
+  /// Whether the SQL currently represented by the nodes was run successfully.
+  bool get currentSqlWasExecuted =>
+      executionSucceeded &&
+      currentSql != null &&
+      currentSql!.trim().isNotEmpty &&
+      currentSql!.trim() == executedSql?.trim();
+}
+
+/// A predicate used by a custom tutorial requirement.
+typedef TutorialPracticeValidator =
+    bool Function(TutorialPracticeGraph graph, TutorialPracticeContext context);
+
+/// One visible condition that must be met to complete a workshop mission.
+///
+/// Prefer [TutorialPracticeRequirement.check] for the built-in SQLite checks.
+/// Use [TutorialPracticeRequirement.custom] when a new tutorial needs a very
+/// specific rule. The [labelKey] is a normal translation key and is therefore
+/// also suitable for custom requirements.
+class TutorialPracticeRequirement {
+  const TutorialPracticeRequirement.check(this.check)
+    : id = null,
+      labelKey = null,
+      validator = null;
+
+  const TutorialPracticeRequirement.custom({
+    required this.id,
+    required this.labelKey,
+    required this.validator,
+  }) : check = null;
+
+  final String? id;
+  final TutorialPracticeCheck? check;
+  final String? labelKey;
+  final TutorialPracticeValidator? validator;
+
+  String get key => id ?? check!.name;
+
+  String get resolvedLabelKey =>
+      labelKey ?? 'tutorial.practice.check.${check!.name}';
+}
+
 class TutorialPracticeStep {
   const TutorialPracticeStep({
-    required this.checks,
+    this.id,
+    this.checks = const <TutorialPracticeCheck>[],
+    this.requirements = const <TutorialPracticeRequirement>[],
     this.resumeSeeds = const <TutorialPracticeSeed>[],
     this.starterSeeds,
     this.focusNodes = const <BlockType>[],
     this.estimatedMinutes = 2,
     this.startFresh = false,
-  });
+  }) : assert(checks.length + requirements.length > 0);
 
+  /// Stable mission identifier. It is optional for older tutorials, whose
+  /// translation step number remains their identifier.
+  final String? id;
   final List<TutorialPracticeCheck> checks;
+  final List<TutorialPracticeRequirement> requirements;
   final List<TutorialPracticeSeed> resumeSeeds;
   final List<TutorialPracticeSeed>? starterSeeds;
   final List<BlockType> focusNodes;
   final int estimatedMinutes;
   final bool startFresh;
+
+  List<TutorialPracticeRequirement> get allRequirements =>
+      <TutorialPracticeRequirement>[
+        for (final check in checks) TutorialPracticeRequirement.check(check),
+        ...requirements,
+      ];
+
+  bool get requiresExecution => allRequirements.any(
+    (requirement) => requirement.check == TutorialPracticeCheck.queryExecuted,
+  );
 }
 
 class TutorialPracticeDefinition {
@@ -96,13 +168,20 @@ class TutorialPracticeDefinition {
     required this.simpleStarter,
     required this.advancedStarter,
     required this.steps,
+    this.id,
   });
 
   final TutorialKnowledgeMode mode;
   final List<TutorialPracticeSeed> simpleStarter;
   final List<TutorialPracticeSeed> advancedStarter;
   final List<TutorialPracticeStep> steps;
+  final String? id;
 
+  /// Stable identifier for the workshop catalog and external integrations.
+  ///
+  /// Progress remains keyed by [TutorialKnowledgeMode] to keep older projects
+  /// and saved progress compatible.
+  String get tutorialId => id ?? mode.name;
   String get key => 'tutorial.practice.${mode.name}';
   int get stepCount => steps.length;
   int get estimatedMinutes =>
@@ -142,15 +221,29 @@ class TutorialPracticeDefinition {
   }) {
     final graph = TutorialPracticeGraph.fromRoots(roots);
     final step = steps[stepIndex.clamp(0, steps.length - 1)];
+    final context = TutorialPracticeContext(
+      currentSql: currentSql,
+      executedSql: executedSql,
+      executionSucceeded: executionSucceeded,
+    );
     return TutorialPracticeResult({
-      for (final check in step.checks)
-        check: check == TutorialPracticeCheck.queryExecuted
-            ? executionSucceeded &&
-                  currentSql != null &&
-                  currentSql.trim().isNotEmpty &&
-                  currentSql.trim() == executedSql?.trim()
-            : _evaluate(check, graph),
+      for (final requirement in step.allRequirements)
+        requirement: _evaluateRequirement(requirement, graph, context),
     });
+  }
+
+  bool _evaluateRequirement(
+    TutorialPracticeRequirement requirement,
+    TutorialPracticeGraph graph,
+    TutorialPracticeContext context,
+  ) {
+    final check = requirement.check;
+    if (check != null) {
+      return check == TutorialPracticeCheck.queryExecuted
+          ? context.currentSqlWasExecuted
+          : _evaluate(check, graph);
+    }
+    return requirement.validator!(graph, context);
   }
 
   bool _evaluate(TutorialPracticeCheck check, TutorialPracticeGraph graph) {
@@ -450,10 +543,164 @@ class TutorialPracticeDefinition {
   }
 }
 
+/// The metadata needed to put a tutorial on the Workshop overview.
+///
+/// The existing application keeps [mode] for backwards-compatible progress
+/// files. New authors normally only need a mode, a practice definition and the
+/// translation keys that already follow the `tutorial.*` convention.
+class WorkshopTutorialDefinition {
+  const WorkshopTutorialDefinition({
+    required this.id,
+    required this.mode,
+    this.practice,
+    this.recommended = false,
+    this.estimatedMinutes,
+  });
+
+  /// A stable, human-readable id, e.g. `select-and-simple-filters`.
+  final String id;
+  final TutorialKnowledgeMode mode;
+  final TutorialPracticeDefinition? practice;
+  final bool recommended;
+  final int? estimatedMinutes;
+
+  TutorialWorkshopArea get area => mode.area;
+  bool get hasWorkspacePractice => practice != null;
+  int get missionCount => practice?.stepCount ?? 0;
+  int get resolvedEstimatedMinutes =>
+      estimatedMinutes ?? practice?.estimatedMinutes ?? 8;
+}
+
+/// Validated, single-source registry for all Workshop paths.
+///
+/// It deliberately exposes lookups by stable id as well as the legacy enum.
+/// This lets new tutorial tooling use ids while existing saved progress remains
+/// compatible.
+class WorkshopTutorialCatalog {
+  WorkshopTutorialCatalog(Iterable<WorkshopTutorialDefinition> tutorials)
+    : tutorials = List.unmodifiable(tutorials) {
+    final ids = <String>{};
+    final modes = <TutorialKnowledgeMode>{};
+    for (final tutorial in this.tutorials) {
+      if (tutorial.id.trim().isEmpty) {
+        throw ArgumentError.value(tutorial.id, 'id', 'must not be empty');
+      }
+      if (!ids.add(tutorial.id)) {
+        throw ArgumentError.value(tutorial.id, 'id', 'must be unique');
+      }
+      if (!modes.add(tutorial.mode)) {
+        throw ArgumentError.value(
+          tutorial.mode,
+          'mode',
+          'may only be used by one tutorial',
+        );
+      }
+      final practice = tutorial.practice;
+      if (practice != null && practice.mode != tutorial.mode) {
+        throw ArgumentError(
+          'Tutorial ${tutorial.id} uses ${tutorial.mode.name}, but its '
+          'practice definition uses ${practice.mode.name}.',
+        );
+      }
+      if (practice != null && practice.steps.isEmpty) {
+        throw ArgumentError(
+          'Tutorial ${tutorial.id} needs at least one mission.',
+        );
+      }
+      final missionIds = <String>{};
+      for (final step in practice?.steps ?? const <TutorialPracticeStep>[]) {
+        final missionId = step.id;
+        if (missionId != null) {
+          if (missionId.trim().isEmpty) {
+            throw ArgumentError(
+              'Tutorial ${tutorial.id} contains an empty mission id.',
+            );
+          }
+          if (!missionIds.add(missionId)) {
+            throw ArgumentError(
+              'Tutorial ${tutorial.id} contains the mission id $missionId twice.',
+            );
+          }
+        }
+        final requirementKeys = <String>{};
+        for (final requirement in step.allRequirements) {
+          if (!requirementKeys.add(requirement.key)) {
+            throw ArgumentError(
+              'Mission ${missionId ?? 'unnamed'} in ${tutorial.id} repeats '
+              'the requirement ${requirement.key}.',
+            );
+          }
+        }
+      }
+    }
+  }
+
+  final List<WorkshopTutorialDefinition> tutorials;
+
+  Iterable<WorkshopTutorialDefinition> get sqliteTutorials => tutorials.where(
+    (tutorial) => tutorial.area == TutorialWorkshopArea.sqlite,
+  );
+
+  Iterable<WorkshopTutorialDefinition> get nodeQlTutorials => tutorials.where(
+    (tutorial) => tutorial.area == TutorialWorkshopArea.nodeQl,
+  );
+
+  int get missionCount => tutorials.fold<int>(
+    0,
+    (count, tutorial) => count + tutorial.missionCount,
+  );
+
+  WorkshopTutorialDefinition? byId(String id) {
+    for (final tutorial in tutorials) {
+      if (tutorial.id == id) return tutorial;
+    }
+    return null;
+  }
+
+  WorkshopTutorialDefinition? byMode(TutorialKnowledgeMode mode) {
+    for (final tutorial in tutorials) {
+      if (tutorial.mode == mode) return tutorial;
+    }
+    return null;
+  }
+
+  Map<TutorialKnowledgeMode, TutorialPracticeDefinition> get practiceByMode =>
+      Map.unmodifiable({
+        for (final tutorial in tutorials) tutorial.mode: ?tutorial.practice,
+      });
+}
+
+/// Compact authoring helper for the starter and resume nodes of a mission.
+TutorialPracticeSeed workshopNode(
+  BlockType type, [
+  Map<String, dynamic> defaults = const {},
+]) => TutorialPracticeSeed(type, defaults);
+
+/// Compact authoring helper for a mission that uses built-in checks.
+TutorialPracticeStep workshopMission({
+  required String id,
+  required List<TutorialPracticeCheck> checks,
+  List<TutorialPracticeRequirement> requirements = const [],
+  List<TutorialPracticeSeed> resumeSeeds = const [],
+  List<TutorialPracticeSeed>? starterSeeds,
+  List<BlockType> focusNodes = const [],
+  int estimatedMinutes = 2,
+  bool startFresh = false,
+}) => TutorialPracticeStep(
+  id: id,
+  checks: checks,
+  requirements: requirements,
+  resumeSeeds: resumeSeeds,
+  starterSeeds: starterSeeds,
+  focusNodes: focusNodes,
+  estimatedMinutes: estimatedMinutes,
+  startFresh: startFresh,
+);
+
 class TutorialPracticeResult {
   const TutorialPracticeResult(this.outcomes);
 
-  final Map<TutorialPracticeCheck, bool> outcomes;
+  final Map<TutorialPracticeRequirement, bool> outcomes;
 
   int get completedCount => outcomes.values.where((value) => value).length;
   int get totalCount => outcomes.length;
@@ -493,7 +740,7 @@ class TutorialPracticeSession {
   );
 }
 
-const tutorialPracticeDefinitions =
+final _practiceDefinitions =
     <TutorialKnowledgeMode, TutorialPracticeDefinition>{
       TutorialKnowledgeMode.selectAndSimpleFilters: TutorialPracticeDefinition(
         mode: TutorialKnowledgeMode.selectAndSimpleFilters,
@@ -867,6 +1114,34 @@ const tutorialPracticeDefinitions =
         ],
       ),
     };
+
+/// All paths shown in the Workshop.
+///
+/// A practical tutorial only needs one [TutorialPracticeDefinition] in
+/// [_practiceDefinitions]; it is registered here automatically and appears in
+/// the Workshop UI without a second list to maintain.
+final workshopTutorialCatalog = WorkshopTutorialCatalog([
+  for (final practice in _practiceDefinitions.values)
+    WorkshopTutorialDefinition(
+      id: practice.tutorialId,
+      mode: practice.mode,
+      practice: practice,
+      recommended:
+          practice.mode == TutorialKnowledgeMode.selectAndSimpleFilters,
+    ),
+  const WorkshopTutorialDefinition(
+    id: 'database-tools',
+    mode: TutorialKnowledgeMode.databaseTools,
+  ),
+  const WorkshopTutorialDefinition(
+    id: 'plugins',
+    mode: TutorialKnowledgeMode.plugins,
+  ),
+]);
+
+/// Compatibility view for callers that still address lessons by enum.
+final Map<TutorialKnowledgeMode, TutorialPracticeDefinition>
+tutorialPracticeDefinitions = workshopTutorialCatalog.practiceByMode;
 
 const _beginnerSelectDirect = TutorialPracticeSeed(BlockType.sqlSelect, {
   'columns': 'name',

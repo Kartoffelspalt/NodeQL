@@ -1780,6 +1780,23 @@ const builtInMessages = <String, Map<String, String>>{
     'runtime.ideTitle': 'SQLite-Editor',
     'runtime.ideSubtitle':
         'SQLite mit lokaler Schema-Vervollständigung schreiben und ausführen',
+    'runtime.ideRun': 'Ausführen',
+    'runtime.ideCreateNodes': 'Nodes erstellen',
+    'runtime.ideClear': 'Editor leeren',
+    'runtime.ideBackToNodes': 'Zurück zu Nodes',
+    'runtime.ideNoDatabase': 'Zum Ausführen eine Datenbank verbinden',
+    'runtime.ideTablesAvailable': '{count} Tabelle(n) verfügbar',
+    'runtime.ideLocalExecution': 'Lokale Ausführung',
+    'runtime.ideSchema': 'Schema',
+    'runtime.ideKeyboardHelp':
+        '⌘↵ ausführen · ⌘Leertaste Vorschläge · Nodes erstellen öffnet einen neuen Query-Tab',
+    'runtime.ideReady': 'Bereit',
+    'runtime.ideImportTab': 'SQL-Import',
+    'runtime.ideImportNone': 'Kein unterstützter SQLite-Befehl gefunden.',
+    'runtime.ideImportSuccess':
+        '{count} visuelle Abfragekette(n) in neuem Tab erstellt.',
+    'runtime.ideImportPartial':
+        ' {count} nicht unterstützte Teile bleiben im Editor.',
     'runtime.outputPreview': 'Ausgabevorschau',
     'runtime.showNodeWorkspace': 'Visuelle Node-Arbeitsfläche anzeigen',
     'runtime.showGeneratedSql': 'Generiertes SQLite anzeigen',

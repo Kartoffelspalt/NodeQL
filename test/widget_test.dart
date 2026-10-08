@@ -438,6 +438,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey<String>('sql-ide-pane')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('node-palette')), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('workspace-canvas')),
+      findsNothing,
+    );
     expect(
       find.byKey(const ValueKey<String>('full-output-preview')),
       findsOneWidget,

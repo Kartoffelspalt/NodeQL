@@ -85,6 +85,30 @@ class WorkspaceTabsController extends StateNotifier<WorkspaceTabsState> {
     _workspace.loadFromJsonString(workspaceJson);
   }
 
+  /// Opens imported SQL as a separate visual query, preserving the user's
+  /// current workspace exactly as it is. This makes SQL-to-node conversion a
+  /// safe, reversible exploration instead of a destructive replace action.
+  void addImportedWorkspace(
+    List<BlockNode> roots, {
+    String name = 'SQL import',
+  }) {
+    if (roots.isEmpty) return;
+    final tabs = _withCurrentWorkspace();
+    final id = 'query_${DateTime.now().microsecondsSinceEpoch}';
+    final workspaceJson = jsonEncode(<String, dynamic>{
+      'roots': roots.map((root) => root.toJson()).toList(growable: false),
+      'scale': 1,
+      'pan': <String, double>{'dx': 0, 'dy': 0},
+    });
+    final tab = WorkspaceTab(id: id, name: name, workspaceJson: workspaceJson);
+    state = WorkspaceTabsState(
+      tabs: <WorkspaceTab>[...tabs, tab],
+      activeTabId: id,
+      revision: state.revision + 1,
+    );
+    _workspace.loadFromJsonString(workspaceJson);
+  }
+
   void selectTab(String id) {
     if (id == state.activeTabId || !state.tabs.any((tab) => tab.id == id)) {
       return;

@@ -63,6 +63,50 @@ String sqlLabelFor(
               ? 'konfiguriere [pragma] als [pragma_value]'
               : 'configure [pragma] as [pragma_value]');
   }
+  if (type == BlockType.sqlWhere ||
+      type == BlockType.sqlAnd ||
+      type == BlockType.sqlOr) {
+    if (inputs['imported_raw_predicate'] == true) {
+      final prefix = switch (type) {
+        BlockType.sqlAnd =>
+          mode == SqlAbstractionMode.advanced ? 'AND' : 'and also',
+        BlockType.sqlOr =>
+          mode == SqlAbstractionMode.advanced ? 'OR' : 'or alternatively',
+        _ => mode == SqlAbstractionMode.advanced ? 'WHERE' : 'filter rows',
+      };
+      return '$prefix {predicate}';
+    }
+  }
+  if (type == BlockType.sqlHaving && inputs['imported_raw_having'] == true) {
+    return mode == SqlAbstractionMode.advanced
+        ? 'HAVING {predicate}'
+        : 'filter groups\n{predicate}';
+  }
+  if (type == BlockType.sqlOrderBy && inputs['imported_raw_order'] == true) {
+    return mode == SqlAbstractionMode.advanced
+        ? 'ORDER BY {expr}'
+        : 'sort by\n{expr}';
+  }
+  if (type == BlockType.sqlJoin && inputs['imported_raw_on'] == true) {
+    return mode == SqlAbstractionMode.advanced
+        ? '[JOIN_TYPE] JOIN [table] AS [table_alias]\nON {on}'
+        : 'join [JOIN_TYPE] with [table] as [table_alias]\non {on}';
+  }
+  if (type == BlockType.sqlUpdate && inputs['imported_raw_where'] == true) {
+    return mode == SqlAbstractionMode.advanced
+        ? 'UPDATE [table] SET [column] = [value]\nWHERE {predicate}'
+        : 'change [table]: [column] = [value]\nwhen {predicate}';
+  }
+  if (type == BlockType.sqlDelete && inputs['imported_raw_where'] == true) {
+    return mode == SqlAbstractionMode.advanced
+        ? 'DELETE FROM [table] WHERE {predicate}'
+        : 'delete from [table]\nwhen {predicate}';
+  }
+  if (type == BlockType.sqlAlterTable && inputs['imported_raw_alter'] == true) {
+    return mode == SqlAbstractionMode.advanced
+        ? 'ALTER TABLE [table_name] {alter}'
+        : 'change table [table_name]\n{alter}';
+  }
   final simpleLang = _simpleByLanguage(languageCode);
   final genericJoinUsesCondition =
       '${inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase() != 'CROSS' &&
