@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
+import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
@@ -60,6 +61,47 @@ void main() {
 
     expect(find.text('2 of 3 workspace missions'), findsOneWidget);
     expect(find.text('Continue in workspace'), findsOneWidget);
+  });
+
+  testWidgets('starts a published authored workshop from the overview', (
+    tester,
+  ) async {
+    AuthoredLearningPath? started;
+    const path = AuthoredLearningPath(
+      id: 'published-select',
+      title: 'Published SELECT tour',
+      description: 'A bundled workshop.',
+      steps: [
+        LearningPathStep(
+          id: 'projection',
+          title: 'Projection',
+          instruction: 'Inspect SELECT.',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: TutorialDialog(
+          catalog: _englishCatalog(),
+          authoredPaths: const [path],
+          onStartAuthoredPath: (value) async => started = value,
+          onStartPractice: (_) async {},
+          onComplete: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('Published workshops'), findsOneWidget);
+    final card = find.byKey(
+      const ValueKey('authored-learning-path-published-select'),
+    );
+    await tester.ensureVisible(card);
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+
+    expect(started?.id, 'published-select');
+    expect(find.byType(TutorialDialog), findsNothing);
   });
 
   testWidgets('previously finished short paths resume their new missions', (

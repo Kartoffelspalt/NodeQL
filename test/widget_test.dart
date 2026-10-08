@@ -170,12 +170,16 @@ void main() {
     expect(find.byKey(const ValueKey('workshop-run-sqlite')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('run-sqlite')), findsNothing);
     expect(find.text('SQLite-Command Output'), findsOneWidget);
-    expect(find.text('Query 1'), findsOneWidget);
+    expect(find.text('Query 1'), findsNothing);
     expect(find.text('1 · Choose a learning path'), findsOneWidget);
     expect(find.text('2 · Drag and connect nodes'), findsOneWidget);
     expect(find.text('3 · Check your solution'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('workspace-tab-add')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('workshop-language-selector')),
       findsOneWidget,
     );
     expect(
@@ -434,6 +438,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey<String>('sql-ide-pane')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('node-palette')), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('workspace-canvas')),
+      findsNothing,
+    );
     expect(
       find.byKey(const ValueKey<String>('full-output-preview')),
       findsOneWidget,

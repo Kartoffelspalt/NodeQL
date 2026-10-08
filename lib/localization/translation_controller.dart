@@ -1780,6 +1780,23 @@ const builtInMessages = <String, Map<String, String>>{
     'runtime.ideTitle': 'SQLite-Editor',
     'runtime.ideSubtitle':
         'SQLite mit lokaler Schema-Vervollständigung schreiben und ausführen',
+    'runtime.ideRun': 'Ausführen',
+    'runtime.ideCreateNodes': 'Nodes erstellen',
+    'runtime.ideClear': 'Editor leeren',
+    'runtime.ideBackToNodes': 'Zurück zu Nodes',
+    'runtime.ideNoDatabase': 'Zum Ausführen eine Datenbank verbinden',
+    'runtime.ideTablesAvailable': '{count} Tabelle(n) verfügbar',
+    'runtime.ideLocalExecution': 'Lokale Ausführung',
+    'runtime.ideSchema': 'Schema',
+    'runtime.ideKeyboardHelp':
+        '⌘↵ ausführen · ⌘Leertaste Vorschläge · Nodes erstellen öffnet einen neuen Query-Tab',
+    'runtime.ideReady': 'Bereit',
+    'runtime.ideImportTab': 'SQL-Import',
+    'runtime.ideImportNone': 'Kein unterstützter SQLite-Befehl gefunden.',
+    'runtime.ideImportSuccess':
+        '{count} visuelle Abfragekette(n) in neuem Tab erstellt.',
+    'runtime.ideImportPartial':
+        ' {count} nicht unterstützte Teile bleiben im Editor.',
     'runtime.outputPreview': 'Ausgabevorschau',
     'runtime.showNodeWorkspace': 'Visuelle Node-Arbeitsfläche anzeigen',
     'runtime.showGeneratedSql': 'Generiertes SQLite anzeigen',
@@ -1895,6 +1912,73 @@ const builtInMessages = <String, Map<String, String>>{
     'databaseBrowser.loadFailed':
         'Datenbank konnte nicht gelesen werden: {error}',
     'runtime.noResults': 'Keine Ergebnisse',
+    'notice.title.compileSimple': 'Problem in dieser Blockkette',
+    'notice.title.compileAdvanced': 'Compiler-Warnung an diesem Node',
+    'notice.title.runtimeSimple': 'Fehler an diesem Node',
+    'notice.title.runtimeAdvanced': 'SQLite-Fehler an diesem Node',
+    'notice.compile.notExecutable':
+        'Dieser Block ist nicht mit ABFRAGE AUSFÜHREN verbunden.',
+    'notice.compile.cycle':
+        'Diese Blockkette bildet eine Schleife. Trenne einen der verbundenen Blöcke.',
+    'notice.compile.pluginUnavailable':
+        'Dieser Plugin-Block ist nicht verfügbar oder passt nicht mehr zur installierten Version.',
+    'notice.compile.pluginFailed':
+        'Dieser Zusatz-Block konnte nicht übersetzt werden. Prüfe seine Eingaben oder installiere das Plugin neu.',
+    'notice.compile.pluginVersion':
+        'Dieser Plugin-Block wurde mit einer anderen Version erstellt. Prüfe, ob das Plugin aktualisiert wurde.',
+    'notice.compile.fallback':
+        'Dieser Block konnte noch nicht verständlich geprüft werden. Prüfe seine Verbindung und die eingetragenen Werte.',
+    'notice.runtime.noSuchTable':
+        'Diese Tabelle wurde in der geladenen Datenbank nicht gefunden. Prüfe den Tabellen-Slot.',
+    'notice.runtime.noSuchColumn':
+        'Diese Spalte wurde nicht gefunden. Prüfe Spaltenauswahl, Join-Spalten oder Filter-Spalte.',
+    'notice.runtime.ambiguousColumn':
+        'Diese Spalte gibt es in mehreren Tabellen. Wähle eindeutig, aus welcher Tabelle die Spalte kommt.',
+    'notice.runtime.missingObject':
+        'Dieses Datenbankobjekt wurde nicht gefunden. Prüfe den Namen im markierten Node.',
+    'notice.runtime.alreadyExists':
+        'Dieses Datenbankobjekt existiert bereits. Aktiviere IF NOT EXISTS oder wähle einen anderen Namen.',
+    'notice.runtime.aggregateMisuse':
+        'Eine Rechenfunktion wie SUM oder COUNT steht an der falschen Stelle. Nutze sie meist in SELECT oder HAVING.',
+    'notice.runtime.incomplete':
+        'Die Abfrage ist unvollständig. Prüfe, ob ein Pflichtfeld leer ist oder ein Block fehlt.',
+    'notice.runtime.syntax':
+        'Die SQLite-Struktur ist an dieser Stelle ungültig. Prüfe die Reihenfolge und die Slots dieses Nodes.',
+    'notice.runtime.unique':
+        'Dieser Wert darf in der Tabelle nur einmal vorkommen. Wähle einen anderen Wert.',
+    'notice.runtime.foreignKey':
+        'Dieser Wert verweist auf einen fehlenden Eintrag in einer anderen Tabelle.',
+    'notice.runtime.notNull':
+        'Ein Pflichtfeld ist leer. Trage für diese Spalte einen Wert ein.',
+    'notice.runtime.constraint':
+        'Die Datenbank lehnt diese Änderung wegen einer Regel ab. Prüfe Werte und Schlüssel.',
+    'notice.runtime.datatype':
+        'Der Wert passt nicht zum Spaltentyp. Prüfe, ob du Zahl, Text oder Datum richtig eingetragen hast.',
+    'notice.runtime.readonly':
+        'Die Datenbank kann gerade nicht beschrieben werden. Prüfe Datei- und Ordnerrechte.',
+    'notice.runtime.locked':
+        'Die Datenbank ist gerade durch einen anderen Zugriff gesperrt. Schließe andere Programme oder versuche es erneut.',
+    'notice.runtime.noDatabase':
+        'Es ist keine Datenbank verbunden. Wähle zuerst eine .db-Datei aus.',
+    'notice.runtime.fileMissing':
+        'Die Datenbankdatei wurde nicht gefunden. Wähle die Datei erneut aus.',
+    'notice.runtime.openFailed':
+        'Die Datenbank konnte nicht geöffnet werden. Prüfe, ob es wirklich eine SQLite-.db-Datei ist.',
+    'notice.runtime.fallback':
+        'Prüfe diesen Node und seine Slots. Die technische Meldung steht rechts im SQLite-Ausgabebereich.',
+    'notice.drag.simpleTitle': 'Block passt hier nicht',
+    'notice.drag.simpleMessage':
+        'Ziehe den Block an eine passende Stelle in der Reihenfolge: Anzeigen, Tabelle, Verbinden, Filtern, Gruppieren, Sortieren.',
+    'notice.drag.advancedTitle': 'Ungültige Verbindung',
+    'notice.drag.advancedMessage':
+        'Dieser Block kann an dieser Stelle nicht verbunden werden.',
+    'diagnostics.blocks.title': 'Block-Tests',
+    'diagnostics.blocks.summary':
+        'Geprüft: {total} Kombinationen, {allowed} erlaubt, {blocked} blockiert.',
+    'diagnostics.blocks.allowed': 'Erlaubte Snap-Konstellationen',
+    'diagnostics.blocks.start': 'Live-Test starten',
+    'diagnostics.blocks.started': 'Live-Block-Test gestartet ({count} Fälle)',
+    'diagnostics.blocks.completed': 'Live-Block-Test abgeschlossen',
     'update.title': 'Update verfügbar',
     'update.message':
         'Version {latestVersion} ist verfügbar. Installiert ist Version {currentVersion}.\n\nDownload: {assetName}',

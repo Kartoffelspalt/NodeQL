@@ -111,6 +111,7 @@ jobs:
       - name: Build Linux bundle
         run: >
           flutter build linux --release
+          -t lib/main.dart
           --dart-define=NODEQL_RELEASE_OWNER=${{ github.repository_owner }}
           --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
           --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
@@ -169,6 +170,7 @@ jobs:
       - name: Build macOS application
         run: >
           flutter build macos --release
+          -t lib/main.dart
           --dart-define=NODEQL_RELEASE_OWNER=${{ github.repository_owner }}
           --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
           --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
@@ -203,6 +205,7 @@ jobs:
       - name: Build Windows bundle
         run: >
           flutter build windows --release
+          -t lib/main.dart
           --dart-define=NODEQL_RELEASE_OWNER=${{ github.repository_owner }}
           --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
           --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}

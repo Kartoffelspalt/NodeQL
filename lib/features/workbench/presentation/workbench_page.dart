@@ -15,10 +15,12 @@ import 'package:nodeql/data/project/project_file_upgrade_service.dart';
 import 'package:nodeql/data/project/project_file_paths.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_backwards_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_to_nodes_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sqlite_function_catalog.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_notice_localizer.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_result_export.dart';
@@ -31,6 +33,9 @@ import 'package:nodeql/features/workbench/presentation/widgets/database_browser_
 import 'package:nodeql/features/workbench/presentation/widgets/sql_code_editor.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
+import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
+import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
+import 'package:nodeql/features/tutorial/workshop_admin_extension.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
@@ -50,6 +55,32 @@ import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
 const String _appIconAsset = 'assets/appicon/iconv4dark.png';
+
+class _NodeQlAppIcon extends StatelessWidget {
+  const _NodeQlAppIcon({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+    _appIconAsset,
+    width: size,
+    height: size,
+    fit: BoxFit.cover,
+    errorBuilder: (context, error, stackTrace) => Image.asset(
+      _appIconAsset,
+      package: 'nodeql',
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => SizedBox.square(
+        dimension: size,
+        child: const Icon(Icons.account_tree_rounded),
+      ),
+    ),
+  );
+}
+
 const double _inlineLineHeight = 28;
 const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
@@ -141,6 +172,7 @@ class _RopeHighlightColors {
 }
 
 Map<String, _SimpleNodeDiagnostic> _nodeDiagnostics({
+  required TranslationCatalog catalog,
   required SqlAbstractionMode mode,
   required List<BlockNode> roots,
   required SqlRuntimeState runtime,
@@ -152,10 +184,10 @@ Map<String, _SimpleNodeDiagnostic> _nodeDiagnostics({
     if (node != null) {
       diagnostics[node.id] = _SimpleNodeDiagnostic(
         title: mode == SqlAbstractionMode.simple
-            ? 'Problem in dieser Blockkette'
-            : 'Compiler-Warnung an diesem Node',
+            ? catalog.text('notice.title.compileSimple')
+            : catalog.text('notice.title.compileAdvanced'),
         message: mode == SqlAbstractionMode.simple
-            ? _friendlyCompileWarning(warning)
+            ? localizedSimpleCompileWarning(catalog, warning)
             : warning,
       );
     }
@@ -177,10 +209,10 @@ Map<String, _SimpleNodeDiagnostic> _nodeDiagnostics({
   if (node == null) return diagnostics;
   diagnostics[node.id] = _SimpleNodeDiagnostic(
     title: mode == SqlAbstractionMode.simple
-        ? 'Fehler an diesem Node'
-        : 'SQLite-Fehler an diesem Node',
+        ? catalog.text('notice.title.runtimeSimple')
+        : catalog.text('notice.title.runtimeAdvanced'),
     message: mode == SqlAbstractionMode.simple
-        ? _friendlyRuntimeError(runtimeMessage)
+        ? localizedSimpleRuntimeError(catalog, runtimeMessage)
         : runtimeMessage,
   );
   return diagnostics;
@@ -206,123 +238,41 @@ BlockNode? _nodeForCompilerWarning(List<BlockNode> roots, String warning) {
   return _findNodeById(roots, id);
 }
 
-String _friendlyCompileWarning(String warning) {
-  if (warning.contains('not executable')) {
-    return 'Dieser Block ist nicht mit ABFRAGE AUSFÜHREN verbunden.';
-  }
-  if (warning.contains('Cycle detected')) {
-    return 'Diese Blockkette bildet eine Schleife. Trenne einen der verbundenen Blöcke.';
-  }
-  if (warning.contains('Plugin block')) {
-    return 'Dieser Plugin-Block ist nicht verfügbar oder passt nicht mehr zur installierten Version.';
-  }
-  if (warning.contains('failed:')) {
-    return 'Dieser Zusatz-Block konnte nicht übersetzt werden. Prüfe seine Eingaben oder installiere das Plugin neu.';
-  }
-  if (warning.contains('created with version')) {
-    return 'Dieser Plugin-Block wurde mit einer anderen Version erstellt. Prüfe, ob das Plugin aktualisiert wurde.';
-  }
-  return 'Dieser Block konnte noch nicht verständlich geprüft werden. Prüfe seine Verbindung und die eingetragenen Werte.';
-}
-
 String _visibleCompileWarnings({
+  required TranslationCatalog catalog,
   required SqlAbstractionMode mode,
   required List<String> warnings,
 }) {
   if (mode != SqlAbstractionMode.simple) return warnings.join('\n');
-  return warnings.map(_friendlyCompileWarning).join('\n');
-}
-
-String _friendlyRuntimeError(String message) {
-  final normalized = message.toLowerCase();
-  final noSuchTable = RegExp(
-    r'no such table: ([^\s,)]+)',
-    caseSensitive: false,
-  ).firstMatch(message);
-  if (noSuchTable != null) {
-    return 'Diese Tabelle wurde in der geladenen Datenbank nicht gefunden. Prüfe den Tabellen-Slot.';
-  }
-  final noSuchColumn = RegExp(
-    r'no such column: ([^\s,)]+)',
-    caseSensitive: false,
-  ).firstMatch(message);
-  if (noSuchColumn != null) {
-    return 'Diese Spalte wurde nicht gefunden. Prüfe Spaltenauswahl, Join-Spalten oder Filter-Spalte.';
-  }
-  if (normalized.contains('ambiguous column')) {
-    return 'Diese Spalte gibt es in mehreren Tabellen. Wähle eindeutig, aus welcher Tabelle die Spalte kommt.';
-  }
-  if (normalized.contains('no such index') ||
-      normalized.contains('no such view') ||
-      normalized.contains('no such trigger')) {
-    return 'Dieses Datenbankobjekt wurde nicht gefunden. Prüfe den Namen im markierten Node.';
-  }
-  if (normalized.contains('already exists')) {
-    return 'Dieses Datenbankobjekt existiert bereits. Aktiviere IF NOT EXISTS oder wähle einen anderen Namen.';
-  }
-  if (normalized.contains('misuse of aggregate')) {
-    return 'Eine Rechenfunktion wie SUM oder COUNT steht an der falschen Stelle. Nutze sie meist in SELECT oder HAVING.';
-  }
-  if (normalized.contains('incomplete input')) {
-    return 'Die Abfrage ist unvollständig. Prüfe, ob ein Pflichtfeld leer ist oder ein Block fehlt.';
-  }
-  if (normalized.contains('syntax error') || normalized.contains('near "')) {
-    return 'Die SQLite-Struktur ist an dieser Stelle ungültig. Prüfe die Reihenfolge und die Slots dieses Nodes.';
-  }
-  if (normalized.contains('unique constraint')) {
-    return 'Dieser Wert darf in der Tabelle nur einmal vorkommen. Wähle einen anderen Wert.';
-  }
-  if (normalized.contains('foreign key constraint')) {
-    return 'Dieser Wert verweist auf einen fehlenden Eintrag in einer anderen Tabelle.';
-  }
-  if (normalized.contains('not null constraint')) {
-    return 'Ein Pflichtfeld ist leer. Trage für diese Spalte einen Wert ein.';
-  }
-  if (normalized.contains('constraint')) {
-    return 'Die Datenbank lehnt diese Änderung wegen einer Regel ab. Prüfe Werte und Schlüssel.';
-  }
-  if (normalized.contains('datatype mismatch')) {
-    return 'Der Wert passt nicht zum Spaltentyp. Prüfe, ob du Zahl, Text oder Datum richtig eingetragen hast.';
-  }
-  if (normalized.contains('readonly') || normalized.contains('read-only')) {
-    return 'Die Datenbank kann gerade nicht beschrieben werden. Prüfe Datei- und Ordnerrechte.';
-  }
-  if (normalized.contains('database is locked')) {
-    return 'Die Datenbank ist gerade durch einen anderen Zugriff gesperrt. Schließe andere Programme oder versuche es erneut.';
-  }
-  if (normalized.contains('no database connected')) {
-    return 'Es ist keine Datenbank verbunden. Wähle zuerst eine .db-Datei aus.';
-  }
-  if (normalized.contains('database file not found')) {
-    return 'Die Datenbankdatei wurde nicht gefunden. Wähle die Datei erneut aus.';
-  }
-  if (normalized.contains('failed to open database')) {
-    return 'Die Datenbank konnte nicht geöffnet werden. Prüfe, ob es wirklich eine SQLite-.db-Datei ist.';
-  }
-  return 'Prüfe diesen Node und seine Slots. Die technische Meldung steht rechts im SQLite-Ausgabebereich.';
+  return warnings
+      .map((warning) => localizedSimpleCompileWarning(catalog, warning))
+      .join('\n');
 }
 
 String _friendlyVisibleRuntimeMessage({
+  required TranslationCatalog catalog,
   required SqlAbstractionMode mode,
   required String message,
 }) {
   if (mode != SqlAbstractionMode.simple || !_looksLikeRuntimeError(message)) {
     return message;
   }
-  return _friendlyRuntimeError(message);
+  return localizedSimpleRuntimeError(catalog, message);
 }
 
-_SimpleNodeDiagnostic _dragRejectedDiagnostic(SqlAbstractionMode mode) {
+_SimpleNodeDiagnostic _dragRejectedDiagnostic(
+  TranslationCatalog catalog,
+  SqlAbstractionMode mode,
+) {
   if (mode == SqlAbstractionMode.simple) {
-    return const _SimpleNodeDiagnostic(
-      title: 'Block passt hier nicht',
-      message:
-          'Ziehe den Block an eine passende Stelle in der Reihenfolge: Anzeigen, Tabelle, Verbinden, Filtern, Gruppieren, Sortieren.',
+    return _SimpleNodeDiagnostic(
+      title: catalog.text('notice.drag.simpleTitle'),
+      message: catalog.text('notice.drag.simpleMessage'),
     );
   }
-  return const _SimpleNodeDiagnostic(
-    title: 'Ungültige Verbindung',
-    message: 'Dieser Block kann an dieser Stelle nicht verbunden werden.',
+  return _SimpleNodeDiagnostic(
+    title: catalog.text('notice.drag.advancedTitle'),
+    message: catalog.text('notice.drag.advancedMessage'),
   );
 }
 
@@ -628,6 +578,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final sql = compileResult.sql;
     _scheduleLivePreview(sql, runtime.dbPath);
     final nodeDiagnostics = _nodeDiagnostics(
+      catalog: catalog,
       mode: mode,
       roots: workspaceRoots,
       runtime: runtime,
@@ -710,6 +661,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             compileResult.warnings.isEmpty
                                 ? catalog.text('runtime.noExecutable')
                                 : _visibleCompileWarnings(
+                                    catalog: catalog,
                                     mode: mode,
                                     warnings: compileResult.warnings,
                                   ),
@@ -725,6 +677,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           .setMessage(
                             catalog.text('runtime.executedWithWarnings', {
                               'warnings': _visibleCompileWarnings(
+                                catalog: catalog,
                                 mode: mode,
                                 warnings: compileResult.warnings,
                               ),
@@ -762,6 +715,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       final workspaceRightInset = runtimeExtents.$1
                           .clamp(0.0, math.max(0.0, workspaceWidth - 120.0))
                           .toDouble();
+                      final ideRightInset = runtimeExtents.$1
+                          .clamp(
+                            0.0,
+                            math.max(0.0, constraints.maxWidth - 120.0),
+                          )
+                          .toDouble();
                       final workspaceBottomInset =
                           switch (layout.runtimePanelLayout) {
                             RuntimePanelLayoutMode.rightSplit => 0.0,
@@ -776,83 +735,102 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             left: 0,
                             right: 0,
                             bottom: workspaceBottomInset,
-                            child: Row(
-                              children: [
-                                _CategoryRail(
-                                  active: _activeCategory,
-                                  hasPlugins: pluginState.entries.isNotEmpty,
-                                  catalog: catalog,
-                                  onSelect: (next) =>
-                                      setState(() => _activeCategory = next),
-                                ),
-                                AnimatedSize(
-                                  duration: Duration(
-                                    milliseconds: layout.reduceMotion
-                                        ? 0
-                                        : (layout.highRefreshMode ? 240 : 300),
-                                  ),
-                                  curve: Curves.easeOutQuart,
-                                  alignment: Alignment.centerLeft,
-                                  clipBehavior: Clip.hardEdge,
-                                  child: _Palette(
-                                    category: _activeCategory,
-                                    runtime: runtime,
-                                    mode: mode,
-                                    localeCode: locale.languageCode,
-                                    catalog: catalog,
-                                    width: paletteWidth,
-                                    pluginEntries: pluginState.entries,
-                                    onAdd: (type, defaults) {
-                                      final controller = ref.read(
-                                        workspaceProvider.notifier,
-                                      );
-                                      controller.addTemplate(
-                                        type,
-                                        controller.suggestedTemplatePosition(
-                                          type,
-                                        ),
-                                        defaults: defaults,
-                                      );
-                                    },
-                                  ),
-                                ),
-                                _ThrottledResizeHandle(
-                                  value: layout.paletteWidth,
-                                  resetValue: 250,
-                                  axis: _ResizeAxis.horizontal,
-                                  deltaMultiplier: 1,
-                                  minValue: 200,
-                                  maxValue: 520,
-                                  highRefreshMode: layout.highRefreshMode,
-                                  reduceMotion: layout.reduceMotion,
-                                  onChanged: ref
-                                      .read(workbenchLayoutProvider.notifier)
-                                      .setPaletteWidth,
-                                ),
-                                Expanded(
-                                  child: Stack(
+                            child: _showCustomSqlEditor
+                                ? Padding(
+                                    padding: EdgeInsets.only(
+                                      right: ideRightInset,
+                                    ),
+                                    child: _SqlIdePane(
+                                      controller: _customSqlController,
+                                      runtime: runtime,
+                                      catalog: catalog,
+                                      executing: _executingCustomSql,
+                                      onExecute: _executeCustomSqlFromEditor,
+                                      onCreateNodes: _createNodesFromCustomSql,
+                                      onClear: _clearCustomSqlEditor,
+                                      onClose: () =>
+                                          _toggleCustomSqlEditor(sql),
+                                    ),
+                                  )
+                                : Row(
                                     children: [
-                                      Positioned(
-                                        top: 0,
-                                        left: 0,
-                                        right: workspaceRightInset,
-                                        bottom: 0,
-                                        child: _showCustomSqlEditor
-                                            ? _SqlIdePane(
-                                                controller:
-                                                    _customSqlController,
-                                                runtime: runtime,
-                                                catalog: catalog,
-                                                executing: _executingCustomSql,
-                                                onExecute:
-                                                    _executeCustomSqlFromEditor,
-                                                onClose: () =>
-                                                    _toggleCustomSqlEditor(sql),
-                                              )
-                                            : Column(
+                                      _CategoryRail(
+                                        active: _activeCategory,
+                                        hasPlugins:
+                                            pluginState.entries.isNotEmpty,
+                                        catalog: catalog,
+                                        onSelect: (next) => setState(
+                                          () => _activeCategory = next,
+                                        ),
+                                      ),
+                                      AnimatedSize(
+                                        duration: Duration(
+                                          milliseconds: layout.reduceMotion
+                                              ? 0
+                                              : (layout.highRefreshMode
+                                                    ? 240
+                                                    : 300),
+                                        ),
+                                        curve: Curves.easeOutQuart,
+                                        alignment: Alignment.centerLeft,
+                                        clipBehavior: Clip.hardEdge,
+                                        child: _Palette(
+                                          key: const ValueKey<String>(
+                                            'node-palette',
+                                          ),
+                                          category: _activeCategory,
+                                          runtime: runtime,
+                                          mode: mode,
+                                          localeCode: locale.languageCode,
+                                          catalog: catalog,
+                                          width: paletteWidth,
+                                          pluginEntries: pluginState.entries,
+                                          onAdd: (type, defaults) {
+                                            final controller = ref.read(
+                                              workspaceProvider.notifier,
+                                            );
+                                            controller.addTemplate(
+                                              type,
+                                              controller
+                                                  .suggestedTemplatePosition(
+                                                    type,
+                                                  ),
+                                              defaults: defaults,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      _ThrottledResizeHandle(
+                                        value: layout.paletteWidth,
+                                        resetValue: 250,
+                                        axis: _ResizeAxis.horizontal,
+                                        deltaMultiplier: 1,
+                                        minValue: 200,
+                                        maxValue: 520,
+                                        highRefreshMode: layout.highRefreshMode,
+                                        reduceMotion: layout.reduceMotion,
+                                        onChanged: ref
+                                            .read(
+                                              workbenchLayoutProvider.notifier,
+                                            )
+                                            .setPaletteWidth,
+                                      ),
+                                      Expanded(
+                                        child: Stack(
+                                          children: [
+                                            Positioned(
+                                              top: 0,
+                                              left: 0,
+                                              right: workspaceRightInset,
+                                              bottom: 0,
+                                              child: Column(
                                                 children: [
                                                   Expanded(
                                                     child: _WorkspaceCanvas(
+                                                      key:
+                                                          const ValueKey<
+                                                            String
+                                                          >('workspace-canvas'),
                                                       focusNode:
                                                           _workspaceFocus,
                                                       transform: _transform,
@@ -866,21 +844,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                                   ),
                                                 ],
                                               ),
-                                      ),
-                                      if (!_showCustomSqlEditor)
-                                        Positioned(
-                                          top: 0,
-                                          left: 0,
-                                          right: workspaceRightInset,
-                                          child: _WorkspaceTabsBar(
-                                            catalog: catalog,
-                                          ),
+                                            ),
+                                            Positioned(
+                                              top: 0,
+                                              left: 0,
+                                              right: workspaceRightInset,
+                                              child: _WorkspaceTabsBar(
+                                                catalog: catalog,
+                                              ),
+                                            ),
+                                          ],
                                         ),
+                                      ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
                           _FloatingRuntimeWindows(
                             sql: sql,
@@ -966,6 +943,44 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     setState(() => _executingCustomSql = true);
     await ref.read(sqlRuntimeProvider.notifier).executeWithSnapshot(sql);
     if (mounted) setState(() => _executingCustomSql = false);
+  }
+
+  void _clearCustomSqlEditor() {
+    _customSqlController.clear();
+    setState(() {});
+  }
+
+  void _createNodesFromCustomSql() {
+    final result = SqlToNodesCompiler().compile(_customSqlController.text);
+    final catalog = ref.read(translationControllerProvider).catalog;
+    if (!result.hasNodes) {
+      final detail = result.warnings.isEmpty
+          ? catalog.text('runtime.ideImportNone')
+          : result.warnings.first;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(detail)));
+      return;
+    }
+    ref
+        .read(workspaceTabsProvider.notifier)
+        .addImportedWorkspace(
+          result.roots,
+          name: catalog.text('runtime.ideImportTab'),
+        );
+    setState(() => _showCustomSqlEditor = false);
+    final warningSuffix = result.warnings.isEmpty
+        ? ''
+        : catalog.text('runtime.ideImportPartial', <String, Object?>{
+            'count': result.warnings.length,
+          });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${catalog.text('runtime.ideImportSuccess', <String, Object?>{'count': result.importedStatementCount})}$warningSuffix',
+        ),
+      ),
+    );
   }
 
   Future<void> _initializeAutosave() async {
@@ -1376,12 +1391,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _openBlockDiagnostics(BuildContext context) async {
+    final translations = ref.read(translationControllerProvider);
+    final catalog = translations.catalog;
+    final localeCode = translations.locale.languageCode;
     final report = buildBlockSnapDiagnosticReport();
     final allowedCases = report.allowedCases;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Block-Tests'),
+        title: Text(catalog.text('diagnostics.blocks.title')),
         content: SizedBox(
           width: 680,
           height: 520,
@@ -1389,11 +1407,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Geprüft: ${report.total} Kombinationen, '
-                '${report.allowed} erlaubt, ${report.blocked} blockiert.',
+                catalog.text('diagnostics.blocks.summary', {
+                  'total': report.total,
+                  'allowed': report.allowed,
+                  'blocked': report.blocked,
+                }),
               ),
               const SizedBox(height: 8),
-              const Text('Erlaubte Snap-Konstellationen'),
+              Text(catalog.text('diagnostics.blocks.allowed')),
               const SizedBox(height: 8),
               Expanded(
                 child: ListView.builder(
@@ -1404,8 +1425,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       dense: true,
                       leading: const Icon(Icons.check_circle_outline),
                       title: Text(
-                        '${_diagnosticLabel(entry.previous)} -> '
-                        '${_diagnosticLabel(entry.next)}',
+                        '${_diagnosticLabel(entry.previous, localeCode)} -> '
+                        '${_diagnosticLabel(entry.next, localeCode)}',
                       ),
                     );
                   },
@@ -1423,23 +1444,23 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     _runVisibleBlockDiagnostics(allowedCases);
                   },
             icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text('Live-Test starten'),
+            label: Text(catalog.text('diagnostics.blocks.start')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Schließen'),
+            child: Text(catalog.text('common.close')),
           ),
         ],
       ),
     );
   }
 
-  String _diagnosticLabel(BlockType type) {
+  String _diagnosticLabel(BlockType type, String localeCode) {
     return sqlLabelFor(
       type,
       SqlAbstractionMode.advanced,
       const <String, dynamic>{},
-      'de',
+      localeCode,
     ).replaceAll('\n', ' ');
   }
 
@@ -1448,13 +1469,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   ) async {
     if (_blockDiagnosticsRunning || cases.isEmpty) return;
     final controller = ref.read(workspaceProvider.notifier);
+    final catalog = ref.read(translationControllerProvider).catalog;
     final originalWorkspace = controller.toJsonString();
     final token = ++_blockDiagnosticsRunToken;
 
     setState(() => _blockDiagnosticsRunning = true);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Live-Block-Test gestartet (${cases.length} Fälle)'),
+        content: Text(
+          catalog.text('diagnostics.blocks.started', {'count': cases.length}),
+        ),
         duration: const Duration(milliseconds: 1500),
       ),
     );
@@ -1473,9 +1497,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         controller.restorePreviewSnapshot(originalWorkspace);
         setState(() => _blockDiagnosticsRunning = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Live-Block-Test abgeschlossen'),
-            duration: Duration(milliseconds: 1500),
+          SnackBar(
+            content: Text(catalog.text('diagnostics.blocks.completed')),
+            duration: const Duration(milliseconds: 1500),
           ),
         );
       }
@@ -1544,12 +1568,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       applicationLegalese: 'Copyright © 2026 NodeQL contributors\nMIT License',
       applicationIcon: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.asset(
-          _appIconAsset,
-          width: 64,
-          height: 64,
-          fit: BoxFit.cover,
-        ),
+        child: const _NodeQlAppIcon(size: 64),
       ),
     );
   }
@@ -2666,6 +2685,9 @@ class _WorkshopWorkspaceViewState
   SqlPaletteCategory _activeCategory = SqlPaletteCategory.queryLanguage;
   double? _practicePanelHeight;
   TutorialPracticeSession? _practice;
+  AuthoredLearningPath? _authoredPath;
+  int _authoredStepIndex = 0;
+  Map<String, String> _authoredNodeIds = const <String, String>{};
   bool _runningSql = false;
 
   @override
@@ -2685,6 +2707,10 @@ class _WorkshopWorkspaceViewState
     final mode = ref.watch(sqlModeProvider);
     final roots = workspace.roots;
     final practice = _practice;
+    final authoredPath = _authoredPath;
+    final authoredStep = authoredPath == null
+        ? null
+        : authoredPath.steps[_authoredStepIndex];
     final definition = practice == null
         ? null
         : tutorialPracticeDefinitions[practice.mode];
@@ -2697,11 +2723,13 @@ class _WorkshopWorkspaceViewState
       executionSucceeded: runtime.lastMessage?.startsWith('OK') == true,
     );
     final diagnostics = _nodeDiagnostics(
+      catalog: catalog,
       mode: mode,
       roots: roots,
       runtime: runtime,
       compileResult: compileResult,
     );
+    final adminActionBuilder = ref.watch(workshopAdminActionProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -2710,12 +2738,29 @@ class _WorkshopWorkspaceViewState
           children: [
             _WorkshopModeTopBar(
               catalog: catalog,
+              languageChoices: <SupportedLanguage>[
+                ...supportedLanguages,
+                for (final package in translationState.installed.values)
+                  if (!supportedLanguages.any(
+                    (language) => language.code == package.locale,
+                  ))
+                    SupportedLanguage(package.locale, package.locale),
+              ],
+              localeCode: localeCode,
+              onLocale: (code) => ref
+                  .read(translationControllerProvider.notifier)
+                  .setLocaleTag(code),
               mode: mode,
               running: _runningSql,
               onRun: () => unawaited(_runWorkshopSql()),
               onModeChanged: (next) =>
                   unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
               onLessons: () => _openTutorial(context),
+              adminAction: adminActionBuilder?.call(
+                context,
+                ref,
+                _startAuthoredPath,
+              ),
               onClose: widget.onExit,
             ),
             Expanded(
@@ -2829,7 +2874,16 @@ class _WorkshopWorkspaceViewState
                                     bottom: 0,
                                     child: Column(
                                       children: [
-                                        if (practice != null &&
+                                        if (authoredPath != null &&
+                                            authoredStep != null)
+                                          LearningPathTimelinePanel(
+                                            catalog: catalog,
+                                            path: authoredPath,
+                                            stepIndex: _authoredStepIndex,
+                                            onStep: _showAuthoredStep,
+                                            onClose: _closeAuthoredPath,
+                                          )
+                                        else if (practice != null &&
                                             definition != null &&
                                             result != null)
                                           AnimatedSwitcher(
@@ -2877,17 +2931,18 @@ class _WorkshopWorkspaceViewState
                                             transform: _transform,
                                             paletteWidth: 72.0 + paletteWidth,
                                             diagnostics: diagnostics,
+                                            learningPathCallouts:
+                                                authoredStep?.callouts ??
+                                                const <
+                                                  LearningPathNodeCallout
+                                                >[],
+                                            learningPathNodeIds:
+                                                _authoredNodeIds,
                                             onSaveProject: () async {},
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: workspaceRightInset,
-                                    child: _WorkspaceTabsBar(catalog: catalog),
                                   ),
                                 ],
                               ),
@@ -2941,11 +2996,16 @@ class _WorkshopWorkspaceViewState
 
   Future<void> _openTutorial(BuildContext context) async {
     final tutorial = ref.read(tutorialControllerProvider.notifier);
-    final initialization = tutorial.initialize();
+    final initialization = Future.wait<void>([
+      tutorial.initialize(),
+      ref.read(learningPathLibraryProvider.notifier).initialize(),
+    ]);
     final catalog = ref.read(translationControllerProvider).catalog;
     Widget buildTutorial() => TutorialDialog(
       catalog: catalog,
       initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
+      authoredPaths: ref.read(learningPathLibraryProvider).paths,
+      onStartAuthoredPath: (path) async => _startAuthoredPath(path),
       onProgressChanged: (mode, progress) => ref
           .read(tutorialControllerProvider.notifier)
           .saveLessonProgress(mode, progress),
@@ -2956,7 +3016,9 @@ class _WorkshopWorkspaceViewState
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => !ref.read(tutorialControllerProvider).loading
+      builder: (_) =>
+          !ref.read(tutorialControllerProvider).loading &&
+              !ref.read(learningPathLibraryProvider).loading
           ? buildTutorial()
           : FutureBuilder<void>(
               future: initialization,
@@ -3011,6 +3073,8 @@ class _WorkshopWorkspaceViewState
     _transform.value = Matrix4.identity();
     if (!mounted) return;
     setState(() {
+      _authoredPath = null;
+      _authoredNodeIds = const <String, String>{};
       _activeCategory = _categoryForPracticeStep(definition.steps[stepIndex]);
       _practice = TutorialPracticeSession(
         mode: mode,
@@ -3106,6 +3170,48 @@ class _WorkshopWorkspaceViewState
 
   void _closePractice() => setState(() => _practice = null);
 
+  void _startAuthoredPath(AuthoredLearningPath path) {
+    if (path.steps.isEmpty) return;
+    setState(() {
+      _practice = null;
+      _authoredPath = path;
+      _authoredStepIndex = 0;
+    });
+    _loadAuthoredStep(path, 0);
+  }
+
+  void _showAuthoredStep(int index) {
+    final path = _authoredPath;
+    if (path == null || index < 0 || index >= path.steps.length) return;
+    setState(() => _authoredStepIndex = index);
+    _loadAuthoredStep(path, index);
+  }
+
+  void _loadAuthoredStep(AuthoredLearningPath path, int index) {
+    ref.read(sqlRuntimeProvider.notifier).clearResults();
+    final workspace = ref.read(workspaceProvider.notifier)
+      ..resetWithRoot(recordUndo: false, clearHistory: true);
+    final ids = <String, String>{};
+    for (final template in path.steps[index].nodes) {
+      final node = workspace.addTemplate(
+        template.type,
+        workspace.suggestedTemplatePosition(template.type),
+        defaults: template.defaults,
+        recordUndo: false,
+      );
+      ids[template.ref] = node.id;
+    }
+    _transform.value = Matrix4.identity();
+    if (mounted) setState(() => _authoredNodeIds = Map.unmodifiable(ids));
+  }
+
+  void _closeAuthoredPath() {
+    setState(() {
+      _authoredPath = null;
+      _authoredNodeIds = const <String, String>{};
+    });
+  }
+
   SqlPaletteCategory _categoryForPracticeStep(TutorialPracticeStep step) {
     if (step.focusNodes.contains(BlockType.sqlText)) {
       return SqlPaletteCategory.dataTypes;
@@ -3148,20 +3254,28 @@ class _WorkshopWorkspaceViewState
 class _WorkshopModeTopBar extends StatelessWidget {
   const _WorkshopModeTopBar({
     required this.catalog,
+    required this.languageChoices,
+    required this.localeCode,
+    required this.onLocale,
     required this.mode,
     required this.running,
     required this.onRun,
     required this.onModeChanged,
     required this.onLessons,
+    this.adminAction,
     required this.onClose,
   });
 
   final TranslationCatalog catalog;
+  final List<SupportedLanguage> languageChoices;
+  final String localeCode;
+  final ValueChanged<String> onLocale;
   final SqlAbstractionMode mode;
   final bool running;
   final VoidCallback onRun;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onLessons;
+  final Widget? adminAction;
   final VoidCallback onClose;
 
   @override
@@ -3178,12 +3292,7 @@ class _WorkshopModeTopBar extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(9),
-            child: Image.asset(
-              _appIconAsset,
-              width: 36,
-              height: 36,
-              fit: BoxFit.cover,
-            ),
+            child: const _NodeQlAppIcon(size: 36),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -3223,6 +3332,29 @@ class _WorkshopModeTopBar extends StatelessWidget {
             onSelectionChanged: (selection) => onModeChanged(selection.first),
           ),
           const SizedBox(width: 10),
+          DropdownButton<String>(
+            key: const ValueKey<String>('workshop-language-selector'),
+            value: localeCode,
+            dropdownColor: colors.panelElevated,
+            iconEnabledColor: colors.topBarForeground,
+            underline: const SizedBox.shrink(),
+            style: TextStyle(color: colors.topBarForeground),
+            items: languageChoices
+                .map(
+                  (language) => DropdownMenuItem<String>(
+                    value: language.code,
+                    child: Text(
+                      language.nativeName,
+                      style: TextStyle(color: colors.topBarForeground),
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) onLocale(value);
+            },
+          ),
+          const SizedBox(width: 10),
           FilledButton.icon(
             key: const ValueKey('workshop-run-sqlite'),
             onPressed: running ? null : onRun,
@@ -3242,6 +3374,7 @@ class _WorkshopModeTopBar extends StatelessWidget {
             label: Text(catalog.text('tutorial.window.paths')),
           ),
           const SizedBox(width: 6),
+          if (adminAction != null) ...[adminAction!, const SizedBox(width: 6)],
           IconButton(
             key: const ValueKey('workshop-mode-exit'),
             onPressed: onClose,
@@ -3444,12 +3577,7 @@ class _TopBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(
                       surfaceStyle.radiusSmall,
                     ),
-                    child: Image.asset(
-                      _appIconAsset,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.cover,
-                    ),
+                    child: const _NodeQlAppIcon(size: 36),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
                   Text(
@@ -5384,11 +5512,14 @@ class _RenameWorkspaceTabDialogState extends State<_RenameWorkspaceTabDialog> {
 
 class _WorkspaceCanvas extends ConsumerWidget {
   const _WorkspaceCanvas({
+    super.key,
     required this.focusNode,
     required this.transform,
     required this.paletteWidth,
     required this.diagnostics,
     required this.onSaveProject,
+    this.learningPathCallouts = const <LearningPathNodeCallout>[],
+    this.learningPathNodeIds = const <String, String>{},
   });
 
   final FocusNode focusNode;
@@ -5396,16 +5527,27 @@ class _WorkspaceCanvas extends ConsumerWidget {
   final double paletteWidth;
   final Map<String, _SimpleNodeDiagnostic> diagnostics;
   final Future<void> Function() onSaveProject;
+  final List<LearningPathNodeCallout> learningPathCallouts;
+  final Map<String, String> learningPathNodeIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final workspace = ref.watch(workspaceProvider);
     final controller = ref.read(workspaceProvider.notifier);
-    final selectedColumnLink = controller.selectedColumnLink();
+    // Structural edits rebuild the list of block elements. Pointer movement is
+    // intentionally excluded here: each block subscribes to its own visual
+    // state below, so a drag does not rebuild and re-measure every node.
+    ref.watch(workspaceProvider.select((state) => state.revision));
+    final columnLinkMode = ref.watch(
+      workspaceProvider.select((state) => state.columnLinkMode),
+    );
+    final selectedColumnLinkTargetId = ref.watch(
+      workspaceProvider.select((state) => state.selectedColumnLinkTargetId),
+    );
+    final selectedColumnLink = selectedColumnLinkTargetId == null
+        ? null
+        : controller.selectedColumnLink();
     final ropeColors = _RopeHighlightColors.of(context);
-    transform.value = Matrix4.identity()
-      ..translateByDouble(workspace.pan.dx, workspace.pan.dy, 0, 1)
-      ..scaleByDouble(workspace.scale, workspace.scale, workspace.scale, 1);
+    final blocks = controller.allBlocks();
 
     return DragTarget<_PaletteDragData>(
       onWillAcceptWithDetails: (_) => true,
@@ -5470,77 +5612,52 @@ class _WorkspaceCanvas extends ConsumerWidget {
           fit: StackFit.expand,
           children: [
             _PointerWorkspaceLayer(
-              workspace: workspace,
+              columnLinkMode: columnLinkMode,
               transform: transform,
               paletteWidth: paletteWidth,
               focusNode: focusNode,
               child: Container(
                 color: NodeQlWorkbenchColors.of(context).workspace,
                 child: ClipRect(
-                  child: RepaintBoundary(
-                    child: Transform(
-                      transform: transform.value,
-                      alignment: Alignment.topLeft,
+                  child: _WorkspaceViewportTransform(
+                    transform: transform,
+                    child: RepaintBoundary(
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          CustomPaint(
-                            size: const Size(4000, 4000),
-                            painter: _ColumnLinksPainter(
-                              links: controller.columnLinks(),
-                              source: workspace.columnLinkSourceId == null
-                                  ? null
-                                  : controller.findById(
-                                      workspace.columnLinkSourceId!,
-                                    ),
-                              pointer: workspace.columnLinkPointer,
-                              validTarget: workspace.columnLinkTargetId != null,
-                              selectedTargetId:
-                                  workspace.selectedColumnLinkTargetId,
-                              nodeWidth: controller.nodeWidth,
-                              nodeHeight: controller.blockHeight,
-                              color: Theme.of(context).colorScheme.primary,
+                          RepaintBoundary(
+                            child: _WorkspaceColumnLinks(
                               sourceColor: ropeColors.source,
                               targetColor: ropeColors.target,
                               haloColor: ropeColors.halo,
                             ),
                           ),
-                          for (final block in controller.allBlocks())
-                            Positioned(
-                              left: block.position.dx,
-                              top: block.position.dy,
-                              child: RepaintBoundary(
-                                child: _NodeView(
-                                  node: block,
-                                  diagnostic: diagnostics[block.id],
-                                  highlighted:
-                                      workspace.highlightTargetId == block.id,
-                                  rejected:
-                                      workspace.rejectedTargetId == block.id,
-                                  innerHighlighted:
-                                      workspace.highlightTargetId == block.id &&
-                                      (workspace.highlightZone ==
-                                              SnapZone.innerTop ||
-                                          workspace.highlightZone ==
-                                              SnapZone.innerBottom),
-                                  selected:
-                                      workspace.selectedBlockIds.contains(
-                                        block.id,
-                                      ) ||
-                                      workspace.columnLinkSourceId ==
-                                          block.id ||
-                                      workspace.columnLinkTargetId == block.id,
-                                  columnLinkEndpointColor:
-                                      selectedColumnLink?.source.id == block.id
-                                      ? ropeColors.source
-                                      : selectedColumnLink?.target.id ==
-                                            block.id
-                                      ? ropeColors.target
-                                      : null,
-                                  columnLinkEndpointHaloColor: ropeColors.halo,
-                                ),
-                              ),
+                          for (final block in blocks)
+                            _WorkspaceBlock(
+                              key: ValueKey<String>(block.id),
+                              node: block,
+                              diagnostic: diagnostics[block.id],
+                              columnLinkEndpointColor:
+                                  selectedColumnLink?.source.id == block.id
+                                  ? ropeColors.source
+                                  : selectedColumnLink?.target.id == block.id
+                                  ? ropeColors.target
+                                  : null,
+                              columnLinkEndpointHaloColor: ropeColors.halo,
                             ),
+                          for (
+                            var index = 0;
+                            index < learningPathCallouts.length;
+                            index++
+                          )
+                            if (learningPathNodeIds[learningPathCallouts[index]
+                                    .targetRef]
+                                case final targetId?)
+                              _LearningPathCanvasCallout(
+                                sequence: index + 1,
+                                targetId: targetId,
+                                callout: learningPathCallouts[index],
+                              ),
                         ],
                       ),
                     ),
@@ -5557,6 +5674,242 @@ class _WorkspaceCanvas extends ConsumerWidget {
   Offset _toWorld(Offset local) {
     final matrix = transform.value.clone()..invert();
     return MatrixUtils.transformPoint(matrix, local);
+  }
+}
+
+/// Rebuilds only the transform when the viewport moves or zooms. The canvas
+/// subtree is passed as AnimatedBuilder's child, keeping expensive node layout
+/// work out of the high-frequency pan path.
+class _WorkspaceViewportTransform extends ConsumerWidget {
+  const _WorkspaceViewportTransform({
+    required this.transform,
+    required this.child,
+  });
+
+  final TransformationController transform;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewport = ref.watch(
+      workspaceProvider.select((state) => (pan: state.pan, scale: state.scale)),
+    );
+    final next = Matrix4.identity()
+      ..translateByDouble(viewport.pan.dx, viewport.pan.dy, 0, 1)
+      ..scaleByDouble(viewport.scale, viewport.scale, viewport.scale, 1);
+    if (transform.value != next) transform.value = next;
+
+    return AnimatedBuilder(
+      animation: transform,
+      child: child,
+      builder: (context, child) => Transform(
+        transform: transform.value,
+        alignment: Alignment.topLeft,
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Keeps link painting reactive without rebuilding individual block widgets.
+class _WorkspaceColumnLinks extends ConsumerWidget {
+  const _WorkspaceColumnLinks({
+    required this.sourceColor,
+    required this.targetColor,
+    required this.haloColor,
+  });
+
+  final Color sourceColor;
+  final Color targetColor;
+  final Color haloColor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final workspace = ref.watch(workspaceProvider);
+    final controller = ref.read(workspaceProvider.notifier);
+    return CustomPaint(
+      size: const Size(4000, 4000),
+      painter: _ColumnLinksPainter(
+        links: controller.columnLinks(),
+        source: workspace.columnLinkSourceId == null
+            ? null
+            : controller.findById(workspace.columnLinkSourceId!),
+        pointer: workspace.columnLinkPointer,
+        validTarget: workspace.columnLinkTargetId != null,
+        selectedTargetId: workspace.selectedColumnLinkTargetId,
+        nodeWidth: controller.nodeWidth,
+        nodeHeight: controller.blockHeight,
+        color: Theme.of(context).colorScheme.primary,
+        sourceColor: sourceColor,
+        targetColor: targetColor,
+        haloColor: haloColor,
+      ),
+    );
+  }
+}
+
+class _WorkspaceBlock extends ConsumerWidget {
+  const _WorkspaceBlock({
+    super.key,
+    required this.node,
+    required this.diagnostic,
+    required this.columnLinkEndpointColor,
+    required this.columnLinkEndpointHaloColor,
+  });
+
+  final BlockNode node;
+  final _SimpleNodeDiagnostic? diagnostic;
+  final Color? columnLinkEndpointColor;
+  final Color columnLinkEndpointHaloColor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visual = ref.watch(
+      workspaceProvider.select((state) {
+        final highlighted = state.highlightTargetId == node.id;
+        return (
+          position: node.position,
+          highlighted: highlighted,
+          rejected: state.rejectedTargetId == node.id,
+          innerHighlighted:
+              highlighted &&
+              (state.highlightZone == SnapZone.innerTop ||
+                  state.highlightZone == SnapZone.innerBottom),
+          selected:
+              state.selectedBlockIds.contains(node.id) ||
+              state.columnLinkSourceId == node.id ||
+              state.columnLinkTargetId == node.id,
+        );
+      }),
+    );
+    return Positioned(
+      left: visual.position.dx,
+      top: visual.position.dy,
+      child: RepaintBoundary(
+        child: _NodeView(
+          node: node,
+          diagnostic: diagnostic,
+          highlighted: visual.highlighted,
+          rejected: visual.rejected,
+          innerHighlighted: visual.innerHighlighted,
+          selected: visual.selected,
+          columnLinkEndpointColor: columnLinkEndpointColor,
+          columnLinkEndpointHaloColor: columnLinkEndpointHaloColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _LearningPathCanvasCallout extends ConsumerWidget {
+  const _LearningPathCanvasCallout({
+    required this.sequence,
+    required this.targetId,
+    required this.callout,
+  });
+
+  final int sequence;
+  final String targetId;
+  final LearningPathNodeCallout callout;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(workspaceProvider);
+    final controller = ref.read(workspaceProvider.notifier);
+    final node = controller.findById(targetId);
+    if (node == null) return const SizedBox.shrink();
+    final colors = NodeQlWorkbenchColors.of(context);
+    final nodeWidth = controller.nodeWidth(node);
+    const cardWidth = 276.0;
+    const connectorWidth = 34.0;
+    final rightSide = callout.side == LearningPathCalloutSide.right;
+    final left = rightSide
+        ? node.position.dx + nodeWidth
+        : math.max(0.0, node.position.dx - cardWidth - connectorWidth);
+    final verticalOffset = ((sequence - 1) % 3) * 12.0;
+    return Positioned(
+      left: left,
+      top: node.position.dy + verticalOffset,
+      child: IgnorePointer(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (rightSide)
+              Container(
+                width: connectorWidth,
+                height: 2,
+                margin: const EdgeInsets.only(top: 24),
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            Container(
+              key: ValueKey('learning-path-callout-${callout.id}'),
+              width: cardWidth,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.panelElevated,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 1.5,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 12,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    child: Text(
+                      '$sequence',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          callout.title,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          callout.body,
+                          style: TextStyle(
+                            color: colors.muted,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!rightSide)
+              Container(
+                width: connectorWidth,
+                height: 2,
+                margin: const EdgeInsets.only(top: 24),
+                color: Theme.of(context).colorScheme.primary,
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -5889,14 +6242,14 @@ double _inlineCenterOffsetForNode({
 
 class _PointerWorkspaceLayer extends ConsumerStatefulWidget {
   const _PointerWorkspaceLayer({
-    required this.workspace,
+    required this.columnLinkMode,
     required this.transform,
     required this.paletteWidth,
     required this.focusNode,
     required this.child,
   });
 
-  final WorkspaceState workspace;
+  final bool columnLinkMode;
   final TransformationController transform;
   final double paletteWidth;
   final FocusNode focusNode;
@@ -5922,6 +6275,82 @@ class _PointerWorkspaceLayerState
   Rect? _marqueeRectLocal;
   double? _panZoomStartScale;
   double? _scaleGestureStartScale;
+  Offset _pendingDragDelta = Offset.zero;
+  Offset _pendingPanDelta = Offset.zero;
+  Offset? _pendingColumnLinkPointer;
+  Rect? _pendingMarqueeRect;
+  bool _dragUpdateScheduled = false;
+  bool _panUpdateScheduled = false;
+  bool _columnLinkUpdateScheduled = false;
+  bool _marqueeUpdateScheduled = false;
+
+  /// macOS can report many more pointer samples than the display can draw.
+  /// Coalescing them preserves the final position while limiting state changes
+  /// and widget work to one update per frame.
+  void _queueDragUpdate(Offset delta) {
+    _pendingDragDelta += delta;
+    if (_dragUpdateScheduled) return;
+    _dragUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _dragUpdateScheduled = false;
+      _flushDragUpdate();
+    });
+  }
+
+  void _flushDragUpdate() {
+    final delta = _pendingDragDelta;
+    _pendingDragDelta = Offset.zero;
+    if (!mounted || delta == Offset.zero) return;
+    final scale = ref.read(workspaceProvider).scale;
+    ref.read(workspaceProvider.notifier).updateDrag(delta / scale);
+  }
+
+  void _queuePanUpdate(Offset delta) {
+    _pendingPanDelta += delta;
+    if (_panUpdateScheduled) return;
+    _panUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _panUpdateScheduled = false;
+      _flushPanUpdate();
+    });
+  }
+
+  void _flushPanUpdate() {
+    final delta = _pendingPanDelta;
+    _pendingPanDelta = Offset.zero;
+    if (!mounted || delta == Offset.zero) return;
+    ref.read(workspaceProvider.notifier).panBy(delta);
+  }
+
+  void _queueColumnLinkUpdate(Offset pointer) {
+    _pendingColumnLinkPointer = pointer;
+    if (_columnLinkUpdateScheduled) return;
+    _columnLinkUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _columnLinkUpdateScheduled = false;
+      _flushColumnLinkUpdate();
+    });
+  }
+
+  void _flushColumnLinkUpdate() {
+    final pointer = _pendingColumnLinkPointer;
+    _pendingColumnLinkPointer = null;
+    if (!mounted || pointer == null) return;
+    ref.read(workspaceProvider.notifier).updateColumnLink(pointer);
+  }
+
+  void _queueMarqueeUpdate(Rect rect) {
+    _pendingMarqueeRect = rect;
+    if (_marqueeUpdateScheduled) return;
+    _marqueeUpdateScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _marqueeUpdateScheduled = false;
+      final pending = _pendingMarqueeRect;
+      _pendingMarqueeRect = null;
+      if (!mounted || pending == null) return;
+      setState(() => _marqueeRectLocal = pending);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -5998,7 +6427,7 @@ class _PointerWorkspaceLayerState
       onPointerMove: (event) {
         final workspace = ref.read(workspaceProvider);
         if (workspace.columnLinkMode && workspace.columnLinkSourceId != null) {
-          engine.updateColumnLink(_toWorld(event.localPosition));
+          _queueColumnLinkUpdate(_toWorld(event.localPosition));
           return;
         }
         if (_secondaryPending &&
@@ -6008,7 +6437,7 @@ class _PointerWorkspaceLayerState
           _secondaryPending = false;
         }
         if (_rightPanning) {
-          engine.panBy(event.delta);
+          _queuePanUpdate(event.delta);
           return;
         }
         if (_primaryPending &&
@@ -6030,18 +6459,17 @@ class _PointerWorkspaceLayerState
         }
         if (_leftDraggingBlock) {
           if (event.delta.distanceSquared > 0) _leftMoved = true;
-          engine.updateDrag(event.delta / ref.read(workspaceProvider).scale);
+          _queueDragUpdate(event.delta);
         } else if (_marqueeSelecting) {
           final start = _primaryDownLocal ?? event.localPosition;
-          setState(() {
-            _marqueeRectLocal = Rect.fromPoints(start, event.localPosition);
-          });
+          _queueMarqueeUpdate(Rect.fromPoints(start, event.localPosition));
         }
       },
       onPointerUp: (event) {
         final workspace = ref.read(workspaceProvider);
         if (workspace.columnLinkMode) {
           if (workspace.columnLinkSourceId != null) {
+            _flushColumnLinkUpdate();
             engine.finishColumnLink(_toWorld(event.localPosition));
           } else {
             engine.cancelColumnLink();
@@ -6053,6 +6481,7 @@ class _PointerWorkspaceLayerState
           return;
         }
         if (_rightPanning) {
+          _flushPanUpdate();
           _rightPanning = false;
           _secondaryPending = false;
           _secondaryDownWorld = null;
@@ -6078,6 +6507,7 @@ class _PointerWorkspaceLayerState
           return;
         }
         if (_leftDraggingBlock) {
+          _flushDragUpdate();
           final deleteByPalette = event.position.dx <= widget.paletteWidth;
           engine.endDrag(deleteDragged: deleteByPalette);
           _leftDraggingBlock = false;
@@ -6092,6 +6522,9 @@ class _PointerWorkspaceLayerState
           return;
         }
         if (_marqueeSelecting) {
+          final pendingMarquee = _pendingMarqueeRect;
+          _pendingMarqueeRect = null;
+          if (pendingMarquee != null) _marqueeRectLocal = pendingMarquee;
           final rect = _marqueeRectLocal;
           if (rect != null && rect.width > 4 && rect.height > 4) {
             final worldA = _toWorld(rect.topLeft);
@@ -6123,7 +6556,7 @@ class _PointerWorkspaceLayerState
         }
       },
       child: MouseRegion(
-        cursor: widget.workspace.columnLinkMode
+        cursor: widget.columnLinkMode
             ? SystemMouseCursors.precise
             : MouseCursor.defer,
         child: GestureDetector(
@@ -6276,10 +6709,9 @@ class _NodeView extends ConsumerWidget {
     final engine = ref.read(workspaceProvider.notifier);
     final mode = ref.watch(sqlModeProvider);
     final runtime = ref.watch(sqlRuntimeProvider);
-    final localeCode = ref
-        .watch(translationControllerProvider)
-        .locale
-        .languageCode;
+    final translations = ref.watch(translationControllerProvider);
+    final localeCode = translations.locale.languageCode;
+    final catalog = translations.catalog;
     final pluginBlock = pluginBlockForNode(
       node,
       ref.watch(pluginPaletteProvider),
@@ -6293,7 +6725,8 @@ class _NodeView extends ConsumerWidget {
     final visualKind = blockVisualKind(node, pluginShape: pluginShape);
     final template = _templateForNode(node, mode, localeCode, pluginBlock);
     final effectiveDiagnostic =
-        diagnostic ?? (rejected ? _dragRejectedDiagnostic(mode) : null);
+        diagnostic ??
+        (rejected ? _dragRejectedDiagnostic(catalog, mode) : null);
     final measuredWidth =
         _computeBlockWidth(
           node: node,
@@ -9085,6 +9518,8 @@ class _SqlIdePane extends StatefulWidget {
     required this.catalog,
     required this.executing,
     required this.onExecute,
+    required this.onCreateNodes,
+    required this.onClear,
     required this.onClose,
   });
 
@@ -9093,6 +9528,8 @@ class _SqlIdePane extends StatefulWidget {
   final TranslationCatalog catalog;
   final bool executing;
   final VoidCallback onExecute;
+  final VoidCallback onCreateNodes;
+  final VoidCallback onClear;
   final VoidCallback onClose;
 
   @override
@@ -9120,84 +9557,381 @@ class _SqlIdePaneState extends State<_SqlIdePane> {
         child: Column(
           children: [
             Container(
-              height: 58,
-              padding: const EdgeInsets.only(left: 16, right: 6),
+              constraints: const BoxConstraints(minHeight: 68),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[
+                    colors.panelElevated,
+                    colors.panelElevated.withValues(alpha: 0.72),
+                  ],
+                ),
+                border: Border(bottom: BorderSide(color: colors.border)),
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 840;
+                  final actions = <Widget>[
+                    FilledButton.icon(
+                      key: const ValueKey<String>('run-custom-sql'),
+                      onPressed: canExecute ? widget.onExecute : null,
+                      style: _nodeQlFilledButtonCornerStyle(context),
+                      icon: widget.executing
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.play_arrow_rounded, size: 18),
+                      label: Text(
+                        compact
+                            ? widget.catalog.text('runtime.ideRun')
+                            : '${widget.catalog.text('runtime.ideRun')}  ⌘↵',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      key: const ValueKey<String>('create-nodes-from-sql'),
+                      onPressed: widget.controller.text.trim().isEmpty
+                          ? null
+                          : widget.onCreateNodes,
+                      icon: const Icon(Icons.account_tree_outlined, size: 18),
+                      label: Text(
+                        compact
+                            ? 'Nodes'
+                            : widget.catalog.text('runtime.ideCreateNodes'),
+                      ),
+                    ),
+                    IconButton(
+                      key: const ValueKey<String>('clear-custom-sql'),
+                      onPressed: widget.controller.text.isEmpty
+                          ? null
+                          : widget.onClear,
+                      tooltip: widget.catalog.text('runtime.ideClear'),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                    IconButton(
+                      key: const ValueKey<String>('close-sql-ide'),
+                      onPressed: widget.onClose,
+                      tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
+                      icon: const Icon(Icons.account_tree_outlined),
+                    ),
+                  ];
+                  return Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: surfaceStyle.mediumBorderRadius,
+                        ),
+                        child: Icon(
+                          Icons.terminal_rounded,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.catalog.text('runtime.ideTitle'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.runtime.dbPath == null
+                                  ? widget.catalog.text('runtime.ideNoDatabase')
+                                  : '${widget.catalog.text('runtime.ideTablesAvailable', <String, Object?>{'count': widget.runtime.schemas.length})} · ${widget.catalog.text('runtime.ideLocalExecution')}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (compact)
+                        PopupMenuButton<int>(
+                          icon: const Icon(Icons.more_horiz_rounded),
+                          onSelected: (value) {
+                            if (value == 0) widget.onCreateNodes();
+                            if (value == 1) widget.onClear();
+                          },
+                          itemBuilder: (_) => <PopupMenuEntry<int>>[
+                            PopupMenuItem(
+                              value: 0,
+                              child: Text(
+                                widget.catalog.text('runtime.ideCreateNodes'),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 1,
+                              child: Text(
+                                widget.catalog.text('runtime.ideClear'),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        ...actions,
+                      if (compact)
+                        IconButton(
+                          key: const ValueKey<String>('close-sql-ide'),
+                          onPressed: widget.onClose,
+                          tooltip: widget.catalog.text(
+                            'runtime.showNodeWorkspace',
+                          ),
+                          icon: const Icon(Icons.account_tree_outlined),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final editor = SqlCodeEditor(
+                    controller: widget.controller,
+                    schemas: widget.runtime.schemas,
+                    onChanged: (_) => setState(() {}),
+                    onRun: canExecute ? widget.onExecute : null,
+                    hintText: widget.catalog.text('runtime.customSqlHint'),
+                    localModelLabel: widget.catalog.text(
+                      'runtime.localCompletion',
+                    ),
+                    externalError:
+                        widget.runtime.lastSql.trim() ==
+                            widget.controller.text.trim()
+                        ? widget.runtime.lastMessage
+                        : null,
+                  );
+                  return Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: constraints.maxWidth < 840
+                        ? editor
+                        : Row(
+                            children: [
+                              Expanded(child: editor),
+                              const SizedBox(width: 12),
+                              _SqlSchemaRail(
+                                schemas: widget.runtime.schemas,
+                                catalog: widget.catalog,
+                              ),
+                            ],
+                          ),
+                  );
+                },
+              ),
+            ),
+            Container(
+              height: 34,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: colors.panelElevated,
-                border: Border(bottom: BorderSide(color: colors.border)),
+                border: Border(top: BorderSide(color: colors.border)),
               ),
               child: Row(
                 children: [
                   Icon(
-                    Icons.data_object_rounded,
+                    Icons.auto_awesome_rounded,
+                    size: 15,
                     color: Theme.of(context).colorScheme.primary,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 7),
                   Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.catalog.text('runtime.ideTitle'),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        Text(
-                          widget.catalog.text('runtime.ideSubtitle'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    child: Text(
+                      widget.catalog.text('runtime.ideKeyboardHelp'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  _SqlIdeStatusChip(
+                    label: widget.runtime.dbPath == null
+                        ? widget.catalog.text('runtime.ideNoDatabase')
+                        : widget.catalog.text('runtime.ideReady'),
+                    active: widget.runtime.dbPath != null,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SqlSchemaRail extends StatelessWidget {
+  const _SqlSchemaRail({required this.schemas, required this.catalog});
+
+  final List<TableSchema> schemas;
+  final TranslationCatalog catalog;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return SizedBox(
+      width: 230,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.panelElevated,
+          border: Border.all(color: colors.border),
+          borderRadius: NodeQlSurfaceStyle.of(context).mediumBorderRadius,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.storage_rounded,
+                    size: 17,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      catalog.text('runtime.ideSchema'),
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Text(
+                    '${schemas.length}',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: schemas.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          catalog.text('runtime.ideNoDatabase'),
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 11,
                             color: Theme.of(
                               context,
                             ).colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: schemas.length,
+                      itemBuilder: (context, index) {
+                        final schema = schemas[index];
+                        return Material(
+                          type: MaterialType.transparency,
+                          child: ExpansionTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.table_chart_outlined,
+                              size: 17,
+                            ),
+                            title: Text(
+                              schema.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            childrenPadding: const EdgeInsets.only(
+                              left: 16,
+                              right: 8,
+                              bottom: 8,
+                            ),
+                            children: [
+                              for (final column in schema.columns)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 3,
+                                    ),
+                                    child: Text(
+                                      column,
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                  IconButton(
-                    key: const ValueKey<String>('run-custom-sql'),
-                    onPressed: canExecute ? widget.onExecute : null,
-                    tooltip: widget.catalog.text('runtime.runCustomSql'),
-                    icon: widget.executing
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.play_arrow_rounded),
-                  ),
-                  IconButton(
-                    key: const ValueKey<String>('close-sql-ide'),
-                    onPressed: widget.onClose,
-                    tooltip: widget.catalog.text('runtime.showNodeWorkspace'),
-                    icon: const Icon(Icons.account_tree_outlined),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: SqlCodeEditor(
-                  controller: widget.controller,
-                  schemas: widget.runtime.schemas,
-                  onChanged: (_) => setState(() {}),
-                  onRun: canExecute ? widget.onExecute : null,
-                  hintText: widget.catalog.text('runtime.customSqlHint'),
-                  localModelLabel: widget.catalog.text(
-                    'runtime.localCompletion',
-                  ),
-                  externalError:
-                      widget.runtime.lastSql.trim() ==
-                          widget.controller.text.trim()
-                      ? widget.runtime.lastMessage
-                      : null,
-                ),
-              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SqlIdeStatusChip extends StatelessWidget {
+  const _SqlIdeStatusChip({required this.label, required this.active});
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active
+        ? const Color(0xFF22C55E)
+        : Theme.of(context).colorScheme.outline;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -9784,9 +10518,20 @@ class _FloatingRuntimeWindowsState
   _RuntimePanel? _draggedPanel;
   Offset? _dragPointer;
   bool _dragFrameScheduled = false;
-  bool _resizeFrameScheduled = false;
   double? _pendingRuntimeWidth;
   double? _pendingCommandOutputFraction;
+  OverlayEntry? _resizeGhostOverlay;
+  Offset _resizeGhostOrigin = Offset.zero;
+  Size _resizeGhostHandleSize = Size.zero;
+  _ResizeAxis? _resizeGhostAxis;
+  double _resizeGhostOffset = 0;
+  String? _resizeGhostLabel;
+
+  @override
+  void dispose() {
+    _removeResizeGhost();
+    super.dispose();
+  }
 
   void _startDrag(_RuntimePanel panel, Offset pointer) {
     setState(() {
@@ -9826,7 +10571,6 @@ class _FloatingRuntimeWindowsState
     required Offset delta,
     required WorkbenchLayout layout,
     required Size bounds,
-    required WorkbenchLayoutController controller,
   }) {
     final maxWidth = math.max(1.0, bounds.width - 240.0);
     final minWidth = math.min(260.0, maxWidth);
@@ -9834,7 +10578,10 @@ class _FloatingRuntimeWindowsState
     _pendingRuntimeWidth = (current - delta.dx)
         .clamp(minWidth, math.min(720.0, maxWidth))
         .toDouble();
-    _scheduleResize(controller);
+    _updateResizeGhost(
+      physicalDelta: current - _pendingRuntimeWidth!,
+      label: '${_pendingRuntimeWidth!.round()} px',
+    );
   }
 
   void _resizeVerticalDock({
@@ -9842,7 +10589,6 @@ class _FloatingRuntimeWindowsState
     required WorkbenchLayout layout,
     required Size bounds,
     required bool stacked,
-    required WorkbenchLayoutController controller,
   }) {
     const gap = 8.0;
     final contentHeight = math.max(1.0, bounds.height);
@@ -9855,22 +10601,62 @@ class _FloatingRuntimeWindowsState
         (current + (stacked ? delta.dy : -delta.dy) / usableHeight)
             .clamp(.18, .78)
             .toDouble();
-    _scheduleResize(controller);
+    _updateResizeGhost(
+      physicalDelta:
+          (stacked ? 1 : -1) *
+          (_pendingCommandOutputFraction! - current) *
+          usableHeight,
+      label: '${(_pendingCommandOutputFraction! * 100).round()}%',
+    );
   }
 
-  void _scheduleResize(WorkbenchLayoutController controller) {
-    if (_resizeFrameScheduled) return;
-    _resizeFrameScheduled = true;
-    SchedulerBinding.instance.scheduleFrameCallback((_) {
-      _resizeFrameScheduled = false;
-      if (!mounted) return;
-      final runtimeWidth = _pendingRuntimeWidth;
-      final outputFraction = _pendingCommandOutputFraction;
-      if (runtimeWidth != null) controller.setRuntimeWidth(runtimeWidth);
-      if (outputFraction != null) {
-        controller.setCommandOutputFraction(outputFraction);
-      }
-    });
+  void _startResizeGhost({required Rect rect, required _ResizeAxis axis}) {
+    _removeResizeGhost();
+    final renderBox = context.findRenderObject();
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final overlayBox = overlay.context.findRenderObject();
+    if (renderBox is! RenderBox || overlayBox is! RenderBox) return;
+
+    final localOrigin = axis == _ResizeAxis.horizontal
+        ? Offset(rect.left, rect.top)
+        : Offset(rect.left, rect.top);
+    _resizeGhostOrigin = renderBox.localToGlobal(
+      localOrigin,
+      ancestor: overlayBox,
+    );
+    _resizeGhostHandleSize = axis == _ResizeAxis.horizontal
+        ? Size(3, rect.height)
+        : Size(rect.width, 3);
+    _resizeGhostAxis = axis;
+    _resizeGhostOffset = 0;
+    _resizeGhostLabel = null;
+    _resizeGhostOverlay = OverlayEntry(
+      builder: (_) => _ResizeGhostOverlay(
+        origin: _resizeGhostOrigin,
+        handleSize: _resizeGhostHandleSize,
+        axis: _resizeGhostAxis!,
+        offset: _resizeGhostOffset,
+        opacity: 1,
+        label: _resizeGhostLabel,
+      ),
+    );
+    overlay.insert(_resizeGhostOverlay!);
+  }
+
+  void _updateResizeGhost({
+    required double physicalDelta,
+    required String label,
+  }) {
+    if (_resizeGhostOverlay == null) return;
+    _resizeGhostOffset += physicalDelta;
+    _resizeGhostLabel = label;
+    _resizeGhostOverlay!.markNeedsBuild();
+  }
+
+  void _removeResizeGhost() {
+    _resizeGhostOverlay?.remove();
+    _resizeGhostOverlay = null;
+    _resizeGhostAxis = null;
   }
 
   void _endResize(WorkbenchLayoutController controller) {
@@ -9878,6 +10664,7 @@ class _FloatingRuntimeWindowsState
     final outputFraction = _pendingCommandOutputFraction;
     _pendingRuntimeWidth = null;
     _pendingCommandOutputFraction = null;
+    _removeResizeGhost();
     if (runtimeWidth != null) controller.setRuntimeWidth(runtimeWidth);
     if (outputFraction != null) {
       controller.setCommandOutputFraction(outputFraction);
@@ -9971,6 +10758,14 @@ class _FloatingRuntimeWindowsState
               onHeaderDragUpdate: (details) =>
                   _updateDrag(toLocal(details.globalPosition)),
               onHeaderDragEnd: () => _endDrag(layouts, controller),
+              onTopResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                      RuntimePanelLayoutMode.commandBottom
+                  ? (_) => _startResizeGhost(
+                      rect: commandRect,
+                      axis: _ResizeAxis.vertical,
+                    )
+                  : null,
               onTopResizeUpdate:
                   widget.layout.runtimePanelLayout ==
                       RuntimePanelLayoutMode.commandBottom
@@ -9979,7 +10774,6 @@ class _FloatingRuntimeWindowsState
                       layout: widget.layout,
                       bounds: constraints.biggest,
                       stacked: false,
-                      controller: controller,
                     )
                   : null,
               onTopResizeEnd:
@@ -9996,7 +10790,16 @@ class _FloatingRuntimeWindowsState
                       delta: details.delta,
                       layout: widget.layout,
                       bounds: constraints.biggest,
-                      controller: controller,
+                    )
+                  : null,
+              onLeftResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? (_) => _startResizeGhost(
+                      rect: commandRect,
+                      axis: _ResizeAxis.horizontal,
                     )
                   : null,
               onLeftResizeEnd:
@@ -10020,6 +10823,16 @@ class _FloatingRuntimeWindowsState
               onHeaderDragUpdate: (details) =>
                   _updateDrag(toLocal(details.globalPosition)),
               onHeaderDragEnd: () => _endDrag(layouts, controller),
+              onTopResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.previewBottom
+                  ? (_) => _startResizeGhost(
+                      rect: previewRect,
+                      axis: _ResizeAxis.vertical,
+                    )
+                  : null,
               onTopResizeUpdate:
                   widget.layout.runtimePanelLayout ==
                           RuntimePanelLayoutMode.rightSplit ||
@@ -10032,7 +10845,6 @@ class _FloatingRuntimeWindowsState
                       stacked:
                           widget.layout.runtimePanelLayout ==
                           RuntimePanelLayoutMode.rightSplit,
-                      controller: controller,
                     )
                   : null,
               onTopResizeEnd:
@@ -10051,7 +10863,16 @@ class _FloatingRuntimeWindowsState
                       delta: details.delta,
                       layout: widget.layout,
                       bounds: constraints.biggest,
-                      controller: controller,
+                    )
+                  : null,
+              onLeftResizeStart:
+                  widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.rightSplit ||
+                      widget.layout.runtimePanelLayout ==
+                          RuntimePanelLayoutMode.commandBottom
+                  ? (_) => _startResizeGhost(
+                      rect: previewRect,
+                      axis: _ResizeAxis.horizontal,
                     )
                   : null,
               onLeftResizeEnd:
@@ -10086,12 +10907,12 @@ class _FloatingRuntimeWindowsState
                 child: const IgnorePointer(child: _RuntimeDragGhost()),
               ),
             ],
-            if (selectedColumnLink case final link?)
+            if (!widget.customMode && selectedColumnLink != null)
               Positioned(
                 top: 64,
                 left: 12,
                 child: _ColumnLinkManagerCard(
-                  link: link,
+                  link: selectedColumnLink,
                   catalog: widget.catalog,
                   mode: widget.mode,
                   sourceColor: ropeColors.source,
@@ -10230,6 +11051,97 @@ class _RuntimeDragGhost extends StatelessWidget {
   }
 }
 
+/// The dock edge mirrors the palette's resize affordance: it grows and glows
+/// on hover, while the actual resize work remains in the lightweight overlay.
+class _RuntimeWindowResizeHandle extends StatefulWidget {
+  const _RuntimeWindowResizeHandle({
+    required this.axis,
+    required this.label,
+    this.onStart,
+    this.onUpdate,
+    this.onEnd,
+  });
+
+  final _ResizeAxis axis;
+  final String label;
+  final GestureDragStartCallback? onStart;
+  final GestureDragUpdateCallback? onUpdate;
+  final VoidCallback? onEnd;
+
+  @override
+  State<_RuntimeWindowResizeHandle> createState() =>
+      _RuntimeWindowResizeHandleState();
+}
+
+class _RuntimeWindowResizeHandleState
+    extends State<_RuntimeWindowResizeHandle> {
+  bool _hovering = false;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontal = widget.axis == _ResizeAxis.horizontal;
+    final active = _hovering || _dragging;
+    final accent = Theme.of(context).colorScheme.primary;
+    final colors = NodeQlWorkbenchColors.of(context);
+    final indicator = AnimatedContainer(
+      duration: const Duration(milliseconds: 90),
+      curve: Curves.easeOutCubic,
+      width: horizontal ? (active ? 4 : 3) : (active ? 54 : 34),
+      height: horizontal ? (active ? 54 : 34) : (active ? 4 : 3),
+      decoration: BoxDecoration(
+        color: active ? accent : colors.border,
+        boxShadow: active
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: accent.withValues(alpha: .5),
+                  blurRadius: 14,
+                  spreadRadius: 1,
+                ),
+              ]
+            : const <BoxShadow>[],
+      ),
+    );
+
+    return MouseRegion(
+      cursor: horizontal
+          ? SystemMouseCursors.resizeLeftRight
+          : SystemMouseCursors.resizeUpDown,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: (details) {
+          setState(() => _dragging = true);
+          widget.onStart?.call(details);
+        },
+        onPanUpdate: widget.onUpdate,
+        onPanEnd: (_) {
+          setState(() => _dragging = false);
+          widget.onEnd?.call();
+        },
+        onPanCancel: () {
+          setState(() => _dragging = false);
+          widget.onEnd?.call();
+        },
+        child: Semantics(
+          label: widget.label,
+          child: SizedBox(
+            width: horizontal ? 8 : double.infinity,
+            height: horizontal ? double.infinity : 8,
+            child: Align(
+              alignment: horizontal
+                  ? Alignment.centerLeft
+                  : Alignment.topCenter,
+              child: indicator,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FloatingRuntimeWindow extends StatelessWidget {
   const _FloatingRuntimeWindow({
     super.key,
@@ -10242,8 +11154,10 @@ class _FloatingRuntimeWindow extends StatelessWidget {
     this.onHeaderDragUpdate,
     this.onHeaderDragEnd,
     this.onHeaderDragCancel,
+    this.onTopResizeStart,
     this.onTopResizeUpdate,
     this.onTopResizeEnd,
+    this.onLeftResizeStart,
     this.onLeftResizeUpdate,
     this.onLeftResizeEnd,
   });
@@ -10257,8 +11171,10 @@ class _FloatingRuntimeWindow extends StatelessWidget {
   final GestureDragUpdateCallback? onHeaderDragUpdate;
   final GestureDragEndCallback? onHeaderDragEnd;
   final VoidCallback? onHeaderDragCancel;
+  final GestureDragStartCallback? onTopResizeStart;
   final GestureDragUpdateCallback? onTopResizeUpdate;
   final VoidCallback? onTopResizeEnd;
+  final GestureDragStartCallback? onLeftResizeStart;
   final GestureDragUpdateCallback? onLeftResizeUpdate;
   final VoidCallback? onLeftResizeEnd;
 
@@ -10330,38 +11246,12 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                   top: 0,
                   left: 0,
                   right: 0,
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.resizeUpDown,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanUpdate: onTopResizeUpdate,
-                      onPanEnd: (_) => onTopResizeEnd?.call(),
-                      onPanCancel: onTopResizeEnd,
-                      child: Semantics(
-                        label: 'Fensterhöhe anpassen',
-                        child: Container(
-                          height: 8,
-                          alignment: Alignment.topCenter,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                colors.panelElevated.withValues(alpha: 0),
-                                colors.border.withValues(alpha: .82),
-                                colors.panelElevated.withValues(alpha: 0),
-                              ],
-                            ),
-                          ),
-                          child: Container(
-                            width: 34,
-                            height: 3,
-                            margin: const EdgeInsets.only(top: 2),
-                            decoration: BoxDecoration(
-                              color: accent.withValues(alpha: .72),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  child: _RuntimeWindowResizeHandle(
+                    axis: _ResizeAxis.vertical,
+                    label: 'Fensterhöhe anpassen',
+                    onStart: onTopResizeStart,
+                    onUpdate: onTopResizeUpdate,
+                    onEnd: onTopResizeEnd,
                   ),
                 ),
               if (onLeftResizeUpdate != null)
@@ -10369,29 +11259,12 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                   top: 0,
                   left: 0,
                   bottom: 0,
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.resizeLeftRight,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanUpdate: onLeftResizeUpdate,
-                      onPanEnd: (_) => onLeftResizeEnd?.call(),
-                      onPanCancel: onLeftResizeEnd,
-                      child: Semantics(
-                        label: 'Fensterbreite anpassen',
-                        child: Container(
-                          width: 8,
-                          alignment: Alignment.centerLeft,
-                          child: Container(
-                            width: 3,
-                            height: 34,
-                            margin: const EdgeInsets.only(left: 2),
-                            decoration: BoxDecoration(
-                              color: accent.withValues(alpha: .55),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  child: _RuntimeWindowResizeHandle(
+                    axis: _ResizeAxis.horizontal,
+                    label: 'Fensterbreite anpassen',
+                    onStart: onLeftResizeStart,
+                    onUpdate: onLeftResizeUpdate,
+                    onEnd: onLeftResizeEnd,
                   ),
                 ),
             ],
@@ -10416,8 +11289,10 @@ class _SqlCommandOutputWindow extends StatefulWidget {
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    this.onTopResizeStart,
     this.onTopResizeUpdate,
     this.onTopResizeEnd,
+    this.onLeftResizeStart,
     this.onLeftResizeUpdate,
     this.onLeftResizeEnd,
   });
@@ -10434,8 +11309,10 @@ class _SqlCommandOutputWindow extends StatefulWidget {
   final GestureDragStartCallback onHeaderDragStart;
   final GestureDragUpdateCallback onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
+  final GestureDragStartCallback? onTopResizeStart;
   final GestureDragUpdateCallback? onTopResizeUpdate;
   final VoidCallback? onTopResizeEnd;
+  final GestureDragStartCallback? onLeftResizeStart;
   final GestureDragUpdateCallback? onLeftResizeUpdate;
   final VoidCallback? onLeftResizeEnd;
 
@@ -10466,8 +11343,10 @@ class _SqlCommandOutputWindowState extends State<_SqlCommandOutputWindow> {
       onHeaderDragUpdate: widget.onHeaderDragUpdate,
       onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
       onHeaderDragCancel: widget.onHeaderDragEnd,
+      onTopResizeStart: widget.onTopResizeStart,
       onTopResizeUpdate: widget.onTopResizeUpdate,
       onTopResizeEnd: widget.onTopResizeEnd,
+      onLeftResizeStart: widget.onLeftResizeStart,
       onLeftResizeUpdate: widget.onLeftResizeUpdate,
       onLeftResizeEnd: widget.onLeftResizeEnd,
       actions: [
@@ -10530,8 +11409,10 @@ class _OutputPreviewFloatingWindow extends StatefulWidget {
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    this.onTopResizeStart,
     this.onTopResizeUpdate,
     this.onTopResizeEnd,
+    this.onLeftResizeStart,
     this.onLeftResizeUpdate,
     this.onLeftResizeEnd,
   });
@@ -10544,8 +11425,10 @@ class _OutputPreviewFloatingWindow extends StatefulWidget {
   final GestureDragStartCallback onHeaderDragStart;
   final GestureDragUpdateCallback onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
+  final GestureDragStartCallback? onTopResizeStart;
   final GestureDragUpdateCallback? onTopResizeUpdate;
   final VoidCallback? onTopResizeEnd;
+  final GestureDragStartCallback? onLeftResizeStart;
   final GestureDragUpdateCallback? onLeftResizeUpdate;
   final VoidCallback? onLeftResizeEnd;
 
@@ -10635,8 +11518,10 @@ class _OutputPreviewFloatingWindowState
     onHeaderDragUpdate: widget.onHeaderDragUpdate,
     onHeaderDragEnd: (_) => widget.onHeaderDragEnd(),
     onHeaderDragCancel: widget.onHeaderDragEnd,
+    onTopResizeStart: widget.onTopResizeStart,
     onTopResizeUpdate: widget.onTopResizeUpdate,
     onTopResizeEnd: widget.onTopResizeEnd,
+    onLeftResizeStart: widget.onLeftResizeStart,
     onLeftResizeUpdate: widget.onLeftResizeUpdate,
     onLeftResizeEnd: widget.onLeftResizeEnd,
     actions: [
@@ -10726,6 +11611,7 @@ class _SqlResultTableState extends State<_SqlResultTable> {
       final message = widget.runtime.lastMessage == null
           ? widget.catalog.text('runtime.noResults')
           : _friendlyVisibleRuntimeMessage(
+              catalog: widget.catalog,
               mode: widget.mode,
               message: widget.runtime.lastMessage!,
             );

@@ -70,6 +70,43 @@ void main() {
     );
   });
 
+  test('imported nodes open in a separate tab without replacing the query', () {
+    final workspace = WorkspaceController()..resetWithRoot();
+    final tabs = WorkspaceTabsController(
+      workspace,
+      initialWorkspaceJson: workspace.toJsonString(),
+    );
+    _addSelect(workspace, 'original_table');
+    final originalTabId = tabs.state.activeTabId;
+
+    final importedRoot = EventBlock(
+      id: 'import_root',
+      position: const Offset(120, 120),
+    );
+    importedRoot.next = OperatorBlock(
+      id: 'import_select',
+      position: const Offset(120, 260),
+      operatorType: BlockType.sqlSelect,
+      inputs: <String, dynamic>{'columns': '*', 'table': 'imported_table'},
+    );
+    tabs.addImportedWorkspace(<BlockNode>[importedRoot], name: 'SQL import');
+
+    expect(tabs.state.tabs, hasLength(2));
+    expect(tabs.state.activeTab.name, 'SQL import');
+    expect(
+      const SqlCompiler().compileWorkspace(tabs.executionRoots()).sql,
+      'SELECT * FROM original_table;\nSELECT * FROM imported_table;',
+    );
+
+    tabs.selectTab(originalTabId);
+    expect(
+      workspace.allBlocks().any(
+        (node) => node.inputs['table'] == 'original_table',
+      ),
+      isTrue,
+    );
+  });
+
   test('deleting tabs selects a neighbor and protects the last workspace', () {
     final workspace = WorkspaceController()..resetWithRoot();
     final tabs = WorkspaceTabsController(

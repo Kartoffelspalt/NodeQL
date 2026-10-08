@@ -249,10 +249,10 @@ class _PracticeCopy extends StatelessWidget {
     final modeKey = abstractionMode == SqlAbstractionMode.simple
         ? 'tutorial.practice.mode.simple'
         : 'tutorial.practice.mode.advanced';
-    TutorialPracticeCheck? nextCheck;
+    TutorialPracticeRequirement? nextRequirement;
     for (final entry in result.outcomes.entries) {
       if (!entry.value) {
-        nextCheck = entry.key;
+        nextRequirement = entry.key;
         break;
       }
     }
@@ -345,8 +345,7 @@ class _PracticeCopy extends StatelessWidget {
             ),
           ),
         ],
-        if (step.checks.contains(TutorialPracticeCheck.queryExecuted) &&
-            !session.completed) ...[
+        if (step.requiresExecution && !session.completed) ...[
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -379,7 +378,7 @@ class _PracticeCopy extends StatelessWidget {
             localeCode: localeCode,
           ),
         ],
-        if (nextCheck != null && !session.completed) ...[
+        if (nextRequirement != null && !session.completed) ...[
           const SizedBox(height: 9),
           Container(
             key: const ValueKey('tutorial-practice-next-requirement'),
@@ -407,7 +406,7 @@ class _PracticeCopy extends StatelessWidget {
                   child: Text(
                     catalog.text('tutorial.practice.nextRequirement', {
                       'requirement': catalog.text(
-                        'tutorial.practice.check.${nextCheck.name}',
+                        nextRequirement.resolvedLabelKey,
                       ),
                     }),
                     style: const TextStyle(fontWeight: FontWeight.w700),
@@ -435,9 +434,7 @@ class _PracticeCopy extends StatelessWidget {
             for (final entry in result.outcomes.entries)
               _CheckChip(
                 complete: entry.value,
-                label: catalog.text(
-                  'tutorial.practice.check.${entry.key.name}',
-                ),
+                label: catalog.text(entry.key.resolvedLabelKey),
               ),
           ],
         ),

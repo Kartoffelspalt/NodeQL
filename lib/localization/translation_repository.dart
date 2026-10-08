@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -40,7 +41,7 @@ class FileTranslationRepository implements TranslationRepository {
                : Uri.parse(defaultTranslationManifestUrl)),
        _allowedHosts = allowedHosts,
        _supportDirectory = supportDirectory ?? getApplicationSupportDirectory,
-       _assetLoader = assetLoader ?? rootBundle.loadString;
+       _assetLoader = assetLoader ?? _loadNodeQlAsset;
 
   final http.Client _client;
   final Uri? _manifestUri;
@@ -200,5 +201,13 @@ class FileTranslationRepository implements TranslationRepository {
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
     final messages = decoded['messages'] as Map<String, dynamic>;
     return messages.map((key, value) => MapEntry(key, '$value'));
+  }
+}
+
+Future<String> _loadNodeQlAsset(String key) async {
+  try {
+    return await rootBundle.loadString(key);
+  } on FlutterError {
+    return rootBundle.loadString('packages/nodeql/$key');
   }
 }
