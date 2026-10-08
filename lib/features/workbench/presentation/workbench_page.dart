@@ -932,7 +932,71 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                             ),
                                           ],
                                         ),
+                                        defaults: defaults,
+                                      );
+                                    },
+                                  ),
+                                ),
+                                _ThrottledResizeHandle(
+                                  value: layout.paletteWidth,
+                                  resetValue: 250,
+                                  axis: _ResizeAxis.horizontal,
+                                  deltaMultiplier: 1,
+                                  minValue: 200,
+                                  maxValue: 520,
+                                  highRefreshMode: layout.highRefreshMode,
+                                  reduceMotion: layout.reduceMotion,
+                                  onChanged: ref
+                                      .read(workbenchLayoutProvider.notifier)
+                                      .setPaletteWidth,
+                                ),
+                                Expanded(
+                                  child: Stack(
+                                    children: [
+                                      Positioned(
+                                        top: 0,
+                                        left: 0,
+                                        right: workspaceRightInset,
+                                        bottom: 0,
+                                        child: _showCustomSqlEditor
+                                            ? _SqlIdePane(
+                                                controller:
+                                                    _customSqlController,
+                                                runtime: runtime,
+                                                catalog: catalog,
+                                                executing: _executingCustomSql,
+                                                onExecute:
+                                                    _executeCustomSqlFromEditor,
+                                                onClose: () =>
+                                                    _toggleCustomSqlEditor(sql),
+                                              )
+                                            : Column(
+                                                children: [
+                                                  Expanded(
+                                                    child: _WorkspaceCanvas(
+                                                      focusNode:
+                                                          _workspaceFocus,
+                                                      transform: _transform,
+                                                      paletteWidth:
+                                                          72.0 + paletteWidth,
+                                                      diagnostics:
+                                                          nodeDiagnostics,
+                                                      onSaveProject: () =>
+                                                          _saveProject(context),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                       ),
+                                      if (!_showCustomSqlEditor)
+                                        Positioned(
+                                          top: 0,
+                                          left: 0,
+                                          right: workspaceRightInset,
+                                          child: _WorkspaceTabsBar(
+                                            catalog: catalog,
+                                          ),
+                                        ),
                                     ],
                                   ),
                           ),
@@ -11458,6 +11522,9 @@ class _SqlCommandOutputWindowState extends State<_SqlCommandOutputWindow> {
                 color: colors.sqlText,
                 height: 1.35,
               ),
+            PopupMenuItem<String>(
+              value: 'copy-tsv',
+              child: Text(_actionText('copy')),
             ),
           ),
         ),
