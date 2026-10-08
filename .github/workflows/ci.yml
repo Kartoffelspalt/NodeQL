@@ -19,8 +19,20 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Install Workshop Admin dependencies
+        working-directory: tools/workshop_admin
+        run: flutter pub get
       - run: flutter gen-l10n
       - run: dart format --output=none --set-exit-if-changed lib test tool
+      - name: Check Workshop Admin formatting
+        working-directory: tools/workshop_admin
+        run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze
+      - name: Analyze Workshop Admin
+        working-directory: tools/workshop_admin
+        run: flutter analyze
       - run: flutter test
+      - name: Test Workshop Admin
+        working-directory: tools/workshop_admin
+        run: flutter test
       - run: dart run tool/validate_translations.dart

@@ -16,6 +16,8 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # Separate Flutter package with its own dependency graph and analyzer run.
+    - tools/workshop_admin/**
 include: package:flutter_lints/flutter.yaml
 
 linter:
