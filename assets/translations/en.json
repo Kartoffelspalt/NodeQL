@@ -11,6 +11,8 @@
     "toolbar.simple": "Simple",
     "toolbar.advanced": "Advanced",
     "toolbar.settings": "Settings",
+    "toolbar.onboarding": "Quick introduction",
+    "toolbar.importOnboarding": "Import onboarding file",
     "toolbar.tutorial": "Open workshop",
     "toolbar.workshop": "Workshop",
     "workspace.disconnectColumns": "Remove column connection",

@@ -854,6 +854,35 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('opens and skips the interactive onboarding overlay', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _ReadyTranslationController(),
+          ),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+        ],
+        child: const NodeQlApp(),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+
+    await tester.tap(find.byKey(const ValueKey<String>('open-onboarding')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose nodes'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('onboarding-skip')));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose nodes'), findsNothing);
+  });
 }
 
 class _ReadyPluginPaletteController extends PluginPaletteController {
