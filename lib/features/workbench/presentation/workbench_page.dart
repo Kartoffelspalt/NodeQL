@@ -20,6 +20,7 @@ import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnos
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sqlite_function_catalog.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_notice_localizer.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_result_export.dart';
@@ -171,6 +172,7 @@ class _RopeHighlightColors {
 }
 
 Map<String, _SimpleNodeDiagnostic> _nodeDiagnostics({
+  required TranslationCatalog catalog,
   required SqlAbstractionMode mode,
   required List<BlockNode> roots,
   required SqlRuntimeState runtime,
@@ -182,10 +184,10 @@ Map<String, _SimpleNodeDiagnostic> _nodeDiagnostics({
     if (node != null) {
       diagnostics[node.id] = _SimpleNodeDiagnostic(
         title: mode == SqlAbstractionMode.simple
-            ? 'Problem in dieser Blockkette'
-            : 'Compiler-Warnung an diesem Node',
+            ? catalog.text('notice.title.compileSimple')
+            : catalog.text('notice.title.compileAdvanced'),
         message: mode == SqlAbstractionMode.simple
-            ? _friendlyCompileWarning(warning)
+            ? localizedSimpleCompileWarning(catalog, warning)
             : warning,
       );
     }
@@ -207,10 +209,10 @@ Map<String, _SimpleNodeDiagnostic> _nodeDiagnostics({
   if (node == null) return diagnostics;
   diagnostics[node.id] = _SimpleNodeDiagnostic(
     title: mode == SqlAbstractionMode.simple
-        ? 'Fehler an diesem Node'
-        : 'SQLite-Fehler an diesem Node',
+        ? catalog.text('notice.title.runtimeSimple')
+        : catalog.text('notice.title.runtimeAdvanced'),
     message: mode == SqlAbstractionMode.simple
-        ? _friendlyRuntimeError(runtimeMessage)
+        ? localizedSimpleRuntimeError(catalog, runtimeMessage)
         : runtimeMessage,
   );
   return diagnostics;
@@ -236,123 +238,41 @@ BlockNode? _nodeForCompilerWarning(List<BlockNode> roots, String warning) {
   return _findNodeById(roots, id);
 }
 
-String _friendlyCompileWarning(String warning) {
-  if (warning.contains('not executable')) {
-    return 'Dieser Block ist nicht mit ABFRAGE AUSFÜHREN verbunden.';
-  }
-  if (warning.contains('Cycle detected')) {
-    return 'Diese Blockkette bildet eine Schleife. Trenne einen der verbundenen Blöcke.';
-  }
-  if (warning.contains('Plugin block')) {
-    return 'Dieser Plugin-Block ist nicht verfügbar oder passt nicht mehr zur installierten Version.';
-  }
-  if (warning.contains('failed:')) {
-    return 'Dieser Zusatz-Block konnte nicht übersetzt werden. Prüfe seine Eingaben oder installiere das Plugin neu.';
-  }
-  if (warning.contains('created with version')) {
-    return 'Dieser Plugin-Block wurde mit einer anderen Version erstellt. Prüfe, ob das Plugin aktualisiert wurde.';
-  }
-  return 'Dieser Block konnte noch nicht verständlich geprüft werden. Prüfe seine Verbindung und die eingetragenen Werte.';
-}
-
 String _visibleCompileWarnings({
+  required TranslationCatalog catalog,
   required SqlAbstractionMode mode,
   required List<String> warnings,
 }) {
   if (mode != SqlAbstractionMode.simple) return warnings.join('\n');
-  return warnings.map(_friendlyCompileWarning).join('\n');
-}
-
-String _friendlyRuntimeError(String message) {
-  final normalized = message.toLowerCase();
-  final noSuchTable = RegExp(
-    r'no such table: ([^\s,)]+)',
-    caseSensitive: false,
-  ).firstMatch(message);
-  if (noSuchTable != null) {
-    return 'Diese Tabelle wurde in der geladenen Datenbank nicht gefunden. Prüfe den Tabellen-Slot.';
-  }
-  final noSuchColumn = RegExp(
-    r'no such column: ([^\s,)]+)',
-    caseSensitive: false,
-  ).firstMatch(message);
-  if (noSuchColumn != null) {
-    return 'Diese Spalte wurde nicht gefunden. Prüfe Spaltenauswahl, Join-Spalten oder Filter-Spalte.';
-  }
-  if (normalized.contains('ambiguous column')) {
-    return 'Diese Spalte gibt es in mehreren Tabellen. Wähle eindeutig, aus welcher Tabelle die Spalte kommt.';
-  }
-  if (normalized.contains('no such index') ||
-      normalized.contains('no such view') ||
-      normalized.contains('no such trigger')) {
-    return 'Dieses Datenbankobjekt wurde nicht gefunden. Prüfe den Namen im markierten Node.';
-  }
-  if (normalized.contains('already exists')) {
-    return 'Dieses Datenbankobjekt existiert bereits. Aktiviere IF NOT EXISTS oder wähle einen anderen Namen.';
-  }
-  if (normalized.contains('misuse of aggregate')) {
-    return 'Eine Rechenfunktion wie SUM oder COUNT steht an der falschen Stelle. Nutze sie meist in SELECT oder HAVING.';
-  }
-  if (normalized.contains('incomplete input')) {
-    return 'Die Abfrage ist unvollständig. Prüfe, ob ein Pflichtfeld leer ist oder ein Block fehlt.';
-  }
-  if (normalized.contains('syntax error') || normalized.contains('near "')) {
-    return 'Die SQLite-Struktur ist an dieser Stelle ungültig. Prüfe die Reihenfolge und die Slots dieses Nodes.';
-  }
-  if (normalized.contains('unique constraint')) {
-    return 'Dieser Wert darf in der Tabelle nur einmal vorkommen. Wähle einen anderen Wert.';
-  }
-  if (normalized.contains('foreign key constraint')) {
-    return 'Dieser Wert verweist auf einen fehlenden Eintrag in einer anderen Tabelle.';
-  }
-  if (normalized.contains('not null constraint')) {
-    return 'Ein Pflichtfeld ist leer. Trage für diese Spalte einen Wert ein.';
-  }
-  if (normalized.contains('constraint')) {
-    return 'Die Datenbank lehnt diese Änderung wegen einer Regel ab. Prüfe Werte und Schlüssel.';
-  }
-  if (normalized.contains('datatype mismatch')) {
-    return 'Der Wert passt nicht zum Spaltentyp. Prüfe, ob du Zahl, Text oder Datum richtig eingetragen hast.';
-  }
-  if (normalized.contains('readonly') || normalized.contains('read-only')) {
-    return 'Die Datenbank kann gerade nicht beschrieben werden. Prüfe Datei- und Ordnerrechte.';
-  }
-  if (normalized.contains('database is locked')) {
-    return 'Die Datenbank ist gerade durch einen anderen Zugriff gesperrt. Schließe andere Programme oder versuche es erneut.';
-  }
-  if (normalized.contains('no database connected')) {
-    return 'Es ist keine Datenbank verbunden. Wähle zuerst eine .db-Datei aus.';
-  }
-  if (normalized.contains('database file not found')) {
-    return 'Die Datenbankdatei wurde nicht gefunden. Wähle die Datei erneut aus.';
-  }
-  if (normalized.contains('failed to open database')) {
-    return 'Die Datenbank konnte nicht geöffnet werden. Prüfe, ob es wirklich eine SQLite-.db-Datei ist.';
-  }
-  return 'Prüfe diesen Node und seine Slots. Die technische Meldung steht rechts im SQLite-Ausgabebereich.';
+  return warnings
+      .map((warning) => localizedSimpleCompileWarning(catalog, warning))
+      .join('\n');
 }
 
 String _friendlyVisibleRuntimeMessage({
+  required TranslationCatalog catalog,
   required SqlAbstractionMode mode,
   required String message,
 }) {
   if (mode != SqlAbstractionMode.simple || !_looksLikeRuntimeError(message)) {
     return message;
   }
-  return _friendlyRuntimeError(message);
+  return localizedSimpleRuntimeError(catalog, message);
 }
 
-_SimpleNodeDiagnostic _dragRejectedDiagnostic(SqlAbstractionMode mode) {
+_SimpleNodeDiagnostic _dragRejectedDiagnostic(
+  TranslationCatalog catalog,
+  SqlAbstractionMode mode,
+) {
   if (mode == SqlAbstractionMode.simple) {
-    return const _SimpleNodeDiagnostic(
-      title: 'Block passt hier nicht',
-      message:
-          'Ziehe den Block an eine passende Stelle in der Reihenfolge: Anzeigen, Tabelle, Verbinden, Filtern, Gruppieren, Sortieren.',
+    return _SimpleNodeDiagnostic(
+      title: catalog.text('notice.drag.simpleTitle'),
+      message: catalog.text('notice.drag.simpleMessage'),
     );
   }
-  return const _SimpleNodeDiagnostic(
-    title: 'Ungültige Verbindung',
-    message: 'Dieser Block kann an dieser Stelle nicht verbunden werden.',
+  return _SimpleNodeDiagnostic(
+    title: catalog.text('notice.drag.advancedTitle'),
+    message: catalog.text('notice.drag.advancedMessage'),
   );
 }
 
@@ -658,6 +578,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final sql = compileResult.sql;
     _scheduleLivePreview(sql, runtime.dbPath);
     final nodeDiagnostics = _nodeDiagnostics(
+      catalog: catalog,
       mode: mode,
       roots: workspaceRoots,
       runtime: runtime,
@@ -740,6 +661,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                             compileResult.warnings.isEmpty
                                 ? catalog.text('runtime.noExecutable')
                                 : _visibleCompileWarnings(
+                                    catalog: catalog,
                                     mode: mode,
                                     warnings: compileResult.warnings,
                                   ),
@@ -755,6 +677,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           .setMessage(
                             catalog.text('runtime.executedWithWarnings', {
                               'warnings': _visibleCompileWarnings(
+                                catalog: catalog,
                                 mode: mode,
                                 warnings: compileResult.warnings,
                               ),
@@ -1468,12 +1391,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _openBlockDiagnostics(BuildContext context) async {
+    final translations = ref.read(translationControllerProvider);
+    final catalog = translations.catalog;
+    final localeCode = translations.locale.languageCode;
     final report = buildBlockSnapDiagnosticReport();
     final allowedCases = report.allowedCases;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Block-Tests'),
+        title: Text(catalog.text('diagnostics.blocks.title')),
         content: SizedBox(
           width: 680,
           height: 520,
@@ -1481,11 +1407,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Geprüft: ${report.total} Kombinationen, '
-                '${report.allowed} erlaubt, ${report.blocked} blockiert.',
+                catalog.text('diagnostics.blocks.summary', {
+                  'total': report.total,
+                  'allowed': report.allowed,
+                  'blocked': report.blocked,
+                }),
               ),
               const SizedBox(height: 8),
-              const Text('Erlaubte Snap-Konstellationen'),
+              Text(catalog.text('diagnostics.blocks.allowed')),
               const SizedBox(height: 8),
               Expanded(
                 child: ListView.builder(
@@ -1496,8 +1425,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       dense: true,
                       leading: const Icon(Icons.check_circle_outline),
                       title: Text(
-                        '${_diagnosticLabel(entry.previous)} -> '
-                        '${_diagnosticLabel(entry.next)}',
+                        '${_diagnosticLabel(entry.previous, localeCode)} -> '
+                        '${_diagnosticLabel(entry.next, localeCode)}',
                       ),
                     );
                   },
@@ -1515,23 +1444,23 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     _runVisibleBlockDiagnostics(allowedCases);
                   },
             icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text('Live-Test starten'),
+            label: Text(catalog.text('diagnostics.blocks.start')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Schließen'),
+            child: Text(catalog.text('common.close')),
           ),
         ],
       ),
     );
   }
 
-  String _diagnosticLabel(BlockType type) {
+  String _diagnosticLabel(BlockType type, String localeCode) {
     return sqlLabelFor(
       type,
       SqlAbstractionMode.advanced,
       const <String, dynamic>{},
-      'de',
+      localeCode,
     ).replaceAll('\n', ' ');
   }
 
@@ -1540,13 +1469,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   ) async {
     if (_blockDiagnosticsRunning || cases.isEmpty) return;
     final controller = ref.read(workspaceProvider.notifier);
+    final catalog = ref.read(translationControllerProvider).catalog;
     final originalWorkspace = controller.toJsonString();
     final token = ++_blockDiagnosticsRunToken;
 
     setState(() => _blockDiagnosticsRunning = true);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Live-Block-Test gestartet (${cases.length} Fälle)'),
+        content: Text(
+          catalog.text('diagnostics.blocks.started', {'count': cases.length}),
+        ),
         duration: const Duration(milliseconds: 1500),
       ),
     );
@@ -1565,9 +1497,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         controller.restorePreviewSnapshot(originalWorkspace);
         setState(() => _blockDiagnosticsRunning = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Live-Block-Test abgeschlossen'),
-            duration: Duration(milliseconds: 1500),
+          SnackBar(
+            content: Text(catalog.text('diagnostics.blocks.completed')),
+            duration: const Duration(milliseconds: 1500),
           ),
         );
       }
@@ -2791,6 +2723,7 @@ class _WorkshopWorkspaceViewState
       executionSucceeded: runtime.lastMessage?.startsWith('OK') == true,
     );
     final diagnostics = _nodeDiagnostics(
+      catalog: catalog,
       mode: mode,
       roots: roots,
       runtime: runtime,
@@ -6776,10 +6709,9 @@ class _NodeView extends ConsumerWidget {
     final engine = ref.read(workspaceProvider.notifier);
     final mode = ref.watch(sqlModeProvider);
     final runtime = ref.watch(sqlRuntimeProvider);
-    final localeCode = ref
-        .watch(translationControllerProvider)
-        .locale
-        .languageCode;
+    final translations = ref.watch(translationControllerProvider);
+    final localeCode = translations.locale.languageCode;
+    final catalog = translations.catalog;
     final pluginBlock = pluginBlockForNode(
       node,
       ref.watch(pluginPaletteProvider),
@@ -6793,7 +6725,8 @@ class _NodeView extends ConsumerWidget {
     final visualKind = blockVisualKind(node, pluginShape: pluginShape);
     final template = _templateForNode(node, mode, localeCode, pluginBlock);
     final effectiveDiagnostic =
-        diagnostic ?? (rejected ? _dragRejectedDiagnostic(mode) : null);
+        diagnostic ??
+        (rejected ? _dragRejectedDiagnostic(catalog, mode) : null);
     final measuredWidth =
         _computeBlockWidth(
           node: node,
@@ -11678,6 +11611,7 @@ class _SqlResultTableState extends State<_SqlResultTable> {
       final message = widget.runtime.lastMessage == null
           ? widget.catalog.text('runtime.noResults')
           : _friendlyVisibleRuntimeMessage(
+              catalog: widget.catalog,
               mode: widget.mode,
               message: widget.runtime.lastMessage!,
             );

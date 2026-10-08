@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - No unreleased changes yet.
 
+## [0.4.3+2] - 2026-10-08
+
+### Fixed
+
+Resolved Node Syntax Errors.
+
+### Improved
+
+Updated Workshop Experience, new Learning Path Tasks.
+Improved Custom SQLite Command Input UI IDE.
+
 ## [0.4.2+4] - 2026-09-28
 
 ### Improved
