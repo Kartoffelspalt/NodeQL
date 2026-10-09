@@ -14,6 +14,7 @@ import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:nodeql/data/project/project_file_upgrade_service.dart';
 import 'package:nodeql/data/project/project_file_paths.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_backwards_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_auto_execution_guard.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_to_nodes_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/block_snap_diagnostics.dart';
@@ -41,6 +42,7 @@ import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
 import 'package:nodeql/features/tutorial/workshop_database.dart';
 import 'package:nodeql/features/onboarding/onboarding_flow.dart';
+import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:path_provider/path_provider.dart';
@@ -374,6 +376,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     LogicalKeyboardKey.keyB,
   ];
   static const _databaseBrowserKeyTimeout = Duration(seconds: 2);
+  static const _onboardingImportKeys = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.keyI,
+    LogicalKeyboardKey.keyO,
+    LogicalKeyboardKey.keyS,
+  ];
   final TransformationController _transform = TransformationController();
   final FocusNode _workspaceFocus = FocusNode();
   final SqlHighlightingController _customSqlController =
@@ -406,9 +413,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<void>? _pendingSave;
   bool _startupHintShown = false;
   int _databaseBrowserKeyIndex = 0;
+  int _onboardingImportKeyIndex = 0;
   bool _showCustomSqlEditor = false;
   bool _executingCustomSql = false;
   DateTime? _databaseBrowserLastKeyAt;
+  DateTime? _onboardingImportLastKeyAt;
   bool _databaseBrowserOpen = false;
   bool _workshopMode = false;
   OnboardingDefinition? _activeOnboarding;
@@ -437,6 +446,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       (_, _) => _scheduleAutosave(),
     );
     unawaited(_initializeAutosave());
+    unawaited(_initializeFirstRunOnboarding());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showStartupHintOnce();
     });
@@ -460,6 +470,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _initializeFirstRunOnboarding() async {
+    final controller = ref.read(onboardingLaunchProvider.notifier);
+    await controller.initialize();
+    if (!mounted || !ref.read(onboardingLaunchProvider).shouldShow) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ref.read(onboardingLaunchProvider).shouldShow) {
+        _startDefaultOnboarding();
+      }
+    });
   }
 
   @override
@@ -491,12 +512,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         keyboard.isControlPressed ||
         keyboard.isAltPressed) {
       _resetDatabaseBrowserKeys();
+      _resetOnboardingImportKeys();
       return false;
     }
 
     final now = DateTime.now();
     if (_advanceDatabaseBrowserKeys(event.logicalKey, now)) {
       unawaited(_openDatabaseBrowser());
+      return true;
+    }
+    if (_advanceOnboardingImportKeys(event.logicalKey, now)) {
+      unawaited(_importOnboarding());
       return true;
     }
     return false;
@@ -535,6 +561,32 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   void _resetDatabaseBrowserKeys() {
     _databaseBrowserKeyIndex = 0;
     _databaseBrowserLastKeyAt = null;
+  }
+
+  bool _advanceOnboardingImportKeys(LogicalKeyboardKey key, DateTime now) {
+    final lastKeyAt = _onboardingImportLastKeyAt;
+    if (lastKeyAt != null &&
+        now.difference(lastKeyAt) > _databaseBrowserKeyTimeout) {
+      _resetOnboardingImportKeys();
+    }
+    final expectedKey = _onboardingImportKeys[_onboardingImportKeyIndex];
+    if (key == expectedKey) {
+      _onboardingImportKeyIndex++;
+      _onboardingImportLastKeyAt = now;
+      if (_onboardingImportKeyIndex == _onboardingImportKeys.length) {
+        _resetOnboardingImportKeys();
+        return true;
+      }
+      return false;
+    }
+    _onboardingImportKeyIndex = key == _onboardingImportKeys.first ? 1 : 0;
+    _onboardingImportLastKeyAt = _onboardingImportKeyIndex == 0 ? null : now;
+    return false;
+  }
+
+  void _resetOnboardingImportKeys() {
+    _onboardingImportKeyIndex = 0;
+    _onboardingImportLastKeyAt = null;
   }
 
   Future<void> _openDatabaseBrowser() async {
@@ -587,7 +639,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       pluginBlocks: pluginState.blocksByQualifiedId,
     );
     final sql = compileResult.sql;
-    _scheduleLivePreview(sql, runtime.dbPath);
+    _scheduleLivePreview(
+      sql,
+      runtime.dbPath,
+      requiresManualExecution: requiresManualSqlExecution(executionRoots),
+    );
     final nodeDiagnostics = _nodeDiagnostics(
       catalog: catalog,
       mode: mode,
@@ -708,7 +764,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           ref.read(sqlModeProvider.notifier).setMode(next),
                       onSettings: () => _openSettings(context),
                       onOnboarding: _startDefaultOnboarding,
-                      onImportOnboarding: _importOnboarding,
                       databaseToolsKey:
                           _onboardingTargetKeys[OnboardingTarget
                               .databaseTools]!,
@@ -981,13 +1036,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     setState(() {
       if (_onboardingStepIndex == definition.steps.length - 1) {
         _activeOnboarding = null;
+        unawaited(ref.read(onboardingLaunchProvider.notifier).markSeen());
       } else {
         _onboardingStepIndex += 1;
       }
     });
   }
 
-  void _stopOnboarding() => setState(() => _activeOnboarding = null);
+  void _stopOnboarding() {
+    setState(() => _activeOnboarding = null);
+    unawaited(ref.read(onboardingLaunchProvider.notifier).markSeen());
+  }
 
   Rect? _onboardingTargetRect(OnboardingTarget target) {
     final layerContext = _onboardingLayerKey.currentContext;
@@ -1002,9 +1061,18 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         targetBox.size;
   }
 
-  void _scheduleLivePreview(String sql, String? databasePath) {
+  void _scheduleLivePreview(
+    String sql,
+    String? databasePath, {
+    required bool requiresManualExecution,
+  }) {
     final normalizedSql = sql.trim();
-    if (_showCustomSqlEditor || databasePath == null || normalizedSql.isEmpty) {
+    if (_showCustomSqlEditor ||
+        databasePath == null ||
+        normalizedSql.isEmpty ||
+        requiresManualExecution) {
+      _livePreviewDebounce?.cancel();
+      _queuedLivePreviewSql = null;
       return;
     }
     if (_livePreviewDatabasePath != databasePath) {
@@ -2806,6 +2874,8 @@ class _WorkshopWorkspaceViewState
   TutorialPracticeSession? _practice;
   AuthoredLearningPath? _authoredPath;
   int _authoredStepIndex = 0;
+  int _authoredNodeIndex = 0;
+  bool _authoredNodeInserted = false;
   Map<String, String> _authoredNodeIds = const <String, String>{};
   bool _runningSql = false;
 
@@ -2830,6 +2900,12 @@ class _WorkshopWorkspaceViewState
     final authoredStep = authoredPath == null
         ? null
         : authoredPath.steps[_authoredStepIndex];
+    final authoredNode = authoredStep == null
+        ? null
+        : _activeAuthoredNode(authoredStep);
+    final authoredGuide = authoredNode == null
+        ? null
+        : _learningNodeGuide(authoredNode.type, localeCode);
     final definition = practice == null
         ? null
         : tutorialPracticeDefinitions[practice.mode];
@@ -2958,16 +3034,17 @@ class _WorkshopWorkspaceViewState
                                 catalog: catalog,
                                 width: paletteWidth,
                                 pluginEntries: const <PluginPaletteEntry>[],
-                                onAdd: (type, defaults) {
-                                  final controller = ref.read(
-                                    workspaceProvider.notifier,
-                                  );
-                                  controller.addTemplate(
-                                    type,
-                                    controller.suggestedTemplatePosition(type),
-                                    defaults: defaults,
-                                  );
-                                },
+                                guidedBlockType:
+                                    authoredNode != null &&
+                                        !_authoredNodeInserted
+                                    ? authoredNode.type
+                                    : null,
+                                guidedLabel:
+                                    authoredNode != null &&
+                                        !_authoredNodeInserted
+                                    ? authoredGuide?.label
+                                    : null,
+                                onAdd: _addWorkshopNode,
                               ),
                             ),
                             _ThrottledResizeHandle(
@@ -2994,15 +3071,31 @@ class _WorkshopWorkspaceViewState
                                     child: Column(
                                       children: [
                                         if (authoredPath != null &&
-                                            authoredStep != null)
+                                            authoredStep != null) ...[
                                           LearningPathTimelinePanel(
                                             catalog: catalog,
                                             path: authoredPath,
                                             stepIndex: _authoredStepIndex,
                                             onStep: _showAuthoredStep,
                                             onClose: _closeAuthoredPath,
-                                          )
-                                        else if (practice != null &&
+                                            lockNavigation: true,
+                                          ),
+                                          if (authoredNode != null &&
+                                              authoredGuide != null)
+                                            _GuidedLearningCard(
+                                              guide: authoredGuide,
+                                              current: _authoredNodePosition(
+                                                authoredStep,
+                                              ),
+                                              total: _guidedNodeCount(
+                                                authoredStep,
+                                              ),
+                                              inserted: _authoredNodeInserted,
+                                              onContinue: _authoredNodeInserted
+                                                  ? _continueAuthoredGuide
+                                                  : null,
+                                            ),
+                                        ] else if (practice != null &&
                                             definition != null &&
                                             result != null)
                                           AnimatedSwitcher(
@@ -3051,12 +3144,14 @@ class _WorkshopWorkspaceViewState
                                             paletteWidth: 72.0 + paletteWidth,
                                             diagnostics: diagnostics,
                                             learningPathCallouts:
-                                                authoredStep?.callouts ??
-                                                const <
-                                                  LearningPathNodeCallout
-                                                >[],
+                                                _authoredGuideCallouts(
+                                                  authoredNode,
+                                                  authoredGuide,
+                                                ),
                                             learningPathNodeIds:
                                                 _authoredNodeIds,
+                                            onPaletteNodeAdded:
+                                                _registerAuthoredNode,
                                             onSaveProject: () async {},
                                           ),
                                         ),
@@ -3295,38 +3390,137 @@ class _WorkshopWorkspaceViewState
       _practice = null;
       _authoredPath = path;
       _authoredStepIndex = 0;
+      _authoredNodeIndex = 0;
+      _authoredNodeInserted = false;
     });
-    _loadAuthoredStep(path, 0);
+    unawaited(_loadAuthoredStep(path, 0));
   }
 
   void _showAuthoredStep(int index) {
     final path = _authoredPath;
     if (path == null || index < 0 || index >= path.steps.length) return;
     setState(() => _authoredStepIndex = index);
-    _loadAuthoredStep(path, index);
+    unawaited(_loadAuthoredStep(path, index));
   }
 
-  void _loadAuthoredStep(AuthoredLearningPath path, int index) {
+  Future<void> _loadAuthoredStep(AuthoredLearningPath path, int index) async {
+    final step = path.steps[index];
+    await ref
+        .read(sqlModeProvider.notifier)
+        .setMode(
+          step.mode == LearningPathMode.simple
+              ? SqlAbstractionMode.simple
+              : SqlAbstractionMode.advanced,
+        );
+    if (!mounted) return;
     ref.read(sqlRuntimeProvider.notifier).clearResults();
-    final workspace = ref.read(workspaceProvider.notifier)
-      ..resetWithRoot(recordUndo: false, clearHistory: true);
-    final ids = <String, String>{};
-    for (final template in path.steps[index].nodes) {
-      final node = workspace.addTemplate(
-        template.type,
-        workspace.suggestedTemplatePosition(template.type),
-        defaults: template.defaults,
-        recordUndo: false,
-      );
-      ids[template.ref] = node.id;
-    }
+    ref
+        .read(workspaceProvider.notifier)
+        .resetWithRoot(recordUndo: false, clearHistory: true);
     _transform.value = Matrix4.identity();
-    if (mounted) setState(() => _authoredNodeIds = Map.unmodifiable(ids));
+    if (!mounted) return;
+    final firstNodeIndex = step.nodes.indexWhere(
+      (node) => node.type != BlockType.eventGreenFlag,
+    );
+    setState(() {
+      _authoredNodeIndex = firstNodeIndex < 0
+          ? step.nodes.length
+          : firstNodeIndex;
+      _authoredNodeInserted = false;
+      _authoredNodeIds = const <String, String>{};
+      final node = _activeAuthoredNode(step);
+      if (node != null) _activeCategory = _categoryForLearningNode(node.type);
+    });
+  }
+
+  LearningPathNodeTemplate? _activeAuthoredNode(LearningPathStep step) {
+    if (_authoredNodeIndex < 0 || _authoredNodeIndex >= step.nodes.length) {
+      return null;
+    }
+    return step.nodes[_authoredNodeIndex];
+  }
+
+  int _guidedNodeCount(LearningPathStep step) =>
+      step.nodes.where((node) => node.type != BlockType.eventGreenFlag).length;
+
+  int _authoredNodePosition(LearningPathStep step) => step.nodes
+      .take(_authoredNodeIndex + 1)
+      .where((node) => node.type != BlockType.eventGreenFlag)
+      .length;
+
+  void _addWorkshopNode(BlockType type, Map<String, dynamic>? defaults) {
+    final controller = ref.read(workspaceProvider.notifier);
+    final node = controller.addTemplate(
+      type,
+      controller.suggestedTemplatePosition(type),
+      defaults: defaults,
+    );
+    _registerAuthoredNode(node);
+  }
+
+  void _registerAuthoredNode(BlockNode node) {
+    final path = _authoredPath;
+    if (path == null || _authoredNodeInserted) return;
+    final active = _activeAuthoredNode(path.steps[_authoredStepIndex]);
+    if (active == null || active.type != node.type) return;
+    node.inputs.addAll(active.defaults);
+    setState(() {
+      _authoredNodeInserted = true;
+      _authoredNodeIds = Map.unmodifiable(<String, String>{
+        ..._authoredNodeIds,
+        active.ref: node.id,
+      });
+    });
+  }
+
+  void _continueAuthoredGuide() {
+    final path = _authoredPath;
+    if (path == null) return;
+    final step = path.steps[_authoredStepIndex];
+    var nextIndex = _authoredNodeIndex + 1;
+    while (nextIndex < step.nodes.length &&
+        step.nodes[nextIndex].type == BlockType.eventGreenFlag) {
+      nextIndex++;
+    }
+    if (nextIndex < step.nodes.length) {
+      setState(() {
+        _authoredNodeIndex = nextIndex;
+        _authoredNodeInserted = false;
+        _activeCategory = _categoryForLearningNode(step.nodes[nextIndex].type);
+      });
+      return;
+    }
+    if (_authoredStepIndex + 1 < path.steps.length) {
+      _showAuthoredStep(_authoredStepIndex + 1);
+    } else {
+      _closeAuthoredPath();
+    }
+  }
+
+  List<LearningPathNodeCallout> _authoredGuideCallouts(
+    LearningPathNodeTemplate? node,
+    _LearningNodeGuide? guide,
+  ) {
+    if (!_authoredNodeInserted || node == null || guide == null) {
+      return const <LearningPathNodeCallout>[];
+    }
+    return <LearningPathNodeCallout>[
+      LearningPathNodeCallout(
+        id: 'guide-${node.ref}',
+        targetRef: node.ref,
+        title: guide.label,
+        body:
+            '${guide.explanation}\nSQLite: ${guide.sqliteCommand}'
+            '${guide.comparison == null ? '' : '\n${guide.comparison}'}',
+      ),
+    ];
   }
 
   void _closeAuthoredPath() {
     setState(() {
       _authoredPath = null;
+      _authoredNodeIndex = 0;
+      _authoredNodeInserted = false;
       _authoredNodeIds = const <String, String>{};
     });
   }
@@ -3367,6 +3561,320 @@ class _WorkshopWorkspaceViewState
       return SqlPaletteCategory.txn;
     }
     return SqlPaletteCategory.queryLanguage;
+  }
+}
+
+SqlPaletteCategory _categoryForLearningNode(BlockType type) {
+  if (type == BlockType.sqlText) return SqlPaletteCategory.dataTypes;
+  if (const <BlockType>{
+    BlockType.sqlInsert,
+    BlockType.sqlInsertOrReplace,
+    BlockType.sqlUpsert,
+    BlockType.sqlUpdate,
+    BlockType.sqlDelete,
+  }.contains(type)) {
+    return SqlPaletteCategory.dml;
+  }
+  if (const <BlockType>{
+    BlockType.sqlCreateTable,
+    BlockType.sqlCreateIndex,
+    BlockType.sqlDropIndex,
+    BlockType.sqlCreateView,
+    BlockType.sqlDropView,
+    BlockType.sqlCreateTrigger,
+    BlockType.sqlDropTrigger,
+    BlockType.sqlCreateVirtualTable,
+    BlockType.sqlAlterTable,
+    BlockType.sqlTruncate,
+    BlockType.sqlDropTable,
+  }.contains(type)) {
+    return SqlPaletteCategory.ddl;
+  }
+  if (const <BlockType>{
+    BlockType.sqlBeginTransaction,
+    BlockType.sqlSavepoint,
+    BlockType.sqlRollbackToSavepoint,
+    BlockType.sqlReleaseSavepoint,
+    BlockType.sqlCommit,
+    BlockType.sqlEndTransaction,
+    BlockType.sqlRollback,
+  }.contains(type)) {
+    return SqlPaletteCategory.txn;
+  }
+  return SqlPaletteCategory.queryLanguage;
+}
+
+class _LearningNodeGuide {
+  const _LearningNodeGuide({
+    required this.label,
+    required this.explanation,
+    required this.sqliteCommand,
+    this.comparison,
+  });
+
+  final String label;
+  final String explanation;
+  final String sqliteCommand;
+  final String? comparison;
+}
+
+_LearningNodeGuide _learningNodeGuide(BlockType type, String localeCode) {
+  final de = localeCode == 'de';
+  _LearningNodeGuide guide(
+    String deLabel,
+    String enLabel,
+    String deBody,
+    String enBody,
+    String command, [
+    String? deComparison,
+    String? enComparison,
+  ]) => _LearningNodeGuide(
+    label: de ? deLabel : enLabel,
+    explanation: de ? deBody : enBody,
+    sqliteCommand: command,
+    comparison: de ? deComparison : enComparison,
+  );
+  return switch (type) {
+    BlockType.sqlSelect => guide(
+      'Daten auswählen',
+      'Select data',
+      'SELECT bestimmt, welche Spalten du aus einer Tabelle sehen möchtest.',
+      'SELECT defines which columns you want to see from a table.',
+      'SELECT column FROM table',
+    ),
+    BlockType.sqlFrom => guide(
+      'Quelle festlegen',
+      'Choose a source',
+      'FROM nennt die Tabelle, aus der SQLite Daten liest.',
+      'FROM names the table SQLite reads data from.',
+      'FROM table',
+    ),
+    BlockType.sqlWhere => guide(
+      'Zeilen filtern',
+      'Filter rows',
+      'WHERE behält nur Zeilen, die zu deiner Bedingung passen.',
+      'WHERE keeps only rows that match your condition.',
+      'WHERE column = value',
+      'WHERE filtert einzelne Zeilen vor einer Gruppierung; HAVING filtert Gruppen danach.',
+      'WHERE filters rows before grouping; HAVING filters groups afterwards.',
+    ),
+    BlockType.sqlAnd => guide(
+      'Filter weiter einschränken',
+      'Narrow a filter',
+      'AND verlangt, dass beide Bedingungen wahr sind.',
+      'AND requires both conditions to be true.',
+      'AND column = value',
+      'AND macht das Ergebnis kleiner, OR bietet eine Alternative.',
+      'AND makes the result smaller; OR offers an alternative.',
+    ),
+    BlockType.sqlOr => guide(
+      'Alternative erlauben',
+      'Allow an alternative',
+      'OR akzeptiert Zeilen, wenn mindestens eine Bedingung wahr ist.',
+      'OR accepts rows when at least one condition is true.',
+      'OR column = value',
+      'OR macht das Ergebnis breiter, AND macht es enger.',
+      'OR broadens the result; AND narrows it.',
+    ),
+    BlockType.sqlOrderBy => guide(
+      'Ergebnisse sortieren',
+      'Sort results',
+      'ORDER BY ordnet die bereits gefundenen Zeilen alphabetisch oder numerisch.',
+      'ORDER BY arranges the rows already found alphabetically or numerically.',
+      'ORDER BY column ASC',
+      'ORDER BY sortiert einzelne Zeilen. GROUP BY fasst gleiche Werte für Berechnungen zusammen.',
+      'ORDER BY sorts rows. GROUP BY combines equal values for calculations.',
+    ),
+    BlockType.sqlGroupBy => guide(
+      'Zeilen gruppieren',
+      'Group rows',
+      'GROUP BY bündelt gleiche Werte, damit du je Gruppe zählen oder rechnen kannst.',
+      'GROUP BY bundles equal values so you can count or calculate per group.',
+      'GROUP BY column',
+      'GROUP BY bildet Gruppen für COUNT, SUM oder AVG. ORDER BY sortiert dagegen nur das Ergebnis.',
+      'GROUP BY creates groups for COUNT, SUM, or AVG. ORDER BY only sorts the result.',
+    ),
+    BlockType.sqlLimit => guide(
+      'Ergebnis begrenzen',
+      'Limit results',
+      'LIMIT begrenzt, wie viele Ergebniszeilen angezeigt werden.',
+      'LIMIT restricts how many result rows are shown.',
+      'LIMIT 5',
+    ),
+    BlockType.sqlText => guide(
+      'Einen Wert bereitstellen',
+      'Provide a value',
+      'Dieser runde Reporter liefert Text oder eine Zahl für einen leeren Wert-Slot.',
+      'This round reporter supplies text or a number for an empty value slot.',
+      "'Text' / 42",
+    ),
+    BlockType.sqlLeftJoin => guide(
+      'Tabellen verbinden',
+      'Join tables',
+      'LEFT JOIN verbindet passende Daten und behält alle Zeilen der linken Tabelle.',
+      'LEFT JOIN combines matching data and keeps all left-table rows.',
+      'LEFT JOIN table ON left.id = right.id',
+    ),
+    BlockType.sqlInsert => guide(
+      'Daten hinzufügen',
+      'Add data',
+      'INSERT bereitet einen neuen Datensatz vor. Er wird erst nach deinem manuellen Lauf geschrieben.',
+      'INSERT prepares a new record. It is written only after your manual run.',
+      'INSERT INTO table (column) VALUES (value)',
+    ),
+    BlockType.sqlUpdate => guide(
+      'Daten gezielt ändern',
+      'Change data precisely',
+      'UPDATE ändert vorhandene Daten. WHERE schützt davor, versehentlich alle Zeilen zu ändern.',
+      'UPDATE changes data. WHERE protects against changing every row by accident.',
+      'UPDATE table SET column = value WHERE id = value',
+    ),
+    BlockType.sqlDelete => guide(
+      'Daten gezielt entfernen',
+      'Remove data precisely',
+      'DELETE entfernt Zeilen erst nach manueller Ausführung. Verwende immer WHERE.',
+      'DELETE removes rows only after manual execution. Always use WHERE.',
+      'DELETE FROM table WHERE id = value',
+    ),
+    BlockType.sqlCreateTable => guide(
+      'Eine Tabelle anlegen',
+      'Create a table',
+      'CREATE TABLE beschreibt eine Tabellenstruktur und wird nie automatisch ausgeführt.',
+      'CREATE TABLE describes a schema and is never executed automatically.',
+      'CREATE TABLE name (column TYPE)',
+    ),
+    BlockType.sqlCreateIndex => guide(
+      'Suche beschleunigen',
+      'Speed up lookups',
+      'CREATE INDEX erstellt einen Suchhelfer für häufig gefilterte oder sortierte Spalten.',
+      'CREATE INDEX creates a lookup helper for frequently filtered or sorted columns.',
+      'CREATE INDEX name ON table (column)',
+    ),
+    BlockType.sqlCreateView => guide(
+      'Abfrage als Sicht speichern',
+      'Save a query as a view',
+      'CREATE VIEW gibt einer Abfrage einen wiederverwendbaren Namen.',
+      'CREATE VIEW gives a query a reusable name.',
+      'CREATE VIEW name AS SELECT …',
+    ),
+    BlockType.sqlBeginTransaction => guide(
+      'Sicheren Änderungsblock beginnen',
+      'Start a safe change block',
+      'BEGIN fasst Änderungen zusammen, damit sie gemeinsam bestätigt oder zurückgenommen werden können.',
+      'BEGIN groups changes so they can be committed or rolled back together.',
+      'BEGIN TRANSACTION',
+    ),
+    BlockType.sqlCommit => guide(
+      'Änderungen bestätigen',
+      'Confirm changes',
+      'COMMIT macht alle Änderungen der laufenden Transaktion dauerhaft.',
+      'COMMIT makes all changes in the current transaction permanent.',
+      'COMMIT',
+    ),
+    BlockType.sqlSavepoint => guide(
+      'Zwischenstand setzen',
+      'Set a checkpoint',
+      'SAVEPOINT markiert einen Zwischenstand innerhalb einer Transaktion.',
+      'SAVEPOINT marks a checkpoint inside a transaction.',
+      'SAVEPOINT name',
+    ),
+    BlockType.sqlRollbackToSavepoint => guide(
+      'Zum Zwischenstand zurückkehren',
+      'Return to a checkpoint',
+      'ROLLBACK TO macht nur Änderungen nach einem Savepoint rückgängig.',
+      'ROLLBACK TO undoes only changes made after a savepoint.',
+      'ROLLBACK TO SAVEPOINT name',
+    ),
+    BlockType.sqlReleaseSavepoint => guide(
+      'Zwischenstand abschließen',
+      'Release a checkpoint',
+      'RELEASE beendet einen Savepoint, ohne die gesamte Transaktion zu bestätigen.',
+      'RELEASE finishes a savepoint without committing the whole transaction.',
+      'RELEASE SAVEPOINT name',
+    ),
+    _ => guide(
+      'Node verstehen',
+      'Understand this node',
+      'Dieser Node erweitert deine SQLite-Abfrage. Ziehe ihn ein und prüfe anschließend den erzeugten Befehl.',
+      'This node extends your SQLite query. Add it, then inspect the generated command.',
+      type.name,
+    ),
+  };
+}
+
+class _GuidedLearningCard extends StatelessWidget {
+  const _GuidedLearningCard({
+    required this.guide,
+    required this.current,
+    required this.total,
+    required this.inserted,
+    required this.onContinue,
+  });
+
+  final _LearningNodeGuide guide;
+  final int current;
+  final int total;
+  final bool inserted;
+  final VoidCallback? onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NodeQlWorkbenchColors.of(context);
+    return Container(
+      key: const ValueKey('guided-learning-card'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2E1065).withValues(alpha: .22),
+        border: const Border(
+          bottom: BorderSide(color: Color(0xFFB9FF39), width: 2),
+          top: BorderSide(color: Color(0xFFB9FF39), width: 1),
+          left: BorderSide(color: Color(0xFFB9FF39), width: 1),
+          right: BorderSide(color: Color(0xFFB9FF39), width: 1),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            backgroundColor: const Color(0xFFB9FF39),
+            foregroundColor: const Color(0xFF171126),
+            child: Text('$current/$total'),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  inserted
+                      ? '${guide.label} eingefügt'
+                      : 'Jetzt einfügen: ${guide.label}',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  inserted
+                      ? '${guide.explanation}\nSQLite: ${guide.sqliteCommand}'
+                            '${guide.comparison == null ? '' : '\n${guide.comparison}'}'
+                      : 'Der violett-lime markierte Node in der Auswahl ist jetzt der einzige nächste Schritt.',
+                  style: TextStyle(color: colors.muted, height: 1.35),
+                ),
+                if (inserted) ...[
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    key: const ValueKey('guided-learning-continue'),
+                    onPressed: onContinue,
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: const Text('Weiter'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -3648,7 +4156,6 @@ class _TopBar extends StatelessWidget {
     required this.onModeChanged,
     required this.onSettings,
     required this.onOnboarding,
-    required this.onImportOnboarding,
     required this.databaseToolsKey,
     required this.workshopKey,
     required this.onWorkshop,
@@ -3669,7 +4176,6 @@ class _TopBar extends StatelessWidget {
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onSettings;
   final VoidCallback onOnboarding;
-  final VoidCallback onImportOnboarding;
   final Key databaseToolsKey;
   final Key workshopKey;
   final VoidCallback onWorkshop;
@@ -3848,15 +4354,6 @@ class _TopBar extends StatelessWidget {
             color: workbenchColors.topBarForeground,
             icon: const Icon(Icons.help_outline_rounded),
           ),
-          const SizedBox(width: NodeQlDesign.space1),
-          IconButton(
-            key: const ValueKey<String>('import-onboarding'),
-            onPressed: onImportOnboarding,
-            tooltip: catalog.text('toolbar.importOnboarding'),
-            color: workbenchColors.topBarForeground,
-            icon: const Icon(Icons.upload_file_outlined),
-          ),
-          const SizedBox(width: NodeQlDesign.space1),
           IconButton(
             onPressed: onSettings,
             tooltip: catalog.text('toolbar.settings'),
@@ -4263,6 +4760,8 @@ class _Palette extends StatefulWidget {
     required this.width,
     required this.pluginEntries,
     required this.onAdd,
+    this.guidedBlockType,
+    this.guidedLabel,
     super.key,
   });
 
@@ -4274,6 +4773,8 @@ class _Palette extends StatefulWidget {
   final double width;
   final List<PluginPaletteEntry> pluginEntries;
   final void Function(BlockType type, Map<String, dynamic>? defaults) onAdd;
+  final BlockType? guidedBlockType;
+  final String? guidedLabel;
 
   @override
   State<_Palette> createState() => _PaletteState();
@@ -4387,6 +4888,10 @@ class _PaletteState extends State<_Palette> {
                         color: block.color,
                         node: _templateNode(block.type, block.defaults),
                         width: tileWidth,
+                        guided: block.type == widget.guidedBlockType,
+                        guidedLabel: block.type == widget.guidedBlockType
+                            ? widget.guidedLabel
+                            : null,
                         onAdd: () => widget.onAdd(block.type, block.defaults),
                         onHelp: () => _showCommandHelp(
                           context,
@@ -5014,10 +5519,8 @@ class _PaletteState extends State<_Palette> {
       BlockType.sqlSelect =>
         OperatorBlock(id: 'tpl_sel', position: Offset.zero, operatorType: type)
           ..inputs.addAll(<String, dynamic>{
-            'select_mode': 'ALL',
             'columns': '*',
             'table': 'table_name',
-            'table_alias': '',
             'separate_from': false,
           }),
       BlockType.eventGreenFlag => EventBlock(
@@ -5070,12 +5573,7 @@ class _PaletteState extends State<_Palette> {
         id: 'tpl_mot',
         position: Offset.zero,
         motionType: type,
-        inputs: <String, dynamic>{
-          'negation': '',
-          'column': 'id',
-          'operator': '=',
-          'value': '1',
-        },
+        inputs: <String, dynamic>{'column': 'id', 'operator': '=', 'value': ''},
       ),
       BlockType.sqlOrderBy => MotionBlock(
         id: 'tpl_order',
@@ -5164,6 +5662,8 @@ class _PaletteCard extends StatelessWidget {
     required this.color,
     required this.node,
     required this.width,
+    this.guided = false,
+    this.guidedLabel,
     required this.onAdd,
     required this.onHelp,
   });
@@ -5174,6 +5674,8 @@ class _PaletteCard extends StatelessWidget {
   final Color color;
   final BlockNode node;
   final double width;
+  final bool guided;
+  final String? guidedLabel;
   final VoidCallback onAdd;
   final VoidCallback onHelp;
 
@@ -5202,16 +5704,44 @@ class _PaletteCard extends StatelessWidget {
           child: InkWell(
             onTap: onAdd,
             borderRadius: BorderRadius.circular(surfaceStyle.radiusMedium),
-            child: Container(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 240),
               width: width,
               padding: const EdgeInsets.all(NodeQlDesign.space2),
               decoration: surfaceStyle.surfaceDecoration(
-                color: workbenchColors.panel,
-                borderColor: workbenchColors.border,
+                color: guided
+                    ? const Color(0xFF7C3AED).withValues(alpha: 0.18)
+                    : workbenchColors.panel,
+                borderColor: guided
+                    ? const Color(0xFFB9FF39)
+                    : workbenchColors.border,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (guided) ...[
+                    Container(
+                      key: ValueKey<String>('guided-palette-$type'),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFB9FF39),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'JETZT: ${guidedLabel ?? label}',
+                        style: const TextStyle(
+                          color: Color(0xFF171126),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .4,
+                        ),
+                      ),
+                    ),
+                  ],
                   Stack(
                     children: [
                       SizedBox(
@@ -5683,6 +6213,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
     required this.onSaveProject,
     this.learningPathCallouts = const <LearningPathNodeCallout>[],
     this.learningPathNodeIds = const <String, String>{},
+    this.onPaletteNodeAdded,
   });
 
   final FocusNode focusNode;
@@ -5692,6 +6223,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
   final Future<void> Function() onSaveProject;
   final List<LearningPathNodeCallout> learningPathCallouts;
   final Map<String, String> learningPathNodeIds;
+  final ValueChanged<BlockNode>? onPaletteNodeAdded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -5717,11 +6249,12 @@ class _WorkspaceCanvas extends ConsumerWidget {
       onAcceptWithDetails: (details) {
         final rb = context.findRenderObject() as RenderBox;
         final local = rb.globalToLocal(details.offset);
-        controller.addTemplate(
+        final node = controller.addTemplate(
           details.data.type,
           _toWorld(local),
           defaults: details.data.defaults,
         );
+        onPaletteNodeAdded?.call(node);
       },
       builder: (context, _, _) => Focus(
         autofocus: true,
@@ -7059,34 +7592,43 @@ class _NodeView extends ConsumerWidget {
                     },
                     builder: (context, candidates, _) {
                       final highlighted = candidates.isNotEmpty;
+                      final requiresReporter =
+                          slot.reporter == null &&
+                          _requiresReporterInput(node.type, slot.inputKey);
                       return GestureDetector(
-                        onTap: () async {
-                          if (slot.reporter != null) {
-                            await _editReporterSlot(
-                              context: context,
-                              node: node,
-                              slot: slot,
-                              engine: engine,
-                              runtime: runtime,
-                              localeCode: localeCode,
-                            );
-                            return;
-                          }
-                          final rb = context.findRenderObject() as RenderBox;
-                          final anchor = rb.localToGlobal(
-                            Offset(slot.rect.width / 2, slot.rect.height),
-                          );
-                          await _editSlot(
-                            context: context,
-                            slotKey: slot.inputKey,
-                            rawToken: slot.rawKey,
-                            anchorGlobal: anchor,
-                            node: node,
-                            engine: engine,
-                            runtime: runtime,
-                            localeCode: localeCode,
-                          );
-                        },
+                        key: ValueKey<String>(
+                          'inline-slot-${node.id}-${slot.inputKey}',
+                        ),
+                        onTap: requiresReporter
+                            ? null
+                            : () async {
+                                if (slot.reporter != null) {
+                                  await _editReporterSlot(
+                                    context: context,
+                                    node: node,
+                                    slot: slot,
+                                    engine: engine,
+                                    runtime: runtime,
+                                    localeCode: localeCode,
+                                  );
+                                  return;
+                                }
+                                final rb =
+                                    context.findRenderObject() as RenderBox;
+                                final anchor = rb.localToGlobal(
+                                  Offset(slot.rect.width / 2, slot.rect.height),
+                                );
+                                await _editSlot(
+                                  context: context,
+                                  slotKey: slot.inputKey,
+                                  rawToken: slot.rawKey,
+                                  anchorGlobal: anchor,
+                                  node: node,
+                                  engine: engine,
+                                  runtime: runtime,
+                                  localeCode: localeCode,
+                                );
+                              },
                         onLongPress: slot.reporter == null
                             ? null
                             : () => engine.removeReporterInput(
@@ -8002,7 +8544,7 @@ class _NodeView extends ConsumerWidget {
       case 'pragma_value':
       case 'where_value':
       case 'condition_value':
-        return '1';
+        return '';
       case 'table':
       case 'table_name':
         return '';
@@ -8474,6 +9016,22 @@ class _NodeView extends ConsumerWidget {
     }
   }
 
+  bool _requiresReporterInput(BlockType type, String inputKey) {
+    return switch (type) {
+      BlockType.sqlWhere ||
+      BlockType.sqlAnd ||
+      BlockType.sqlOr => inputKey == 'value',
+      BlockType.sqlUpdate => inputKey == 'value' || inputKey == 'where_value',
+      BlockType.sqlDelete => inputKey == 'where_value',
+      BlockType.sqlCase || BlockType.sqlIf =>
+        inputKey == 'condition_value' ||
+            inputKey == 'value' ||
+            inputKey == 'result' ||
+            inputKey == 'default',
+      _ => false,
+    };
+  }
+
   List<String> _inlineOptionsForToken({
     required String rawToken,
     required String mappedKey,
@@ -8504,8 +9062,13 @@ class _NodeView extends ConsumerWidget {
         }
         return options;
       }
-      final withDefault = <String>{'*', ...cols}.toList(growable: false);
-      return withDefault;
+      // A slot can display a useful default (such as `id`) before a schema is
+      // attached. Keep that current value selectable as well: otherwise the
+      // dropdown only contains `*`, so reopening the displayed `id` leaves a
+      // modal overlay in front of all following slots with no matching choice.
+      final current = '${node.inputs[mappedKey] ?? ''}'.trim();
+      final options = <String>[if (current.isNotEmpty) current, '*', ...cols];
+      return _distinctInlineOptions(options);
     }
 
     if (mappedKey == 'join_type') {
@@ -8649,6 +9212,13 @@ class _NodeView extends ConsumerWidget {
     }
 
     return const <String>[];
+  }
+
+  List<String> _distinctInlineOptions(Iterable<String> values) {
+    final seen = <String>{};
+    return values
+        .where((value) => value.isNotEmpty && seen.add(value.toLowerCase()))
+        .toList(growable: false);
   }
 
   String? _inlineOptionHeader({
@@ -9002,8 +9572,13 @@ class _NodeView extends ConsumerWidget {
     final textController = TextEditingController();
     OverlayEntry? entry;
 
+    var isClosed = false;
     void close([String? value]) {
-      entry?.remove();
+      if (isClosed) return;
+      isClosed = true;
+      final activeEntry = entry;
+      entry = null;
+      activeEntry?.remove();
       if (!completer.isCompleted) completer.complete(value);
       textController.dispose();
     }
@@ -9209,7 +9784,7 @@ class _NodeView extends ConsumerWidget {
       ),
     );
 
-    overlay.insert(entry);
+    overlay.insert(entry!);
     return completer.future;
   }
 

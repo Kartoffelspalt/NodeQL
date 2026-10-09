@@ -332,8 +332,27 @@ class SqliteDialectRenderer {
         final from = configuredFrom ?? 'table_name';
         return '$selectKeyword $cols FROM ${_withTableAlias(from, node)}';
       case BlockType.sqlColumn:
-        return _withAlias(node.inputs['column'] as String? ?? '*', node);
+        return _withAlias(
+          _compileReporterInput(
+            node,
+            'column',
+            '${node.inputs['column'] ?? '*'}',
+            pluginBlocks: pluginBlocks,
+            warnings: warnings,
+            visited: visited,
+          ),
+          node,
+        );
       case BlockType.sqlText:
+        final reporterText = _compileReporterInput(
+          node,
+          'text',
+          '',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        if (reporterForInput(node, 'text') != null) return reporterText;
         final literalType = '${node.inputs['literal_type'] ?? 'text'}'
             .trim()
             .toLowerCase();
@@ -393,11 +412,11 @@ class SqliteDialectRenderer {
       case BlockType.sqlFrom:
         return 'FROM ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlWhere:
-        return 'WHERE ${_predicateFromInputs(node, fallback: '1 = 1')}';
+        return 'WHERE ${_predicateFromInputs(node, fallback: '1 = 0', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlAnd:
-        return 'AND ${_predicateFromInputs(node, fallback: '1 = 1')}';
+        return 'AND ${_predicateFromInputs(node, fallback: '1 = 0', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlOr:
-        return 'OR ${_predicateFromInputs(node, fallback: '1 = 1')}';
+        return 'OR ${_predicateFromInputs(node, fallback: '1 = 0', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlJoin:
         final joinType = _normalizedJoinType(node.inputs['join_type']);
         final table = node.inputs['table'] as String? ?? 'table_name';
@@ -406,7 +425,12 @@ class SqliteDialectRenderer {
           node,
           fallbackAlias: joinType == 'SELF' ? 't2' : null,
         );
-        final condition = _joinConditionFromInputs(node);
+        final condition = _joinConditionFromInputs(
+          node,
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
         return switch (joinType) {
           'CROSS' => 'CROSS JOIN $source',
           'NATURAL' => 'NATURAL JOIN $source',
@@ -418,25 +442,25 @@ class SqliteDialectRenderer {
           _ => 'JOIN $source ON $condition',
         };
       case BlockType.sqlInnerJoin:
-        return 'INNER JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
+        return 'INNER JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlLeftJoin:
-        return 'LEFT JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
+        return 'LEFT JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlRightJoin:
-        return 'RIGHT JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
+        return 'RIGHT JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlFullJoin:
-        return 'FULL JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node)}';
+        return 'FULL JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)} ON ${_joinConditionFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlCrossJoin:
         return 'CROSS JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlSelfJoin:
-        return 'JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node, fallbackAlias: 't2')} ON ${_joinConditionFromInputs(node, fallback: 't1.id = t2.id')}';
+        return 'JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node, fallbackAlias: 't2')} ON ${_joinConditionFromInputs(node, fallback: 't1.id = t2.id', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlNaturalJoin:
         return 'NATURAL JOIN ${_withTableAlias(node.inputs['table'] as String? ?? 'table_name', node)}';
       case BlockType.sqlGroupBy:
-        return 'GROUP BY ${node.inputs['column'] as String? ?? node.inputs['expr'] as String? ?? 'id'}';
+        return 'GROUP BY ${_compileReporterInputAny(node, const <String>['column', 'expr'], '${node.inputs['column'] ?? node.inputs['expr'] ?? 'id'}', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlHaving:
         return 'HAVING ${_havingPredicateFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlOrderBy:
-        return 'ORDER BY ${_orderByFromInputs(node)}';
+        return 'ORDER BY ${_orderByFromInputs(node, pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlLimit:
         return _limitFromInputs(node, warnings);
       case BlockType.sqlUnion:
@@ -535,9 +559,41 @@ class SqliteDialectRenderer {
       case BlockType.sqlDateDiff:
         return 'CAST(julianday(${node.inputs['b'] as String? ?? 'CURRENT_DATE'}) - julianday(${node.inputs['a'] as String? ?? 'CURRENT_DATE'}) AS INTEGER)';
       case BlockType.sqlCase:
-        return 'CASE WHEN ${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['when'] as String? ?? '1 = 1')} THEN ${node.inputs['then'] as String? ?? node.inputs['result'] as String? ?? "'x'"} ELSE ${node.inputs['else'] as String? ?? node.inputs['default'] as String? ?? "'y'"} END';
+        final thenValue = _compileReporterInputAny(
+          node,
+          const <String>['then', 'result'],
+          '${node.inputs['then'] ?? node.inputs['result'] ?? "'x'"}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        final elseValue = _compileReporterInputAny(
+          node,
+          const <String>['else', 'default'],
+          '${node.inputs['else'] ?? node.inputs['default'] ?? "'y'"}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        return 'CASE WHEN ${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['when'] as String? ?? '1 = 0', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)} THEN $thenValue ELSE $elseValue END';
       case BlockType.sqlIf:
-        return 'CASE WHEN ${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['cond'] as String? ?? '1 = 1')} THEN ${node.inputs['a'] as String? ?? node.inputs['value'] as String? ?? "'x'"} ELSE ${node.inputs['b'] as String? ?? node.inputs['default'] as String? ?? "'y'"} END';
+        final ifThenValue = _compileReporterInputAny(
+          node,
+          const <String>['a', 'value'],
+          '${node.inputs['a'] ?? node.inputs['value'] ?? "'x'"}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        final ifElseValue = _compileReporterInputAny(
+          node,
+          const <String>['b', 'default'],
+          '${node.inputs['b'] ?? node.inputs['default'] ?? "'y'"}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        return 'CASE WHEN ${_predicateFromInputs(node, columnKey: 'condition_column', valueKey: 'condition_value', fallback: node.inputs['cond'] as String? ?? '1 = 0', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)} THEN $ifThenValue ELSE $ifElseValue END';
       case BlockType.sqlCoalesce:
         return 'COALESCE(${node.inputs['a'] as String? ?? 'NULL'}, ${node.inputs['b'] as String? ?? 'NULL'})';
       case BlockType.sqlNullIf:
@@ -577,9 +633,25 @@ class SqliteDialectRenderer {
         final where = '${node.inputs['update_where'] ?? ''}'.trim();
         return 'INSERT INTO $table$columnList VALUES ${_insertRows(node.inputs['values'])} ON CONFLICT$conflictTarget DO UPDATE SET $update${where.isEmpty ? '' : ' WHERE $where'}';
       case BlockType.sqlUpdate:
-        return 'UPDATE ${node.inputs['table'] as String? ?? 'table_name'} SET ${node.inputs['column'] as String? ?? 'column_name'} = ${node.inputs['value'] as String? ?? 'value'} WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: 'id = 1')}';
+        final column = _compileReporterInput(
+          node,
+          'column',
+          '${node.inputs['column'] ?? 'column_name'}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        final value = _compileReporterInput(
+          node,
+          'value',
+          '${node.inputs['value'] ?? ''}',
+          pluginBlocks: pluginBlocks,
+          warnings: warnings,
+          visited: visited,
+        );
+        return 'UPDATE ${node.inputs['table'] as String? ?? 'table_name'} SET $column = $value WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: '1 = 0', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlDelete:
-        return 'DELETE FROM ${node.inputs['table'] as String? ?? 'table_name'} WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: 'id = 1')}';
+        return 'DELETE FROM ${node.inputs['table'] as String? ?? 'table_name'} WHERE ${_predicateFromInputs(node, columnKey: 'where_column', valueKey: 'where_value', fallback: '1 = 0', pluginBlocks: pluginBlocks, warnings: warnings, visited: visited)}';
       case BlockType.sqlCreateTable:
         final ifNotExists = _isSqlOptionEnabled(
           node.inputs['if_not_exists'],
@@ -823,11 +895,20 @@ class SqliteDialectRenderer {
     return supported.contains(normalized) ? normalized : '';
   }
 
-  String _orderByFromInputs(BlockNode node) {
-    final column =
-        node.inputs['column'] as String? ??
-        node.inputs['expr'] as String? ??
-        'id';
+  String _orderByFromInputs(
+    BlockNode node, {
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+    Set<String>? visited,
+  }) {
+    final column = _compileReporterInputAny(
+      node,
+      const <String>['column', 'expr'],
+      '${node.inputs['column'] ?? node.inputs['expr'] ?? 'id'}',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
     final requestedOrder = '${node.inputs['order'] ?? 'ASC'}'
         .trim()
         .toUpperCase();
@@ -845,6 +926,9 @@ class SqliteDialectRenderer {
     String operatorKey = 'operator',
     String valueKey = 'value',
     required String fallback,
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+    Set<String>? visited,
   }) {
     final conditions = node.inputs['conditions'];
     if (conditions is List && conditions.isNotEmpty) {
@@ -868,9 +952,30 @@ class SqliteDialectRenderer {
       );
     }
 
-    final column = '${node.inputs[columnKey] ?? ''}'.trim();
+    final hasColumnReporter = reporterForInput(node, columnKey) != null;
+    final reporterColumn = _compileReporterInput(
+      node,
+      columnKey,
+      '',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
+    final column = hasColumnReporter
+        ? reporterColumn
+        : '${node.inputs[columnKey] ?? ''}'.trim();
     final operator = _normalizedComparisonOperator(node.inputs[operatorKey]);
-    final value = '${node.inputs[valueKey] ?? ''}'.trim();
+    final reporterValue = _compileReporterInput(
+      node,
+      valueKey,
+      '',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
+    final value = valueReporter != null
+        ? reporterValue
+        : '${node.inputs[valueKey] ?? ''}'.trim();
     if (column.isEmpty ||
         (value.isEmpty && operator != 'IS NULL' && operator != 'IS NOT NULL')) {
       final predicate = node.inputs['predicate'] as String? ?? fallback;
@@ -973,10 +1078,30 @@ class SqliteDialectRenderer {
     return compiled.join(' ');
   }
 
-  String _joinConditionFromInputs(BlockNode node, {String fallback = '1 = 1'}) {
-    final left = '${node.inputs['left_column'] ?? ''}'.trim();
+  String _joinConditionFromInputs(
+    BlockNode node, {
+    String fallback = '1 = 1',
+    required Map<String, NodeQlPluginBlock> pluginBlocks,
+    required List<String> warnings,
+    Set<String>? visited,
+  }) {
+    final left = _compileReporterInput(
+      node,
+      'left_column',
+      '${node.inputs['left_column'] ?? ''}',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
     final operator = _normalizedComparisonOperator(node.inputs['operator']);
-    final right = '${node.inputs['right_column'] ?? ''}'.trim();
+    final right = _compileReporterInput(
+      node,
+      'right_column',
+      '${node.inputs['right_column'] ?? ''}',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
     if (left.isEmpty || right.isEmpty) {
       return node.inputs['on'] as String? ?? fallback;
     }
@@ -1002,7 +1127,14 @@ class SqliteDialectRenderer {
       aggregateReporter,
       fallback: node.inputs['aggregate'],
     );
-    final column = '${node.inputs['column'] ?? '*'}'.trim();
+    final column = _compileReporterInput(
+      node,
+      'column',
+      '${node.inputs['column'] ?? '*'}',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
     final reporterExpr = _compileReporterInput(
       node,
       'expr',
@@ -1015,7 +1147,14 @@ class SqliteDialectRenderer {
         ? reporterExpr
         : '${node.inputs['expr'] ?? ''}'.trim();
     final operator = _normalizedComparisonOperator(node.inputs['operator']);
-    final value = '${node.inputs['value'] ?? '0'}'.trim();
+    final value = _compileReporterInput(
+      node,
+      'value',
+      '${node.inputs['value'] ?? ''}',
+      pluginBlocks: pluginBlocks,
+      warnings: warnings,
+      visited: visited,
+    );
     if (value.isEmpty) {
       return node.inputs['predicate'] as String? ?? 'COUNT(*) > 0';
     }

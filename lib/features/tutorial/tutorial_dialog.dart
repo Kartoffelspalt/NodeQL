@@ -1023,19 +1023,10 @@ class _LessonOverview extends StatelessWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  area(
-                    TutorialWorkshopArea.sqlite,
-                    'tutorial.overview.area.sqlite',
-                  ),
-                  const SizedBox(height: 24),
-                  area(
-                    TutorialWorkshopArea.nodeQl,
-                    'tutorial.overview.area.nodeQl',
-                  ),
                   if (authoredPaths.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     Text(
-                      catalog.text('tutorial.overview.area.custom'),
+                      catalog.text('NodeQL Workshops'),
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),

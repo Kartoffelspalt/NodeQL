@@ -424,6 +424,79 @@ void main() {
     );
   });
 
+  test('uses reporters in filter and update value slots', () {
+    final filterRoot = EventBlock(id: 'filter-run', position: Offset.zero);
+    final select = OperatorBlock(
+      id: 'filter-select',
+      position: Offset.zero,
+      operatorType: BlockType.sqlSelect,
+      inputs: {'columns': '*', 'table': 'customers'},
+    );
+    final where = MotionBlock(
+      id: 'filter-where',
+      position: Offset.zero,
+      motionType: BlockType.sqlWhere,
+      inputs: {'column': 'name', 'operator': '=', 'value': 'old value'},
+    );
+    setReporterForInput(
+      where,
+      'value',
+      OperatorBlock(
+        id: 'filter-text',
+        position: Offset.zero,
+        operatorType: BlockType.sqlText,
+        inputs: {'literal_type': 'text', 'text': 'Ada'},
+      ),
+    );
+    filterRoot.next = select;
+    select.next = where;
+
+    final updateRoot = EventBlock(id: 'update-run', position: Offset.zero);
+    final update = OperatorBlock(
+      id: 'update-reporters',
+      position: Offset.zero,
+      operatorType: BlockType.sqlUpdate,
+      inputs: {
+        'table': 'customers',
+        'column': 'status',
+        'value': 'old value',
+        'where_column': 'id',
+        'operator': '=',
+        'where_value': '1',
+      },
+    );
+    setReporterForInput(
+      update,
+      'value',
+      OperatorBlock(
+        id: 'update-text',
+        position: Offset.zero,
+        operatorType: BlockType.sqlText,
+        inputs: {'literal_type': 'text', 'text': 'active'},
+      ),
+    );
+    setReporterForInput(
+      update,
+      'where_value',
+      OperatorBlock(
+        id: 'update-number',
+        position: Offset.zero,
+        operatorType: BlockType.sqlText,
+        inputs: {'literal_type': 'integer', 'text': '42'},
+      ),
+    );
+    updateRoot.next = update;
+
+    expect(
+      const SqlCompiler().compileWorkspace([filterRoot]).sql,
+      "SELECT * FROM customers WHERE name = 'Ada';",
+    );
+    expect(
+      const SqlCompiler().compileWorkspace([updateRoot]).sql,
+      "UPDATE customers SET status = 'active' WHERE id = 42;",
+    );
+  });
+
   test('compiles structured JOIN and conditional expression blocks', () {
     final joinRoot = EventBlock(id: 'join-run', position: Offset.zero)
       ..next = OperatorBlock(

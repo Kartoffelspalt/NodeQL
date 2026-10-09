@@ -1,4 +1,109 @@
 {
   "schemaVersion": 1,
-  "paths": []
+  "paths": [
+    {
+      "id": "nodeql-overview",
+      "title": "NodeQL: Dein erster Überblick",
+      "description": "Ein langsamer Rundgang durch Arbeitsfläche, Palette, Werte, sichere Ausführung und die wichtigsten Node-Familien.",
+      "steps": [
+        {"id": "overview-query", "title": "Abfragen bestehen aus Bausteinen", "instruction": "Die linke Palette enthält Nodes. Ziehe immer nur den hervorgehobenen Node in die Arbeitsfläche. NodeQL baut daraus lesbares SQLite.", "hint": "Der grüne Start-Node ist bereits auf der Arbeitsfläche. Beginne darunter mit SELECT.", "mode": "simple", "nodes": [{"ref": "select", "type": "sqlSelect", "defaults": {"columns": "name", "table": "customers", "separate_from": false}}], "callouts": [{"id": "select", "targetRef": "select", "title": "SELECT", "body": "SELECT ist der Start einer Leseabfrage."}]},
+        {"id": "overview-values", "title": "Nodes bekommen Werte", "instruction": "Viele Nodes haben leere, runde Bereiche. Dort hinein ziehst du Reporter wie Text oder Zahlen – nicht bloß einen gespeicherten Standardwert.", "hint": "Der Reporter erscheint in der Kategorie Datentypen.", "mode": "simple", "nodes": [{"ref": "where", "type": "sqlWhere", "defaults": {"column": "city", "operator": "=", "value": ""}}, {"ref": "text", "type": "sqlText", "defaults": {"literal_type": "text", "text": "Berlin"}}], "callouts": [{"id": "where", "targetRef": "where", "title": "WHERE", "body": "Filtert Ergebniszeilen."}, {"id": "text", "targetRef": "text", "title": "Text", "body": "Liefert einen Wert für einen freien Slot."}]},
+        {"id": "overview-advanced", "title": "Von lesen zu verstehen", "instruction": "Im Advanced Mode lernst du die Unterschiede zwischen Sortieren und Gruppieren. Beide sehen ähnlich aus, erfüllen aber andere Aufgaben.", "hint": "Advanced zeigt mehr Fachbegriffe, bleibt aber Schritt für Schritt geführt.", "mode": "advanced", "nodes": [{"ref": "order", "type": "sqlOrderBy", "defaults": {"column": "name", "order": "ASC"}}, {"ref": "group", "type": "sqlGroupBy", "defaults": {"column": "city"}}], "callouts": [{"id": "order", "targetRef": "order", "title": "ORDER BY", "body": "Sortiert einzelne Zeilen."}, {"id": "group", "targetRef": "group", "title": "GROUP BY", "body": "Bildet Gruppen für Auswertungen."}]},
+        {"id": "overview-safe-changes", "title": "Änderungen bleiben bewusst", "instruction": "Lese-Nodes helfen beim Verstehen. Änderungs- und Struktur-Nodes werden nie beim Hereinziehen ausgeführt – erst nach Run SQLite.", "hint": "So kannst du Änderungen zuerst prüfen und dann bewusst starten.", "mode": "advanced", "nodes": [{"ref": "update", "type": "sqlUpdate", "defaults": {"table": "customers", "column": "city", "value": "", "where_column": "id", "operator": "=", "where_value": ""}}, {"ref": "begin", "type": "sqlBeginTransaction", "defaults": {}}], "callouts": [{"id": "update", "targetRef": "update", "title": "UPDATE", "body": "Ändert Daten erst nach manueller Ausführung."}, {"id": "begin", "targetRef": "begin", "title": "BEGIN", "body": "Startet einen sicheren Änderungsblock."}]}
+      ]
+    },
+    {
+      "id": "nodeql-nodes-and-values",
+      "title": "NodeQL: Nodes und Werte",
+      "description": "Lerne Ausführungs-Nodes, Abfrage-Nodes und Reporter-Slots zuerst im Simple Mode kennen.",
+      "steps": [
+        {"id": "start-a-query", "title": "Eine Abfrage starten", "instruction": "Der grüne Start-Node ist dein Einstiegspunkt. Verbinde darunter einen SELECT-Node.", "hint": "Jede ausführbare Kette beginnt mit QUERY AUSFÜHREN.", "mode": "simple", "nodes": [{"ref": "run", "type": "eventGreenFlag", "defaults": {}}, {"ref": "select", "type": "sqlSelect", "defaults": {"columns": "name, city", "table": "customers", "separate_from": false}}], "callouts": [{"id": "run-callout", "targetRef": "run", "title": "Ausführung", "body": "Nur verbundene Nodes unter diesem Start-Node werden ausgeführt."}, {"id": "select-callout", "targetRef": "select", "title": "SELECT-Node", "body": "Wähle hier Ergebnisspalten und Quelle."}]},
+        {"id": "use-value-nodes", "title": "Werte in einen Filter ziehen", "instruction": "Der leere Wert-Slot des WHERE-Nodes ist ein Drop-Ziel. Ziehe einen Text- oder Zahlenwert hinein.", "hint": "Eingezogene Reporter haben Vorrang vor einem früheren Slotwert.", "mode": "simple", "nodes": [{"ref": "where", "type": "sqlWhere", "defaults": {"column": "city", "operator": "=", "value": ""}}, {"ref": "text-value", "type": "sqlText", "defaults": {"literal_type": "text", "text": "Berlin"}}], "callouts": [{"id": "filter-callout", "targetRef": "where", "title": "Leerer Wert-Slot", "body": "Dieser freie Bereich erwartet einen Reporter."}, {"id": "text-callout", "targetRef": "text-value", "title": "Textwert", "body": "Ziehe diesen runden Node in den Wert-Slot.", "side": "left"}]},
+        {"id": "advanced-reporters", "title": "Advanced: Reporter kombinieren", "instruction": "Im Advanced Mode stehen weitere Ausdrucks-Nodes bereit. Prüfe weiterhin jeden Wert-Slot bewusst.", "hint": "Der Modus wird für diesen Schritt automatisch auf Advanced umgeschaltet.", "mode": "advanced", "nodes": [{"ref": "select", "type": "sqlSelect", "defaults": {"columns": "name", "table": "customers", "separate_from": false}}, {"ref": "order", "type": "sqlOrderBy", "defaults": {"column": "name", "order": "ASC"}}], "callouts": [{"id": "order-callout", "targetRef": "order", "title": "Reihenfolge", "body": "Clause-Nodes werden von oben nach unten zusammengesetzt."}]}
+      ]
+    },
+    {
+      "id": "nodeql-workshop-tools",
+      "title": "NodeQL: Workshop und Werkzeuge",
+      "description": "Lerne den sicheren Workshop-Ablauf mit einer isolierten Übungsdatenbank und manueller Ausführung kennen.",
+      "steps": [
+        {"id": "explore-the-dataset", "title": "Mit der Übungsdatenbank arbeiten", "instruction": "Nutze einen SELECT-Node für customers. Der Workshop verändert dein Projekt nicht.", "hint": "customers, orders und archived_customers stehen nur im Workshop bereit.", "mode": "simple", "nodes": [{"ref": "select-customers", "type": "sqlSelect", "defaults": {"columns": "id, name, city", "table": "customers", "separate_from": false}}], "callouts": [{"id": "dataset-callout", "targetRef": "select-customers", "title": "Isolierte Daten", "body": "Wähle eine Workshop-Tabelle direkt im SELECT-Node aus."}]},
+        {"id": "prepare-a-change", "title": "Advanced: Änderungen bewusst vorbereiten", "instruction": "Ein UPDATE-Node zeigt leere Wert-Slots. Ziehe passende Werte hinein und kontrolliere die Bedingung.", "hint": "UPDATE und andere Changes-Nodes starten erst über Run SQLite.", "mode": "advanced", "nodes": [{"ref": "update", "type": "sqlUpdate", "defaults": {"table": "customers", "column": "city", "value": "", "where_column": "id", "operator": "=", "where_value": ""}}, {"ref": "new-city", "type": "sqlText", "defaults": {"literal_type": "text", "text": "Hamburg"}}, {"ref": "customer-id", "type": "sqlText", "defaults": {"literal_type": "integer", "text": "1"}}], "callouts": [{"id": "update-callout", "targetRef": "update", "title": "Manuelle Ausführung", "body": "Fülle zuerst die Reporter-Slots und starte dann bewusst den Lauf."}, {"id": "id-callout", "targetRef": "customer-id", "title": "Zahlenwert", "body": "Ziehe diesen Wert in den Filter-Slot.", "side": "left"}]}
+      ]
+    },
+    {
+      "id": "sqlite-select-and-filters",
+      "title": "SQLite: SELECT und einfache Filter",
+      "description": "Starte mit einer lesbaren Abfrage im Simple Mode und erweitere sie danach um Bedingungen.",
+      "steps": [
+        {"id": "select-basics", "title": "Daten auswählen", "instruction": "SELECT bestimmt Spalten und Tabelle. Beginne mit einer übersichtlichen Abfrage.", "hint": "Wähle zuerst die Daten, die du wirklich brauchst.", "mode": "simple", "nodes": [{"ref": "select", "type": "sqlSelect", "defaults": {"columns": "name, city", "table": "customers", "separate_from": false}}], "callouts": [{"id": "select", "targetRef": "select", "title": "SELECT", "body": "Dieser Node bildet die Grundlage jeder Leseabfrage."}]},
+        {"id": "where-basics", "title": "Zeilen filtern", "instruction": "Ergänze einen WHERE-Node und ziehe einen Textwert in den leeren Slot.", "hint": "Ein Filter ohne Wert bleibt absichtlich unvollständig.", "mode": "simple", "nodes": [{"ref": "where", "type": "sqlWhere", "defaults": {"column": "city", "operator": "=", "value": ""}}, {"ref": "value", "type": "sqlText", "defaults": {"literal_type": "text", "text": "Berlin"}}], "callouts": [{"id": "where", "targetRef": "where", "title": "WHERE", "body": "Vergleiche eine Spalte mit einem hineingezogenen Wert."}, {"id": "value", "targetRef": "value", "title": "Wert", "body": "Reporter liefern den tatsächlichen Filterwert.", "side": "left"}]},
+        {"id": "advanced-combinations", "title": "Advanced: Bedingungen kombinieren", "instruction": "Im Advanced Mode kannst du mehrere Bedingungen mit AND oder OR verbinden.", "hint": "Prüfe die Reihenfolge der Filter von oben nach unten.", "mode": "advanced", "nodes": [{"ref": "where", "type": "sqlWhere", "defaults": {"column": "city", "operator": "=", "value": ""}}, {"ref": "and", "type": "sqlAnd", "defaults": {"column": "active", "operator": "=", "value": ""}}, {"ref": "active", "type": "sqlText", "defaults": {"literal_type": "integer", "text": "1"}}], "callouts": [{"id": "and", "targetRef": "and", "title": "AND", "body": "AND schränkt das Ergebnis weiter ein."}]}
+      ]
+    },
+    {
+      "id": "sqlite-data-types",
+      "title": "SQLite: Datentypen und Werte",
+      "description": "Erkenne Text- und Zahlenwerte im Simple Mode, bevor du im Advanced Mode Ausdrücke verwendest.",
+      "steps": [
+        {"id": "text-and-number", "title": "Text und Zahl unterscheiden", "instruction": "Lege einen Textwert und eine ganze Zahl an. Der Typ bestimmt, wie SQLite den Wert behandelt.", "hint": "Wähle den Typ am Reporter, nicht im Ziel-Node.", "mode": "simple", "nodes": [{"ref": "text", "type": "sqlText", "defaults": {"literal_type": "text", "text": "Berlin"}}, {"ref": "number", "type": "sqlText", "defaults": {"literal_type": "integer", "text": "42"}}], "callouts": [{"id": "text", "targetRef": "text", "title": "TEXT", "body": "Textwerte werden als Zeichenfolge verwendet."}, {"id": "number", "targetRef": "number", "title": "INTEGER", "body": "Zahlenwerte können verglichen und berechnet werden."}]},
+        {"id": "typed-filter", "title": "Typisierte Werte einsetzen", "instruction": "Ziehe den passenden Wert in einen Filter-Slot und lies die resultierende Bedingung.", "hint": "Nutze Zahlen für IDs und Text für Namen oder Orte.", "mode": "simple", "nodes": [{"ref": "where", "type": "sqlWhere", "defaults": {"column": "id", "operator": "=", "value": ""}}, {"ref": "id", "type": "sqlText", "defaults": {"literal_type": "integer", "text": "1"}}], "callouts": [{"id": "slot", "targetRef": "where", "title": "Wert-Slot", "body": "Der Slot erwartet einen passenden Reporter."}]},
+        {"id": "advanced-functions", "title": "Advanced: Werte mit Funktionen", "instruction": "Im Advanced Mode kannst du Werte mit Funktions-Nodes aufbereiten.", "hint": "Funktionen bleiben Reporter und passen in die gleichen Slots.", "mode": "advanced", "nodes": [{"ref": "upper", "type": "sqlUpper", "defaults": {}}, {"ref": "text", "type": "sqlText", "defaults": {"literal_type": "text", "text": "berlin"}}], "callouts": [{"id": "upper", "targetRef": "upper", "title": "Funktion", "body": "Funktions-Nodes erzeugen einen Wert für einen anderen Node."}]}
+      ]
+    },
+    {
+      "id": "sqlite-advanced-filters",
+      "title": "SQLite: Erweiterte Filter",
+      "description": "Baue Filter schrittweise auf und kombiniere sie erst im Advanced Mode.",
+      "steps": [
+        {"id": "one-condition", "title": "Eine klare Bedingung", "instruction": "Beginne mit genau einer Bedingung und einem hineingezogenen Reporter.", "hint": "Ein einzelner Filter ist leichter zu prüfen.", "mode": "simple", "nodes": [{"ref": "where", "type": "sqlWhere", "defaults": {"column": "country", "operator": "=", "value": ""}}, {"ref": "country", "type": "sqlText", "defaults": {"literal_type": "text", "text": "DE"}}], "callouts": [{"id": "where", "targetRef": "where", "title": "Vergleich", "body": "Spalte, Operator und Reporter bilden eine Bedingung."}]},
+        {"id": "advanced-or", "title": "Advanced: Alternative Bedingungen", "instruction": "Schalte in den Advanced Mode und verbinde eine zweite Möglichkeit mit OR.", "hint": "OR erweitert, AND verengt das Ergebnis.", "mode": "advanced", "nodes": [{"ref": "where", "type": "sqlWhere", "defaults": {"column": "city", "operator": "=", "value": ""}}, {"ref": "or", "type": "sqlOr", "defaults": {"column": "city", "operator": "=", "value": ""}}, {"ref": "hamburg", "type": "sqlText", "defaults": {"literal_type": "text", "text": "Hamburg"}}], "callouts": [{"id": "or", "targetRef": "or", "title": "OR", "body": "Mindestens eine der verbundenen Bedingungen darf zutreffen."}]}
+      ]
+    },
+    {
+      "id": "sqlite-sorting-and-where",
+      "title": "SQLite: Sortieren und begrenzen",
+      "description": "Finde zuerst gezielt Daten und mache Ergebnisse anschließend im Advanced Mode übersichtlich.",
+      "steps": [
+        {"id": "filter-first", "title": "Zuerst filtern", "instruction": "Filtere die Tabelle auf einen Ort, bevor du die Ergebnisliste sortierst.", "hint": "WHERE kommt vor ORDER BY.", "mode": "simple", "nodes": [{"ref": "select", "type": "sqlSelect", "defaults": {"columns": "name, city", "table": "customers", "separate_from": false}}, {"ref": "where", "type": "sqlWhere", "defaults": {"column": "city", "operator": "=", "value": ""}}], "callouts": [{"id": "where", "targetRef": "where", "title": "Erst auswählen", "body": "Der Filter bestimmt, welche Zeilen später sortiert werden."}]},
+        {"id": "advanced-order-limit", "title": "Advanced: Sortieren und begrenzen", "instruction": "Füge ORDER BY und LIMIT hinzu, um eine kurze, zuverlässige Liste zu erhalten.", "hint": "ORDER BY kommt vor LIMIT.", "mode": "advanced", "nodes": [{"ref": "order", "type": "sqlOrderBy", "defaults": {"column": "name", "order": "ASC"}}, {"ref": "limit", "type": "sqlLimit", "defaults": {"count": "5"}}], "callouts": [{"id": "order", "targetRef": "order", "title": "ORDER BY", "body": "Legt die Reihenfolge der Ergebniszeilen fest."}, {"id": "limit", "targetRef": "limit", "title": "LIMIT", "body": "Begrenzt die Anzahl der zurückgegebenen Zeilen."}]}
+      ]
+    },
+    {
+      "id": "sqlite-complex-queries",
+      "title": "SQLite: Komplexe Abfragen",
+      "description": "Verstehe Tabellenbezüge im Simple Mode und erweitere sie mit JOIN und Gruppierung im Advanced Mode.",
+      "steps": [
+        {"id": "two-tables", "title": "Tabellenbezug verstehen", "instruction": "Sieh dir an, welche Daten aus customers und orders zusammengehören.", "hint": "customer_id verweist auf einen Kunden.", "mode": "simple", "nodes": [{"ref": "select", "type": "sqlSelect", "defaults": {"columns": "name", "table": "customers", "separate_from": false}}, {"ref": "from", "type": "sqlFrom", "defaults": {"table": "orders"}}], "callouts": [{"id": "from", "targetRef": "from", "title": "Quelle", "body": "FROM benennt die Tabelle, aus der weitere Daten kommen."}]},
+        {"id": "advanced-join-report", "title": "Advanced: JOIN und Gruppierung", "instruction": "Verbinde Tabellen mit JOIN und fasse anschließend passende Zeilen mit GROUP BY zusammen.", "hint": "Verbinde erst Tabellen, gruppiere danach.", "mode": "advanced", "nodes": [{"ref": "join", "type": "sqlLeftJoin", "defaults": {"table": "orders", "left_column": "customers.id", "operator": "=", "right_column": "orders.customer_id"}}, {"ref": "group", "type": "sqlGroupBy", "defaults": {"column": "customers.name"}}], "callouts": [{"id": "join", "targetRef": "join", "title": "LEFT JOIN", "body": "Verbindet Kunden mit ihren Bestellungen."}, {"id": "group", "targetRef": "group", "title": "GROUP BY", "body": "Bündelt Zeilen für Berichte."}]}
+      ]
+    },
+    {
+      "id": "sqlite-data-manipulation",
+      "title": "SQLite: Daten ändern",
+      "description": "Bereite Änderungen im Simple Mode sicher vor und lerne im Advanced Mode weitere Changes-Nodes kennen.",
+      "steps": [
+        {"id": "insert-value", "title": "Daten vorbereiten", "instruction": "Ein INSERT-Node benötigt klare Zielspalten und Reporter-Werte.", "hint": "Änderungen werden erst nach Run SQLite ausgeführt.", "mode": "simple", "nodes": [{"ref": "insert", "type": "sqlInsert", "defaults": {"table": "customers", "columns": "name, city", "values": ""}}, {"ref": "name", "type": "sqlText", "defaults": {"literal_type": "text", "text": "Mila"}}], "callouts": [{"id": "insert", "targetRef": "insert", "title": "INSERT", "body": "Fügt erst nach manueller Ausführung einen Datensatz hinzu."}]},
+        {"id": "advanced-update-delete", "title": "Advanced: UPDATE und DELETE", "instruction": "Im Advanced Mode arbeitest du mit präzisen Bedingungen, bevor du Daten änderst oder entfernst.", "hint": "Kontrolliere immer den WHERE-Slot vor dem manuellen Lauf.", "mode": "advanced", "nodes": [{"ref": "update", "type": "sqlUpdate", "defaults": {"table": "customers", "column": "city", "value": "", "where_column": "id", "operator": "=", "where_value": ""}}, {"ref": "delete", "type": "sqlDelete", "defaults": {"table": "customers", "where_column": "id", "operator": "=", "where_value": ""}}], "callouts": [{"id": "update", "targetRef": "update", "title": "UPDATE", "body": "Ändert nur die Zeilen, die durch WHERE ausgewählt werden."}, {"id": "delete", "targetRef": "delete", "title": "DELETE", "body": "DELETE ist bewusst manuell auszuführen."}]}
+      ]
+    },
+    {
+      "id": "sqlite-schema-objects",
+      "title": "SQLite: Tabellen und Schema",
+      "description": "Erstelle im Simple Mode eine verständliche Tabelle und sieh dir im Advanced Mode Index und View an.",
+      "steps": [
+        {"id": "create-table", "title": "Eine Tabelle planen", "instruction": "Der CREATE-TABLE-Node beschreibt Name und Spalten einer neuen Tabelle.", "hint": "Struktur-Nodes werden nur manuell über Run SQLite ausgeführt.", "mode": "simple", "nodes": [{"ref": "create", "type": "sqlCreateTable", "defaults": {"table": "notes", "definition": "id INTEGER PRIMARY KEY, title TEXT"}}], "callouts": [{"id": "create", "targetRef": "create", "title": "CREATE TABLE", "body": "Definiert die Struktur, ohne sie automatisch auszuführen."}]},
+        {"id": "advanced-index-view", "title": "Advanced: Index und View", "instruction": "Wechsle in den Advanced Mode und lerne Objekte kennen, die Abfragen beschleunigen oder vereinfachen.", "hint": "Ein Index beschleunigt Suchen, eine View speichert eine Abfrage als Sicht.", "mode": "advanced", "nodes": [{"ref": "index", "type": "sqlCreateIndex", "defaults": {"name": "idx_customers_city", "table": "customers", "columns": "city"}}, {"ref": "view", "type": "sqlCreateView", "defaults": {"name": "customer_names", "sql": "SELECT name FROM customers"}}], "callouts": [{"id": "index", "targetRef": "index", "title": "INDEX", "body": "Ein Index kann passende Abfragen schneller machen."}, {"id": "view", "targetRef": "view", "title": "VIEW", "body": "Eine View stellt eine gespeicherte Abfrage bereit."}]}
+      ]
+    },
+    {
+      "id": "sqlite-transactions",
+      "title": "SQLite: Transaktionen",
+      "description": "Sichere zusammenhängende Änderungen zuerst im Simple Mode und nutze Savepoints später im Advanced Mode.",
+      "steps": [
+        {"id": "begin-and-commit", "title": "Änderungen zusammenfassen", "instruction": "BEGIN startet eine Transaktion, COMMIT bestätigt sie am Ende bewusst.", "hint": "Bis COMMIT kannst du Änderungen noch verwerfen.", "mode": "simple", "nodes": [{"ref": "begin", "type": "sqlBeginTransaction", "defaults": {}}, {"ref": "commit", "type": "sqlCommit", "defaults": {}}], "callouts": [{"id": "begin", "targetRef": "begin", "title": "BEGIN", "body": "Markiert den Anfang einer geschützten Änderung."}, {"id": "commit", "targetRef": "commit", "title": "COMMIT", "body": "Bestätigt die Änderungen erst am Ende."}]},
+        {"id": "advanced-savepoints", "title": "Advanced: Savepoints", "instruction": "Setze einen Zwischenpunkt und rolle bei Bedarf nur bis dorthin zurück.", "hint": "Savepoints sind Teil einer laufenden Transaktion.", "mode": "advanced", "nodes": [{"ref": "savepoint", "type": "sqlSavepoint", "defaults": {"name": "before_change"}}, {"ref": "rollback", "type": "sqlRollbackToSavepoint", "defaults": {"name": "before_change"}}, {"ref": "release", "type": "sqlReleaseSavepoint", "defaults": {"name": "before_change"}}], "callouts": [{"id": "savepoint", "targetRef": "savepoint", "title": "SAVEPOINT", "body": "Erstellt einen benannten Zwischenstand."}, {"id": "rollback", "targetRef": "rollback", "title": "ROLLBACK TO", "body": "Kehrt gezielt zu diesem Zwischenstand zurück."}]}
+      ]
+    }
+  ]
 }

@@ -12,6 +12,7 @@ import 'package:nodeql/core/app/nodeql_app.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
+import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
@@ -42,6 +43,9 @@ void main() {
           ),
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
           ),
           tutorialControllerProvider.overrideWith(
             (_) => TutorialController(
@@ -138,6 +142,9 @@ void main() {
         ),
         pluginPaletteProvider.overrideWith(
           (_) => _ReadyPluginPaletteController(),
+        ),
+        onboardingLaunchProvider.overrideWith(
+          (_) => _SeenOnboardingLaunchController(),
         ),
         sqlModeProvider.overrideWith(
           (_) => SqlModeController.session(
@@ -284,6 +291,9 @@ void main() {
           ),
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
           ),
         ],
         child: const NodeQlApp(),
@@ -668,26 +678,6 @@ void main() {
       ),
     );
 
-    expect(find.text('No Alias'), findsOneWidget);
-    await tester.tap(find.text('No Alias'));
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey<String>('table-alias-submit')),
-          )
-          .style
-          ?.shape
-          ?.resolve(<WidgetState>{}),
-      isA<RoundedRectangleBorder>().having(
-        (shape) => shape.borderRadius,
-        'borderRadius',
-        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
-      ),
-    );
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.extension_outlined).first);
@@ -796,6 +786,9 @@ void main() {
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
           ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
         ],
         child: const NodeQlApp(),
       ),
@@ -855,6 +848,61 @@ void main() {
     );
   });
 
+  testWidgets('UPDATE filter selection releases the following inline slots', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer(
+      overrides: [
+        translationControllerProvider.overrideWith(
+          (_) => _ReadyTranslationController(),
+        ),
+        pluginPaletteProvider.overrideWith(
+          (_) => _ReadyPluginPaletteController(),
+        ),
+        onboardingLaunchProvider.overrideWith(
+          (_) => _SeenOnboardingLaunchController(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const NodeQlApp()),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+
+    final workspace = container.read(workspaceProvider.notifier);
+    final update = workspace.addTemplate(
+      BlockType.sqlUpdate,
+      const Offset(40, 260),
+    );
+    await tester.pumpAndSettle();
+
+    final filterSlot = find.byKey(
+      ValueKey<String>('inline-slot-${update.id}-where_column'),
+    );
+    final operatorSlot = find.byKey(
+      ValueKey<String>('inline-slot-${update.id}-operator'),
+    );
+    expect(filterSlot, findsOneWidget);
+    expect(operatorSlot, findsOneWidget);
+
+    await tester.tap(filterSlot);
+    await tester.pumpAndSettle();
+    final firstOverlay = find.byKey(const ValueKey('inline-option-overlay'));
+    expect(firstOverlay, findsOneWidget);
+    await tester.tap(
+      find.descendant(of: firstOverlay, matching: find.text('id')),
+    );
+    await tester.pumpAndSettle();
+    expect(firstOverlay, findsNothing);
+
+    await tester.tap(operatorSlot);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('inline-option-overlay')), findsOneWidget);
+  });
+
   testWidgets('opens and skips the interactive onboarding overlay', (
     tester,
   ) async {
@@ -868,6 +916,9 @@ void main() {
           ),
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
           ),
         ],
         child: const NodeQlApp(),
@@ -893,6 +944,10 @@ class _ReadyPluginPaletteController extends PluginPaletteController {
   Future<void> reload() async {
     state = const PluginPaletteState();
   }
+}
+
+class _SeenOnboardingLaunchController extends OnboardingLaunchController {
+  _SeenOnboardingLaunchController() : super(initiallySeen: true);
 }
 
 class _WorkshopTranslationController extends _ReadyTranslationController {

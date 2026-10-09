@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NodeQL — Build SQLite queries visually</title>
 <meta name="description" content="Build, preview, and run SQLite queries with connected blocks in NodeQL, a free, open-source desktop app for macOS, Windows, and Linux.">
+<link rel="icon" type="image/png" href="/assets/appicon/iconv4dark.png">
+<link rel="apple-touch-icon" href="/assets/appicon/iconv4dark.png">
 <style>
 :root{--bg:#f6f6f4;--fg:#111114;--mute:#6b6b73;--line:#dcdcd6;--card:#fff;--dql:#2f7bff;--dml:#1faa6b;--ddl:#e8892b;--dcl:#8b5cf6;--tx:#e24a8d;--plg:#6b6b73;--acc:#2f7bff;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -17,7 +19,7 @@ a{color:inherit;text-decoration:none}
 nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 nav .w{display:flex;align-items:center;gap:28px;height:60px}
 .logo{font-weight:700;letter-spacing:-.02em;display:flex;gap:8px;align-items:center}
-.logo i{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--dql),var(--dcl));display:block}
+.logo img{width:28px;height:28px;border-radius:6px;display:block;object-fit:cover}
 nav .l{display:flex;gap:22px;color:var(--mute);font-size:14px;margin-left:12px}
 nav .l a:hover{color:var(--fg)}
 .sp{flex:1}
@@ -129,7 +131,7 @@ footer h4{margin:0 0 6px;color:var(--fg);font-size:13px}
 <body>
 <div id="pg"></div>
 <nav><div class="w">
-<a class="logo" href="#top"><i></i>NodeQL</a>
+<a class="logo" href="#top"><img src="/assets/appicon/iconv4dark.png" alt="">NodeQL</a>
 <div class="l"><a href="#demo">Browser preview</a><a href="#lineup">Palette</a><a href="#how">How it works</a><a href="#principles">About NodeQL</a></div>
 <div class="sp"></div>
 <a class="btn" href="https://github.com/Kartoffelspalt/NodeQL">GitHub</a>
@@ -244,7 +246,7 @@ footer h4{margin:0 0 6px;color:var(--fg);font-size:13px}
 </div></section>
 
 <footer><div class="w">
-<div class="c"><div class="logo" style="color:var(--fg)"><i></i>NodeQL</div><span>Open source · MIT License</span></div>
+<div class="c"><div class="logo" style="color:var(--fg)"><img src="/assets/appicon/iconv4dark.png" alt="">NodeQL</div><span>Open source · MIT License</span></div>
 <div class="c"><h4>Project</h4><a href="https://github.com/Kartoffelspalt/NodeQL">GitHub</a><a href="https://github.com/Kartoffelspalt/NodeQL/releases">Releases</a><a href="https://github.com/Kartoffelspalt/NodeQL/blob/master/README.md">README</a></div>
 <div class="c"><h4>Community</h4><a href="https://github.com/Kartoffelspalt/NodeQL/issues">Issues</a><a href="#principles">Contribute</a></div>
 </div></footer>

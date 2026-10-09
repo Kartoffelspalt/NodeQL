@@ -50,6 +50,10 @@ void main() {
       slotAcceptsReporterType('value', 'value', BlockType.sqlColumn),
       isTrue,
     );
+    expect(
+      slotAcceptsReporterType('where_value', 'where_value', BlockType.sqlText),
+      isTrue,
+    );
   });
 
   test('alias reporters accept another expression as their value', () {

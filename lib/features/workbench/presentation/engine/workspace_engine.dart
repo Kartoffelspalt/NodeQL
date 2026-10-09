@@ -1010,10 +1010,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
             operatorType: type,
           )
           ..inputs.addAll(<String, dynamic>{
-            'select_mode': 'ALL',
             'columns': '*',
             'table': 'table_name',
-            'table_alias': '',
             'separate_from': false,
           });
       case BlockType.sqlColumn:
@@ -1065,14 +1063,10 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           });
       case BlockType.sqlFrom:
         return OperatorBlock(
-            id: 'from_$suffix',
-            position: worldPos,
-            operatorType: type,
-          )
-          ..inputs.addAll(<String, dynamic>{
-            'table': 'table_name',
-            'table_alias': '',
-          });
+          id: 'from_$suffix',
+          position: worldPos,
+          operatorType: type,
+        )..inputs.addAll(<String, dynamic>{'table': 'table_name'});
       case BlockType.sqlWhere:
       case BlockType.sqlAnd:
       case BlockType.sqlOr:
@@ -1081,11 +1075,9 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           position: worldPos,
           motionType: type,
           inputs: <String, dynamic>{
-            'negation': '',
             'column': 'id',
             'operator': '=',
-            'value': '1',
-            'predicate': 'id = 1',
+            'value': '',
           },
         );
       case BlockType.sqlJoin:
@@ -1112,7 +1104,6 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
           )
           ..inputs.addAll(<String, dynamic>{
             'table': 'table_name',
-            'table_alias': '',
             'on': '1 = 1',
             'left_column': 'id',
             'operator': '=',
@@ -1203,10 +1194,10 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
             'table': 'table_name',
             'set': 'col = val',
             'column': 'column_name',
-            'value': 'value',
+            'value': '',
             'where_column': 'id',
             'operator': '=',
-            'where_value': '1',
+            'where_value': '',
           });
       case BlockType.sqlDelete:
         return OperatorBlock(
@@ -1218,7 +1209,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
             'table': 'table_name',
             'where_column': 'id',
             'operator': '=',
-            'where_value': '1',
+            'where_value': '',
           });
       case BlockType.sqlUnion:
       case BlockType.sqlIntersect:
@@ -1481,9 +1472,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
             'definition': 'id INTEGER PRIMARY KEY',
             'condition_column': 'id',
             'operator': '=',
-            'condition_value': '1',
-            'when': 'id = 1',
-            'cond': 'id = 1',
+            'condition_value': '',
             'result': "'yes'",
             'default': "'no'",
             'value': "'yes'",

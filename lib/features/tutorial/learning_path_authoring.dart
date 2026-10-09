@@ -9,6 +9,12 @@ import 'package:path_provider/path_provider.dart';
 
 enum LearningPathCalloutSide { left, right }
 
+/// The editor abstraction shown while a learning-path step is active.
+///
+/// Paths default to [simple] so bundles and local drafts created before this
+/// field was introduced remain fully compatible.
+enum LearningPathMode { simple, advanced }
+
 class LearningPathNodeTemplate {
   const LearningPathNodeTemplate({
     required this.ref,
@@ -83,6 +89,7 @@ class LearningPathStep {
     required this.title,
     required this.instruction,
     this.hint = '',
+    this.mode = LearningPathMode.simple,
     this.nodes = const <LearningPathNodeTemplate>[],
     this.callouts = const <LearningPathNodeCallout>[],
   });
@@ -91,6 +98,7 @@ class LearningPathStep {
   final String title;
   final String instruction;
   final String hint;
+  final LearningPathMode mode;
   final List<LearningPathNodeTemplate> nodes;
   final List<LearningPathNodeCallout> callouts;
 
@@ -99,6 +107,7 @@ class LearningPathStep {
     'title': title,
     'instruction': instruction,
     'hint': hint,
+    'mode': mode.name,
     'nodes': nodes.map((node) => node.toJson()).toList(),
     'callouts': callouts.map((callout) => callout.toJson()).toList(),
   };
@@ -109,6 +118,10 @@ class LearningPathStep {
       title: '${json['title'] ?? ''}',
       instruction: '${json['instruction'] ?? ''}',
       hint: '${json['hint'] ?? ''}',
+      mode: LearningPathMode.values.firstWhere(
+        (mode) => mode.name == json['mode'],
+        orElse: () => LearningPathMode.simple,
+      ),
       nodes: (json['nodes'] as List? ?? const <Object>[])
           .whereType<Map>()
           .map(

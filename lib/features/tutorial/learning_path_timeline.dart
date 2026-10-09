@@ -9,6 +9,7 @@ class LearningPathTimelinePanel extends StatelessWidget {
     required this.stepIndex,
     required this.onStep,
     required this.onClose,
+    this.lockNavigation = false,
     super.key,
   });
 
@@ -17,6 +18,7 @@ class LearningPathTimelinePanel extends StatelessWidget {
   final int stepIndex;
   final ValueChanged<int> onStep;
   final VoidCallback onClose;
+  final bool lockNavigation;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +66,23 @@ class LearningPathTimelinePanel extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                  const SizedBox(height: 5),
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: Icon(
+                      step.mode == LearningPathMode.simple
+                          ? Icons.looks_one_outlined
+                          : Icons.tune_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      catalog.text(
+                        step.mode == LearningPathMode.simple
+                            ? 'toolbar.simple'
+                            : 'toolbar.advanced',
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(step.instruction),
                   if (step.hint.isNotEmpty) ...[
@@ -91,7 +110,9 @@ class LearningPathTimelinePanel extends StatelessWidget {
                               backgroundColor: index == stepIndex
                                   ? colorScheme.primaryContainer
                                   : null,
-                              onPressed: () => onStep(index),
+                              onPressed: lockNavigation
+                                  ? null
+                                  : () => onStep(index),
                             ),
                           ),
                       ],
@@ -108,13 +129,15 @@ class LearningPathTimelinePanel extends StatelessWidget {
                   children: [
                     IconButton.outlined(
                       tooltip: catalog.text('tutorial.studio.previous'),
-                      onPressed: stepIndex == 0
+                      onPressed: lockNavigation || stepIndex == 0
                           ? null
                           : () => onStep(stepIndex - 1),
                       icon: const Icon(Icons.arrow_back),
                     ),
                     FilledButton.icon(
-                      onPressed: stepIndex == path.steps.length - 1
+                      onPressed: lockNavigation
+                          ? null
+                          : stepIndex == path.steps.length - 1
                           ? onClose
                           : () => onStep(stepIndex + 1),
                       icon: Icon(

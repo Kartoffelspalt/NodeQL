@@ -450,6 +450,17 @@ void main() {
     expect(select.inputs['separate_from'], isFalse);
     expect(select.inputs['table'], 'table_name');
   });
+
+  test('new filter nodes leave reporter value slots empty', () {
+    final controller = WorkspaceController()..resetWithRoot();
+
+    controller.addTemplate(BlockType.sqlWhere, const Offset(120, 240));
+
+    final where = controller.allBlocks().firstWhere(
+      (node) => node.type == BlockType.sqlWhere,
+    );
+    expect(where.inputs['value'], isEmpty);
+  });
 }
 
 Offset _columnRopePoint(Offset start, Offset end, double t) {

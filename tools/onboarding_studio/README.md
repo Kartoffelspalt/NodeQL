@@ -29,10 +29,11 @@ optionale schnelle Vorschau.
 
 ## In NodeQL testen
 
-Nach dem Export kann die Datei direkt in NodeQL getestet werden: In der
-Toolbar öffnet das Datei-Icon neben dem Hilfe-Icon den Import. NodeQL prüft
-das JSON und hebt dann die realen Zielbereiche der Anwendung hervor. Der
-Hilfe-Button startet weiterhin die eingebaute Beispiel-Anleitung.
+Nach dem Export kann die Datei direkt in NodeQL getestet werden: Drücke in
+der Arbeitsansicht nacheinander **I**, **O**, **S** (innerhalb von zwei
+Sekunden und ohne ein Textfeld zu fokussieren). NodeQL prüft das JSON und hebt
+dann die realen Zielbereiche der Anwendung hervor. Der Hilfe-Button startet
+weiterhin die eingebaute Beispiel-Anleitung.
 
 Die Beispielvorlage erklärt vier zentrale Teile der NodeQL-Oberfläche:
 **Node-Leiste**, **Node-Arbeitsfläche**, **Datenbank-Tools** und **Workshop**.

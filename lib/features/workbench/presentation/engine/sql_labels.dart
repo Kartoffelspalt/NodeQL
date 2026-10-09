@@ -89,8 +89,8 @@ String sqlLabelFor(
   }
   if (type == BlockType.sqlJoin && inputs['imported_raw_on'] == true) {
     return mode == SqlAbstractionMode.advanced
-        ? '[JOIN_TYPE] JOIN [table] AS [table_alias]\nON {on}'
-        : 'join [JOIN_TYPE] with [table] as [table_alias]\non {on}';
+        ? '[JOIN_TYPE] JOIN [table]\nON {on}'
+        : 'join [JOIN_TYPE] with [table]\non {on}';
   }
   if (type == BlockType.sqlUpdate && inputs['imported_raw_where'] == true) {
     return mode == SqlAbstractionMode.advanced
@@ -113,34 +113,33 @@ String sqlLabelFor(
       '${inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase() != 'NATURAL';
   final adv = <BlockType, String>{
     BlockType.eventGreenFlag: 'EXECUTE QUERY',
-    BlockType.sqlSelect:
-        'SELECT [select_mode] [columns] FROM [table_name] AS [table_alias]',
+    BlockType.sqlSelect: 'SELECT [columns] FROM [table_name]',
     BlockType.sqlColumn: '[column]',
     BlockType.sqlText: 'TEXT {text}',
     BlockType.sqlAlias: '{value} AS [alias]',
-    BlockType.sqlFrom: 'FROM [table_name] AS [table_alias]',
-    BlockType.sqlWhere: 'WHERE [negation] [column] [operator] [value]',
-    BlockType.sqlAnd: 'AND [negation] [column] [operator] [value]',
-    BlockType.sqlOr: 'OR [negation] [column] [operator] [value]',
+    BlockType.sqlFrom: 'FROM [table_name]',
+    BlockType.sqlWhere: 'WHERE [column] [operator] [value]',
+    BlockType.sqlAnd: 'AND [column] [operator] [value]',
+    BlockType.sqlOr: 'OR [column] [operator] [value]',
     BlockType.sqlOrderBy: 'ORDER BY [column] [ASC|DESC]',
     BlockType.sqlLimit: 'LIMIT [count] OFFSET [offset]',
     BlockType.sqlGroupBy: 'GROUP BY [column]',
     BlockType.sqlHaving: 'HAVING [aggregate]([column]) [operator] [value]',
     BlockType.sqlJoin: genericJoinUsesCondition
-        ? '[JOIN_TYPE] JOIN [table] AS [table_alias]\nON [left_column] [operator] [right_column]'
-        : '[JOIN_TYPE] JOIN [table] AS [table_alias]',
+        ? '[JOIN_TYPE] JOIN [table]\nON [left_column] [operator] [right_column]'
+        : '[JOIN_TYPE] JOIN [table]',
     BlockType.sqlInnerJoin:
-        'INNER JOIN [table] AS [table_alias]\nON [left_column] [operator] [right_column]',
+        'INNER JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlLeftJoin:
-        'LEFT JOIN [table] AS [table_alias]\nON [left_column] [operator] [right_column]',
+        'LEFT JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlRightJoin:
-        'RIGHT JOIN [table] AS [table_alias]\nON [left_column] [operator] [right_column]',
+        'RIGHT JOIN [table]\nON [left_column] [operator] [right_column]',
     BlockType.sqlFullJoin:
-        'FULL JOIN [table] AS [table_alias]\nON [left_column] [operator] [right_column]',
-    BlockType.sqlCrossJoin: 'CROSS JOIN [table] AS [table_alias]',
+        'FULL JOIN [table]\nON [left_column] [operator] [right_column]',
+    BlockType.sqlCrossJoin: 'CROSS JOIN [table]',
     BlockType.sqlSelfJoin:
-        'SELF JOIN [table] AS [table_alias]\nON [left_column] [operator] [right_column]',
-    BlockType.sqlNaturalJoin: 'NATURAL JOIN [table] AS [table_alias]',
+        'SELF JOIN [table]\nON [left_column] [operator] [right_column]',
+    BlockType.sqlNaturalJoin: 'NATURAL JOIN [table]',
     BlockType.sqlInsert: 'INSERT INTO [table] ([columns]) VALUES ([values])',
     BlockType.sqlInsertOrReplace:
         'INSERT OR REPLACE INTO [table] ([columns]) VALUES ([values])',
@@ -226,38 +225,34 @@ String sqlLabelFor(
 
   final simpleDe = <BlockType, String>{
     BlockType.eventGreenFlag: 'QUERY AUSFUEHREN',
-    BlockType.sqlSelect:
-        'Zeige [select_mode] [Spalten] aus Tabelle [table_name] als [table_alias]',
+    BlockType.sqlSelect: 'Zeige [Spalten] aus Tabelle [table_name]',
     BlockType.sqlColumn: '[Spalte]',
     BlockType.sqlText: 'Text {text}',
     BlockType.sqlAlias: '{value} als [Alias]',
-    BlockType.sqlFrom: 'aus Tabelle [table_name] als [table_alias]',
-    BlockType.sqlWhere:
-        'filtere Zeilen\n[negation] [Spalte] [operator] [value]',
-    BlockType.sqlAnd: 'und zusätzlich\n[negation] [Spalte] [operator] [value]',
-    BlockType.sqlOr: 'oder alternativ\n[negation] [Spalte] [operator] [value]',
+    BlockType.sqlFrom: 'aus Tabelle [table_name]',
+    BlockType.sqlWhere: 'filtere Zeilen\n[Spalte] [operator] [value]',
+    BlockType.sqlAnd: 'und zusätzlich\n[Spalte] [operator] [value]',
+    BlockType.sqlOr: 'oder alternativ\n[Spalte] [operator] [value]',
     BlockType.sqlOrderBy: 'sortiere nach\n[Spalte] [aufsteigend|absteigend]',
     BlockType.sqlLimit: 'zeige höchstens [count]\nüberspringe [offset]',
     BlockType.sqlGroupBy: 'bilde Gruppen nach [Spalte]',
     BlockType.sqlHaving:
         'filtere Gruppen\n[aggregate] von [Spalte] [operator] [value]',
     BlockType.sqlJoin: genericJoinUsesCondition
-        ? 'verbinde [JOIN_TYPE] mit [table] als [table_alias]\nüber [linke_Spalte] [operator] [rechte_Spalte]'
-        : 'verbinde [JOIN_TYPE] mit [table] als [table_alias]',
+        ? 'verbinde [JOIN_TYPE] mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]'
+        : 'verbinde [JOIN_TYPE] mit [table]',
     BlockType.sqlInnerJoin:
-        'verbinde Treffer aus [table] als [table_alias]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
+        'verbinde Treffer aus [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
     BlockType.sqlLeftJoin:
-        'verbinde links mit [table] als [table_alias]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
+        'verbinde links mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
     BlockType.sqlRightJoin:
-        'verbinde rechts mit [table] als [table_alias]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
+        'verbinde rechts mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
     BlockType.sqlFullJoin:
-        'verbinde alles mit [table] als [table_alias]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
-    BlockType.sqlCrossJoin:
-        'kombiniere jede Zeile mit [table] als [table_alias]',
+        'verbinde alles mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]',
+    BlockType.sqlCrossJoin: 'kombiniere jede Zeile mit [table]',
     BlockType.sqlSelfJoin:
-        'verbinde [table] als [table_alias] mit sich selbst\nüber [linke_Spalte] [operator] [rechte_Spalte]',
-    BlockType.sqlNaturalJoin:
-        'verbinde automatisch mit [table] als [table_alias]',
+        'verbinde [table] mit sich selbst\nüber [linke_Spalte] [operator] [rechte_Spalte]',
+    BlockType.sqlNaturalJoin: 'verbinde automatisch mit [table]',
     BlockType.sqlInsert: 'fuege ein in [table]\n[Spalten] = [values]',
     BlockType.sqlInsertOrReplace:
         'fuege ein oder ersetze in [table]\n[Spalten] = [values]',
@@ -346,35 +341,34 @@ String sqlLabelFor(
 
   final simpleEn = <BlockType, String>{
     BlockType.eventGreenFlag: 'RUN QUERY',
-    BlockType.sqlSelect:
-        'Show [select_mode] [columns] from table [table_name] as [table_alias]',
+    BlockType.sqlSelect: 'Show [columns] from table [table_name]',
     BlockType.sqlColumn: '[column]',
     BlockType.sqlText: 'text {text}',
     BlockType.sqlAlias: '{value} as [alias]',
-    BlockType.sqlFrom: 'from table [table_name] as [table_alias]',
-    BlockType.sqlWhere: 'filter rows\n[negation] [column] [operator] [value]',
-    BlockType.sqlAnd: 'and also\n[negation] [column] [operator] [value]',
-    BlockType.sqlOr: 'or alternatively\n[negation] [column] [operator] [value]',
+    BlockType.sqlFrom: 'from table [table_name]',
+    BlockType.sqlWhere: 'filter rows\n[column] [operator] [value]',
+    BlockType.sqlAnd: 'and also\n[column] [operator] [value]',
+    BlockType.sqlOr: 'or alternatively\n[column] [operator] [value]',
     BlockType.sqlOrderBy: 'sort by\n[column] [ascending|descending]',
     BlockType.sqlLimit: 'show at most [count]\nskip [offset]',
     BlockType.sqlGroupBy: 'make groups by [column]',
     BlockType.sqlHaving:
         'filter groups\n[aggregate] of [column] [operator] [value]',
     BlockType.sqlJoin: genericJoinUsesCondition
-        ? 'join [JOIN_TYPE] with [table] as [table_alias]\non [left_column] [operator] [right_column]'
-        : 'join with [table] as [table_alias] using [JOIN_TYPE]',
+        ? 'join [JOIN_TYPE] with [table]\non [left_column] [operator] [right_column]'
+        : 'join [JOIN_TYPE] with [table]',
     BlockType.sqlInnerJoin:
-        'join matches from [table] as [table_alias]\non [left_column] [operator] [right_column]',
+        'join matches from [table]\non [left_column] [operator] [right_column]',
     BlockType.sqlLeftJoin:
-        'left-join [table] as [table_alias]\non [left_column] [operator] [right_column]',
+        'left-join [table]\non [left_column] [operator] [right_column]',
     BlockType.sqlRightJoin:
-        'right-join [table] as [table_alias]\non [left_column] [operator] [right_column]',
+        'right-join [table]\non [left_column] [operator] [right_column]',
     BlockType.sqlFullJoin:
-        'full-join [table] as [table_alias]\non [left_column] [operator] [right_column]',
-    BlockType.sqlCrossJoin: 'combine every row with [table] as [table_alias]',
+        'full-join [table]\non [left_column] [operator] [right_column]',
+    BlockType.sqlCrossJoin: 'combine every row with [table]',
     BlockType.sqlSelfJoin:
-        'join [table] as [table_alias] with itself\non [left_column] [operator] [right_column]',
-    BlockType.sqlNaturalJoin: 'auto-join with [table] as [table_alias]',
+        'join [table] with itself\non [left_column] [operator] [right_column]',
+    BlockType.sqlNaturalJoin: 'auto-join with [table]',
     BlockType.sqlInsert: 'add to [table]\n[columns] = [values]',
     BlockType.sqlInsertOrReplace:
         'insert or replace in [table]\n[columns] = [values]',
@@ -462,11 +456,9 @@ String sqlLabelFor(
   final map = mode == SqlAbstractionMode.advanced ? adv : simple;
   if (type == BlockType.sqlSelect && inputs['separate_from'] == true) {
     if (mode == SqlAbstractionMode.advanced) {
-      return 'SELECT [select_mode] [columns]';
+      return 'SELECT [columns]';
     }
-    return languageCode == 'de'
-        ? 'Zeige [select_mode] [Spalten]'
-        : 'Show [select_mode] [columns]';
+    return languageCode == 'de' ? 'Zeige [Spalten]' : 'Show [columns]';
   }
   return map[type] ?? simpleBase[type] ?? adv[type] ?? type.name;
 }
@@ -476,17 +468,15 @@ Map<BlockType, String>? _simpleByLanguage(String languageCode) {
     case 'fr':
       return <BlockType, String>{
         BlockType.eventGreenFlag: 'EXECUTER REQUETE',
-        BlockType.sqlSelect:
-            'affiche [select_mode] [columns] de la table [table_name] comme [table_alias]',
-        BlockType.sqlWhere: 'si [negation] [column] [operator] [value]',
+        BlockType.sqlSelect: 'affiche [columns] de la table [table_name]',
+        BlockType.sqlWhere: 'si [column] [operator] [value]',
         BlockType.sqlOrderBy: 'trie par [column] [ascending|descending]',
       };
     case 'es':
       return <BlockType, String>{
         BlockType.eventGreenFlag: 'EJECUTAR CONSULTA',
-        BlockType.sqlSelect:
-            'muestra [select_mode] [columns] de tabla [table_name] como [table_alias]',
-        BlockType.sqlWhere: 'si [negation] [column] [operator] [value]',
+        BlockType.sqlSelect: 'muestra [columns] de tabla [table_name]',
+        BlockType.sqlWhere: 'si [column] [operator] [value]',
         BlockType.sqlOrderBy: 'ordena por [column] [ascending|descending]',
       };
     default:
