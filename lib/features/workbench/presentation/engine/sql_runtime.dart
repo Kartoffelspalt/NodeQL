@@ -127,6 +127,13 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     }
   }
 
+  /// Removes the database and query output associated with the current
+  /// project. Project loading must not leave a previous project's database
+  /// attached when the next project has no database configured.
+  void clearDatabase() {
+    state = const SqlRuntimeState();
+  }
+
   Future<String> createEmptyDatabase({
     String? preferredName,
     String? directoryPath,

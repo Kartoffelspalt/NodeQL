@@ -403,6 +403,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   List<Map<String, dynamic>> _recentProjects = <Map<String, dynamic>>[];
   Timer? _autosaveDebounce;
   bool _autosaveReady = false;
+  bool _projectLoadInProgress = false;
   Timer? _livePreviewDebounce;
   String _lastLivePreviewSql = '';
   String? _livePreviewDatabasePath;
@@ -1179,7 +1180,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   void _scheduleAutosave() {
-    if (!_autosaveReady || !_autosaveEnabledForProject) {
+    if (!_autosaveReady ||
+        !_autosaveEnabledForProject ||
+        _projectLoadInProgress) {
       _autosaveDebounce?.cancel();
       return;
     }
@@ -1191,13 +1194,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _writeAutosave() async {
-    if (!_autosaveEnabledForProject) return;
+    if (!_autosaveEnabledForProject || _projectLoadInProgress) return;
+    // Snapshot both the project identity and its contents before the first
+    // await. A project can be switched while the support directory is being
+    // resolved; writing with the later active id would otherwise place the
+    // old workspace in the new project's autosave file.
+    final projectId = _activeProjectId;
+    final payload = jsonEncode(_projectEnvelope());
     try {
       final support = await getApplicationSupportDirectory();
+      if (_projectLoadInProgress || projectId != _activeProjectId) return;
       final autosave = File(
-        p.join(support.path, 'nodeql_autosave_$_activeProjectId.nodeql'),
+        p.join(support.path, 'nodeql_autosave_$projectId.nodeql'),
       );
-      await autosave.writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+      await autosave.writeAsString(payload, flush: true);
     } catch (_) {
       // Autosave is best-effort. A later workspace change retries the write.
     }
@@ -1436,6 +1446,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _openProject(BuildContext context) async {
+    if (_projectLoadInProgress) return;
     final catalog = ref.read(translationControllerProvider).catalog;
     final result = await FilePicker.platform.pickFiles(
       dialogTitle: catalog.text('project.openDialog'),
@@ -1447,20 +1458,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (!context.mounted) return;
     final source = await _readProjectForOpening(context, path);
     if (source == null) return;
-    await _loadProjectPayload(source, projectPath: path);
     final bookmark = await _createProjectBookmark(path);
-    setState(() {
-      _activeProjectPath = path;
-      _activeProjectBookmark = bookmark;
-      final existing = _recentProjects.where((p) => p['path'] == path).toList();
-      _activeProjectId = existing.isEmpty
+    final existing = _recentProjects.where((p) => p['path'] == path).toList();
+    await _activateLoadedProject(
+      source: source,
+      projectId: existing.isEmpty
           ? 'project_${DateTime.now().millisecondsSinceEpoch}'
-          : '${existing.first['id']}';
-      _activeProjectName = _projectNameFromPath(path);
-      _upsertRecentProject();
-    });
-    await _saveProjectRegistry();
-    await _syncRecentProjectsToNativeMenu();
+          : '${existing.first['id']}',
+      name: _projectNameFromPath(path),
+      path: path,
+      bookmark: bookmark,
+    );
   }
 
   Future<String?> _readProjectForOpening(
@@ -2107,6 +2115,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       decoded = jsonDecode(source) as Map<String, dynamic>;
     } catch (_) {}
 
+    // The runtime belongs to the project, just like the workspace. Clear it
+    // first so projects without a database do not keep the previous project's
+    // connection and query results.
+    ref.read(sqlRuntimeProvider.notifier).clearDatabase();
+
     if (decoded == null || !_isProjectEnvelopeFormat(decoded['format'])) {
       _autosaveEnabledForProject = true;
       ref.read(workspaceProvider.notifier).loadFromJsonString(source);
@@ -2256,6 +2269,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _switchProject(String projectId) async {
+    if (_projectLoadInProgress || projectId == _activeProjectId) return;
     final target = _recentProjects
         .where((p) => p['id'] == projectId)
         .toList(growable: false);
@@ -2265,15 +2279,58 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (!mounted) return;
     final source = await _readProjectForOpening(context, path);
     if (source == null) return;
-    await _loadProjectPayload(source, projectPath: path);
-    setState(() {
-      _activeProjectId = projectId;
-      _activeProjectName = '${target.first['name']}';
-      _activeProjectPath = path;
-      _activeProjectBookmark = target.first['securityBookmark'] as String?;
-    });
-    await _saveProjectRegistry();
-    await _syncRecentProjectsToNativeMenu();
+    await _activateLoadedProject(
+      source: source,
+      projectId: projectId,
+      name: '${target.first['name']}',
+      path: path,
+      bookmark: target.first['securityBookmark'] as String?,
+    );
+  }
+
+  Future<void> _activateLoadedProject({
+    required String source,
+    required String projectId,
+    required String name,
+    required String path,
+    required String? bookmark,
+  }) async {
+    if (_projectLoadInProgress) return;
+    _projectLoadInProgress = true;
+    _autosaveDebounce?.cancel();
+
+    final previousId = _activeProjectId;
+    final previousName = _activeProjectName;
+    final previousPath = _activeProjectPath;
+    final previousBookmark = _activeProjectBookmark;
+    var loaded = false;
+    try {
+      // Set identity before the workspace emits its revision changes. The
+      // autosave guard above keeps those intermediate changes off disk.
+      setState(() {
+        _activeProjectId = projectId;
+        _activeProjectName = name;
+        _activeProjectPath = path;
+        _activeProjectBookmark = bookmark;
+      });
+      await _loadProjectPayload(source, projectPath: path);
+      if (!mounted) return;
+      _upsertRecentProject();
+      await _saveProjectRegistry();
+      await _syncRecentProjectsToNativeMenu();
+      loaded = true;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _activeProjectId = previousId;
+        _activeProjectName = previousName;
+        _activeProjectPath = previousPath;
+        _activeProjectBookmark = previousBookmark;
+      });
+    } finally {
+      _projectLoadInProgress = false;
+      if (loaded && mounted) _scheduleAutosave();
+    }
   }
 
   Future<void> _syncRecentProjectsToNativeMenu() async {
