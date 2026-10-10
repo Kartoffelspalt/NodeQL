@@ -1,5 +1,9 @@
 # NodeQL
 
+[![GitHub Release](https://img.shields.io/github/v/release/kartoffelspalt/nodeql?include_prereleases&style=flat-square)](CHANGELOG.md)
+[![GitHub License](https://img.shields.io/github/license/kartoffelspalt/nodeql?style=flat-square)](LICENSE)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/kartoffelspalt?style=flat-square)](https://github.sponsors/kartoffelspalt)
+
 NodeQL is a local-first desktop application for learning, designing, and
 running SQLite with visual blocks. Projects, settings, plugins, and databases
 remain on the user's device.
@@ -13,18 +17,10 @@ remain on the user's device.
 > SQLite functions, column aliases, fullscreen and exportable result tables,
 > a refined workspace, and fullscreen settings.
 
-## Advertisement clip
-
-<video controls preload="metadata" poster="docs/screenshots/nodeql-advertisement-preview.jpg" width="100%">
-  <source src="assets/videos/NodeQL%20Advertisment.mp4" type="video/mp4">
-</video>
+## Demo
 
 <p align="center">
-  <a href="assets/videos/NodeQL%20Advertisment.mp4">
-    <img src="docs/screenshots/nodeql-advertisement-preview.jpg" alt="Play the NodeQL advertisement clip" width="100%">
-  </a>
-  <br>
-  <a href="assets/videos/NodeQL%20Advertisment.mp4">▶ Watch the NodeQL advertisement clip (59 seconds, MP4)</a>
+  <img src="assets/gifs/NODEQLAPP.gif" alt="NodeQL Visual Scratch-Style Database Queries Demo" width="100%">
 </p>
 
 ## App-Gallery
@@ -32,30 +28,30 @@ remain on the user's device.
 <table>
   <tr>
     <td width="50%" align="center">
-      <a href="docs/screenshots/darkmode-preview.png">
-        <img src="docs/screenshots/darkmode-preview.png" alt="NodeQL Dark Mode">
+      <a href="docs/screenshots/NodeQLApp.png">
+        <img src="docs/screenshots/NodeQLApp.png" alt="NodeQL Dark Mode">
       </a>
       <br><strong>Dark Mode</strong>
     </td>
     <td width="50%" align="center">
-      <a href="docs/screenshots/whitemode-preview.png">
-        <img src="docs/screenshots/whitemode-preview.png" alt="NodeQL White Mode">
+      <a href="docs/screenshots/NodeQLAppWhite.png">
+        <img src="docs/screenshots/NodeQLAppWhite.png" alt="NodeQL White Mode">
       </a>
       <br><strong>White Mode</strong>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <a href="docs/screenshots/NodeQL-Einfuehrung.png">
-        <img src="docs/screenshots/NodeQL-Einfuehrung.png" alt="NodeQL interactive tutorial">
+      <a href="docs/screenshots/NodeQLTableBrowser.png">
+        <img src="docs/screenshots/NodeQLTableBrowser.png" alt="NodeQL interactive tutorial">
       </a>
-      <br><strong>Interactive Tutorial</strong>
+      <br><strong>Table Browser</strong>
     </td>
     <td width="50%" align="center">
-      <a href="docs/screenshots/Plugins.png">
-        <img src="docs/screenshots/Plugins.png" alt="NodeQL plugin blocks">
+      <a href="docs/screenshots/NodeQLWorkshop.png">
+        <img src="docs/screenshots/NodeQLWorkshop.png" alt="NodeQL plugin blocks">
       </a>
-      <br><strong>Plugin Ecosystem</strong>
+      <br><strong>Workshop</strong>
     </td>
   </tr>
 </table>
@@ -165,3 +161,14 @@ separately when using the tarball.
 NodeQL source code is available under the [MIT License](LICENSE). Runtime
 translation contributions are provided under CC BY 4.0. The NodeQL name and
 logo are not licensed under the MIT License; see [TRADEMARKS.md](TRADEMARKS.md).
+
+## Sponsoring & Support
+
+NodeQL is developed as an independent open-source project. If NodeQL saves you time, helps you learn SQL, or is used in your workflow, consider supporting its development:
+
+- **GitHub Sponsors:** [Sponsor this project](https://github.sponsors/kartoffelspalt)
+- **Star the Repository:** Help others discover NodeQL by giving it a ⭐ on GitHub!
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=kartoffelspalt/nodeql&type=Date)](https://star-history.com/#kartoffelspalt/nodeql&Date)
