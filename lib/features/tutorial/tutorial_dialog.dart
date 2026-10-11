@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nodeql/features/tutorial/workshop_icons.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
@@ -271,6 +272,7 @@ class TutorialDialog extends StatefulWidget {
     this.onProgressChanged,
     this.onStartPractice,
     this.authoredPaths = const <AuthoredLearningPath>[],
+    this.workshopProgress = const <String, NodeQlWorkshopProgress>{},
     this.onStartAuthoredPath,
     this.startOnOverview = true,
     super.key,
@@ -286,6 +288,7 @@ class TutorialDialog extends StatefulWidget {
   onProgressChanged;
   final Future<void> Function(TutorialKnowledgeMode mode)? onStartPractice;
   final List<AuthoredLearningPath> authoredPaths;
+  final Map<String, NodeQlWorkshopProgress> workshopProgress;
   final Future<void> Function(AuthoredLearningPath path)? onStartAuthoredPath;
   final bool startOnOverview;
 
@@ -343,10 +346,15 @@ class _TutorialDialogState extends State<TutorialDialog> {
                 _TutorialHeader(
                   catalog: catalog,
                   progressText: _showOverview
-                      ? catalog.text('tutorial.overview.progress', {
-                          'completed': _completedLessonCount,
-                          'total': workshopTutorialCatalog.tutorials.length,
-                        })
+                      ? catalog.text(
+                          widget.authoredPaths.isNotEmpty
+                              ? 'tutorial.official.progress'
+                              : 'tutorial.overview.progress',
+                          {
+                            'completed': _completedLessonCount,
+                            'total': _overviewCount,
+                          },
+                        )
                       : catalog.text('tutorial.progress', {
                           'current': _step + 1,
                           'total': _stepCount,
@@ -358,8 +366,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
                 ),
                 LinearProgressIndicator(
                   value: _showOverview
-                      ? _completedLessonCount /
-                            workshopTutorialCatalog.tutorials.length
+                      ? _completedLessonCount / _overviewCount
                       : (_step + 1) / _stepCount,
                   minHeight: 4,
                   backgroundColor: workbenchColors.border,
@@ -372,6 +379,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
                           tutorials: workshopTutorialCatalog.tutorials,
                           onLesson: _openLesson,
                           authoredPaths: widget.authoredPaths,
+                          workshopProgress: widget.workshopProgress,
                           onAuthoredPath: _startAuthoredPath,
                         )
                       : compact
@@ -592,12 +600,27 @@ class _TutorialDialogState extends State<TutorialDialog> {
     _saveProgress();
   }
 
-  int get _completedLessonCount => workshopTutorialCatalog.tutorials
-      .where(
-        (tutorial) =>
-            _practicePathCompleted(tutorial.mode, _progress[tutorial.mode]!),
-      )
-      .length;
+  int get _overviewCount => widget.authoredPaths.isNotEmpty
+      ? widget.authoredPaths.length
+      : workshopTutorialCatalog.tutorials.length;
+
+  int get _completedLessonCount => widget.authoredPaths.isNotEmpty
+      ? widget.authoredPaths
+            .where(
+              (path) =>
+                  (widget.workshopProgress[path.id] ??
+                          const NodeQlWorkshopProgress())
+                      .isCompleteFor(path.steps.map((step) => step.id)),
+            )
+            .length
+      : workshopTutorialCatalog.tutorials
+            .where(
+              (tutorial) => _practicePathCompleted(
+                tutorial.mode,
+                _progress[tutorial.mode]!,
+              ),
+            )
+            .length;
 
   int _challengeCount(TutorialKnowledgeMode mode) =>
       _tutorialSteps[mode]!.where((step) => step.correctAnswer != null).length;
@@ -914,6 +937,7 @@ class _LessonOverview extends StatelessWidget {
     required this.tutorials,
     required this.onLesson,
     required this.authoredPaths,
+    required this.workshopProgress,
     required this.onAuthoredPath,
   });
 
@@ -922,18 +946,29 @@ class _LessonOverview extends StatelessWidget {
   final List<WorkshopTutorialDefinition> tutorials;
   final ValueChanged<TutorialKnowledgeMode> onLesson;
   final List<AuthoredLearningPath> authoredPaths;
+  final Map<String, NodeQlWorkshopProgress> workshopProgress;
   final ValueChanged<AuthoredLearningPath> onAuthoredPath;
 
   @override
   Widget build(BuildContext context) {
-    final completed = tutorials
-        .where(
-          (tutorial) => _practicePathCompleted(
-            tutorial.mode,
-            progress[tutorial.mode] ?? const TutorialLessonProgress(),
-          ),
-        )
-        .length;
+    final official = authoredPaths.isNotEmpty;
+    final completed = official
+        ? authoredPaths
+              .where(
+                (path) =>
+                    (workshopProgress[path.id] ??
+                            const NodeQlWorkshopProgress())
+                        .isCompleteFor(path.steps.map((step) => step.id)),
+              )
+              .length
+        : tutorials
+              .where(
+                (tutorial) => _practicePathCompleted(
+                  tutorial.mode,
+                  progress[tutorial.mode] ?? const TutorialLessonProgress(),
+                ),
+              )
+              .length;
     return SingleChildScrollView(
       key: const ValueKey('tutorial-lesson-overview'),
       padding: const EdgeInsets.all(28),
@@ -957,12 +992,21 @@ class _LessonOverview extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            catalog.text('tutorial.overview.body', {
-              'missions': tutorials.fold<int>(
-                0,
-                (total, tutorial) => total + tutorial.missionCount,
-              ),
-            }),
+            catalog.text(
+              official ? 'tutorial.official.body' : 'tutorial.overview.body',
+              {
+                'workshops': authoredPaths.length,
+                'missions': official
+                    ? authoredPaths.fold<int>(
+                        0,
+                        (total, path) => total + path.steps.length,
+                      )
+                    : tutorials.fold<int>(
+                        0,
+                        (total, tutorial) => total + tutorial.missionCount,
+                      ),
+              },
+            ),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.5,
@@ -971,8 +1015,9 @@ class _LessonOverview extends StatelessWidget {
           const SizedBox(height: 24),
           _WorkshopSummary(
             catalog: catalog,
+            official: official,
             completed: completed,
-            total: tutorials.length,
+            total: official ? authoredPaths.length : tutorials.length,
           ),
           const SizedBox(height: 22),
           Text(
@@ -1023,10 +1068,10 @@ class _LessonOverview extends StatelessWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (authoredPaths.isNotEmpty) ...[
+                  if (official) ...[
                     const SizedBox(height: 24),
                     Text(
-                      catalog.text('NodeQL Workshops'),
+                      catalog.text('tutorial.official.title'),
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -1042,10 +1087,23 @@ class _LessonOverview extends StatelessWidget {
                             child: _AuthoredLearningPathCard(
                               catalog: catalog,
                               path: path,
+                              progress:
+                                  workshopProgress[path.id] ??
+                                  const NodeQlWorkshopProgress(),
                               onTap: () => onAuthoredPath(path),
                             ),
                           ),
                       ],
+                    ),
+                  ] else ...[
+                    area(
+                      TutorialWorkshopArea.nodeQl,
+                      'tutorial.overview.area.nodeQl',
+                    ),
+                    const SizedBox(height: 24),
+                    area(
+                      TutorialWorkshopArea.sqlite,
+                      'tutorial.overview.area.sqlite',
                     ),
                   ],
                 ],
@@ -1128,17 +1186,22 @@ class _AuthoredLearningPathCard extends StatelessWidget {
   const _AuthoredLearningPathCard({
     required this.catalog,
     required this.path,
+    required this.progress,
     required this.onTap,
   });
 
   final TranslationCatalog catalog;
   final AuthoredLearningPath path;
+  final NodeQlWorkshopProgress progress;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = NodeQlWorkbenchColors.of(context);
     final colorScheme = Theme.of(context).colorScheme;
+    final stepIds = path.steps.map((step) => step.id);
+    final completed = progress.isCompleteFor(stepIds);
+    final done = progress.completedCount(stepIds);
     return Card(
       margin: EdgeInsets.zero,
       color: colors.panel,
@@ -1156,22 +1219,30 @@ class _AuthoredLearningPathCard extends StatelessWidget {
                   CircleAvatar(
                     backgroundColor: colorScheme.tertiaryContainer,
                     foregroundColor: colorScheme.onTertiaryContainer,
-                    child: const Icon(Icons.timeline_rounded),
+                    child: Icon(workshopIconFor(path.id)),
                   ),
                   const Spacer(),
-                  Chip(label: Text(catalog.text('tutorial.lesson.custom'))),
+                  Chip(
+                    label: Text(
+                      catalog.text(
+                        completed
+                            ? 'tutorial.lesson.completed'
+                            : 'tutorial.official.badge',
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
               Text(
-                path.title,
+                path.titleFor(catalog.locale),
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
-                path.description,
+                path.descriptionFor(catalog.locale),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: colors.muted, height: 1.4),
@@ -1187,6 +1258,41 @@ class _AuthoredLearningPathCard extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                value: path.steps.isEmpty ? 0 : done / path.steps.length,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                catalog.text('tutorial.official.stepProgress', {
+                  'completed': done,
+                  'total': path.steps.length,
+                }),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    completed
+                        ? Icons.replay
+                        : progress.started
+                        ? Icons.play_arrow_rounded
+                        : Icons.play_lesson_outlined,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    catalog.text(
+                      completed
+                          ? 'tutorial.lesson.repeat'
+                          : progress.started
+                          ? 'tutorial.lesson.resume'
+                          : 'tutorial.lesson.start',
+                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1245,11 +1351,13 @@ class _WorkshopSummary extends StatelessWidget {
     required this.catalog,
     required this.completed,
     required this.total,
+    this.official = false,
   });
 
   final TranslationCatalog catalog;
   final int completed;
   final int total;
+  final bool official;
 
   @override
   Widget build(BuildContext context) {
@@ -1278,10 +1386,12 @@ class _WorkshopSummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  catalog.text('tutorial.overview.progress', {
-                    'completed': completed,
-                    'total': total,
-                  }),
+                  catalog.text(
+                    official
+                        ? 'tutorial.official.progress'
+                        : 'tutorial.overview.progress',
+                    {'completed': completed, 'total': total},
+                  ),
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 4),

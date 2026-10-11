@@ -2934,6 +2934,9 @@ class _WorkshopWorkspaceViewState
   int _authoredNodeIndex = 0;
   bool _authoredNodeInserted = false;
   Map<String, String> _authoredNodeIds = const <String, String>{};
+  Set<String> _authoredCompletedSteps = const <String>{};
+  bool _loadingAuthoredStep = false;
+  int _authoredLoadToken = 0;
   bool _runningSql = false;
 
   @override
@@ -2951,6 +2954,10 @@ class _WorkshopWorkspaceViewState
     final workspace = ref.watch(workspaceProvider);
     final runtime = ref.watch(sqlRuntimeProvider);
     final mode = ref.watch(sqlModeProvider);
+    ref.listen(workspaceProvider.select((state) => state.revision), (_, _) {
+      _saveAuthoredProgress();
+    });
+    ref.listen(sqlModeProvider, (_, _) => _saveAuthoredProgress());
     final roots = workspace.roots;
     final practice = _practice;
     final authoredPath = _authoredPath;
@@ -2962,7 +2969,7 @@ class _WorkshopWorkspaceViewState
         : _activeAuthoredNode(authoredStep);
     final authoredGuide = authoredNode == null
         ? null
-        : _learningNodeGuide(authoredNode.type, localeCode);
+        : _learningNodeGuide(authoredNode.type, localeCode, mode);
     final definition = practice == null
         ? null
         : tutorialPracticeDefinitions[practice.mode];
@@ -3013,7 +3020,10 @@ class _WorkshopWorkspaceViewState
                 ref,
                 _startAuthoredPath,
               ),
-              onClose: widget.onExit,
+              onClose: () {
+                _saveAuthoredProgress();
+                widget.onExit();
+              },
             ),
             Expanded(
               child: LayoutBuilder(
@@ -3081,8 +3091,10 @@ class _WorkshopWorkspaceViewState
                               child: _Palette(
                                 key: ValueKey<String>(
                                   'workshop-palette-'
-                                  '${practice?.mode.name ?? 'overview'}-'
-                                  '${practice?.stepIndex ?? 0}-${mode.name}',
+                                  '${authoredPath?.id ?? practice?.mode.name ?? 'overview'}-'
+                                  '${authoredPath == null ? practice?.stepIndex ?? 0 : _authoredStepIndex}-'
+                                  '${authoredPath == null ? '' : '$_authoredNodeIndex-${_activeAuthoredNodeExists()}'}-'
+                                  '${mode.name}',
                                 ),
                                 category: _activeCategory,
                                 runtime: runtime,
@@ -3093,12 +3105,12 @@ class _WorkshopWorkspaceViewState
                                 pluginEntries: const <PluginPaletteEntry>[],
                                 guidedBlockType:
                                     authoredNode != null &&
-                                        !_authoredNodeInserted
+                                        !_activeAuthoredNodeExists()
                                     ? authoredNode.type
                                     : null,
                                 guidedLabel:
                                     authoredNode != null &&
-                                        !_authoredNodeInserted
+                                        !_activeAuthoredNodeExists()
                                     ? authoredGuide?.label
                                     : null,
                                 onAdd: _addWorkshopNode,
@@ -3133,8 +3145,19 @@ class _WorkshopWorkspaceViewState
                                             catalog: catalog,
                                             path: authoredPath,
                                             stepIndex: _authoredStepIndex,
+                                            mode: mode,
+                                            completedStepIds:
+                                                _authoredCompletedSteps,
                                             onStep: _showAuthoredStep,
                                             onClose: _closeAuthoredPath,
+                                            onContinue:
+                                                authoredNode == null &&
+                                                    !_loadingAuthoredStep
+                                                ? () => _continueAuthoredGuide(
+                                                    expectedStepId:
+                                                        authoredStep.id,
+                                                  )
+                                                : null,
                                             lockNavigation: true,
                                           ),
                                           if (authoredNode != null &&
@@ -3147,9 +3170,18 @@ class _WorkshopWorkspaceViewState
                                               total: _guidedNodeCount(
                                                 authoredStep,
                                               ),
-                                              inserted: _authoredNodeInserted,
-                                              onContinue: _authoredNodeInserted
-                                                  ? _continueAuthoredGuide
+                                              inserted:
+                                                  _activeAuthoredNodeExists(),
+                                              onContinue:
+                                                  !_loadingAuthoredStep &&
+                                                      _activeAuthoredNodeExists()
+                                                  ? () =>
+                                                        _continueAuthoredGuide(
+                                                          expectedStepId:
+                                                              authoredStep.id,
+                                                          expectedNodeRef:
+                                                              authoredNode.ref,
+                                                        )
                                                   : null,
                                             ),
                                         ] else if (practice != null &&
@@ -3276,7 +3308,8 @@ class _WorkshopWorkspaceViewState
       catalog: catalog,
       initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
       authoredPaths: ref.read(learningPathLibraryProvider).paths,
-      onStartAuthoredPath: (path) async => _startAuthoredPath(path),
+      workshopProgress: ref.read(tutorialControllerProvider).workshopProgress,
+      onStartAuthoredPath: _startAuthoredPath,
       onProgressChanged: (mode, progress) => ref
           .read(tutorialControllerProvider.notifier)
           .saveLessonProgress(mode, progress),
@@ -3441,26 +3474,86 @@ class _WorkshopWorkspaceViewState
 
   void _closePractice() => setState(() => _practice = null);
 
-  void _startAuthoredPath(AuthoredLearningPath path) {
+  Future<void> _startAuthoredPath(AuthoredLearningPath path) async {
     if (path.steps.isEmpty) return;
+    _saveAuthoredProgress();
+    final tutorial = ref.read(tutorialControllerProvider.notifier);
+    await tutorial.initialize();
+    if (!mounted) return;
+    final progress = ref
+        .read(tutorialControllerProvider)
+        .workshopProgressFor(path.id);
+    final repeat = progress.isCompleteFor(path.steps.map((step) => step.id));
+    final savedStepIndex = path.steps.indexWhere(
+      (step) => step.id == progress.currentStepId,
+    );
+    var resume =
+        !repeat && savedStepIndex >= 0 && progress.workspaceJson != null;
+    _loadingAuthoredStep = true;
+    final token = ++_authoredLoadToken;
+    final workspace = ref.read(workspaceProvider.notifier);
+    if (resume) {
+      try {
+        workspace.loadFromJsonString(progress.workspaceJson!);
+      } on Object {
+        resume = false;
+      }
+    }
+    final stepIndex = resume ? savedStepIndex : 0;
+    final step = path.steps[stepIndex];
+    await ref
+        .read(sqlModeProvider.notifier)
+        .setMode(
+          resume
+              ? (progress.abstractionMode == 'advanced'
+                    ? SqlAbstractionMode.advanced
+                    : SqlAbstractionMode.simple)
+              : (step.mode == LearningPathMode.simple
+                    ? SqlAbstractionMode.simple
+                    : SqlAbstractionMode.advanced),
+        );
+    if (!mounted || token != _authoredLoadToken) return;
+    if (!resume) workspace.resetWithRoot(recordUndo: false, clearHistory: true);
+    ref.read(sqlRuntimeProvider.notifier).clearResults();
+    _transform.value = Matrix4.identity();
+    var nodeIndex = resume
+        ? step.nodes.indexWhere((node) => node.ref == progress.currentNodeRef)
+        : -1;
+    if (nodeIndex < 0) {
+      nodeIndex = step.nodes.indexWhere(
+        (node) => node.type != BlockType.eventGreenFlag,
+      );
+    }
     setState(() {
       _practice = null;
       _authoredPath = path;
-      _authoredStepIndex = 0;
-      _authoredNodeIndex = 0;
-      _authoredNodeInserted = false;
+      _authoredStepIndex = stepIndex;
+      _authoredNodeIndex = nodeIndex < 0 ? step.nodes.length : nodeIndex;
+      _authoredNodeIds = resume ? progress.nodeIds : const <String, String>{};
+      _authoredCompletedSteps = resume
+          ? progress.completedStepIds
+          : const <String>{};
+      _authoredNodeInserted = resume && progress.nodeInserted;
+      _loadingAuthoredStep = false;
+      final node = _activeAuthoredNode(step);
+      if (node != null) _activeCategory = _categoryForLearningNode(node.type);
     });
-    unawaited(_loadAuthoredStep(path, 0));
+    _saveAuthoredProgress();
   }
 
   void _showAuthoredStep(int index) {
     final path = _authoredPath;
     if (path == null || index < 0 || index >= path.steps.length) return;
-    setState(() => _authoredStepIndex = index);
+    _saveAuthoredProgress();
+    setState(() {
+      _loadingAuthoredStep = true;
+      _authoredStepIndex = index;
+    });
     unawaited(_loadAuthoredStep(path, index));
   }
 
   Future<void> _loadAuthoredStep(AuthoredLearningPath path, int index) async {
+    final token = ++_authoredLoadToken;
     final step = path.steps[index];
     await ref
         .read(sqlModeProvider.notifier)
@@ -3469,13 +3562,10 @@ class _WorkshopWorkspaceViewState
               ? SqlAbstractionMode.simple
               : SqlAbstractionMode.advanced,
         );
-    if (!mounted) return;
+    if (!mounted || token != _authoredLoadToken || _authoredPath != path) {
+      return;
+    }
     ref.read(sqlRuntimeProvider.notifier).clearResults();
-    ref
-        .read(workspaceProvider.notifier)
-        .resetWithRoot(recordUndo: false, clearHistory: true);
-    _transform.value = Matrix4.identity();
-    if (!mounted) return;
     final firstNodeIndex = step.nodes.indexWhere(
       (node) => node.type != BlockType.eventGreenFlag,
     );
@@ -3484,10 +3574,53 @@ class _WorkshopWorkspaceViewState
           ? step.nodes.length
           : firstNodeIndex;
       _authoredNodeInserted = false;
-      _authoredNodeIds = const <String, String>{};
+      _loadingAuthoredStep = false;
       final node = _activeAuthoredNode(step);
-      if (node != null) _activeCategory = _categoryForLearningNode(node.type);
+      if (node != null) {
+        _activeCategory = _categoryForLearningNode(node.type);
+        final existing = ref
+            .read(workspaceProvider.notifier)
+            .findById(_authoredNodeIds[node.ref] ?? '');
+        _authoredNodeInserted = existing?.type == node.type;
+      }
     });
+    _saveAuthoredProgress();
+  }
+
+  bool _activeAuthoredNodeExists() {
+    final path = _authoredPath;
+    if (path == null || !_authoredNodeInserted) return false;
+    final node = _activeAuthoredNode(path.steps[_authoredStepIndex]);
+    if (node == null) return false;
+    return ref
+            .read(workspaceProvider.notifier)
+            .findById(_authoredNodeIds[node.ref] ?? '')
+            ?.type ==
+        node.type;
+  }
+
+  void _saveAuthoredProgress({bool completed = false}) {
+    final path = _authoredPath;
+    if (path == null || _loadingAuthoredStep) return;
+    final step = path.steps[_authoredStepIndex];
+    final workspace = ref.read(workspaceProvider.notifier);
+    unawaited(
+      ref
+          .read(tutorialControllerProvider.notifier)
+          .saveWorkshopProgress(
+            path.id,
+            NodeQlWorkshopProgress(
+              currentStepId: step.id,
+              currentNodeRef: _activeAuthoredNode(step)?.ref ?? '',
+              nodeInserted: _activeAuthoredNodeExists(),
+              completedStepIds: _authoredCompletedSteps,
+              completed: completed,
+              workspaceJson: workspace.toJsonString(),
+              nodeIds: _authoredNodeIds,
+              abstractionMode: ref.read(sqlModeProvider).name,
+            ),
+          ),
+    );
   }
 
   LearningPathNodeTemplate? _activeAuthoredNode(LearningPathStep step) {
@@ -3517,7 +3650,9 @@ class _WorkshopWorkspaceViewState
 
   void _registerAuthoredNode(BlockNode node) {
     final path = _authoredPath;
-    if (path == null || _authoredNodeInserted) return;
+    if (path == null || _loadingAuthoredStep || _activeAuthoredNodeExists()) {
+      return;
+    }
     final active = _activeAuthoredNode(path.steps[_authoredStepIndex]);
     if (active == null || active.type != node.type) return;
     node.inputs.addAll(active.defaults);
@@ -3528,12 +3663,22 @@ class _WorkshopWorkspaceViewState
         active.ref: node.id,
       });
     });
+    _saveAuthoredProgress();
   }
 
-  void _continueAuthoredGuide() {
+  void _continueAuthoredGuide({
+    String? expectedStepId,
+    String? expectedNodeRef,
+  }) {
     final path = _authoredPath;
-    if (path == null) return;
+    if (path == null || _loadingAuthoredStep) return;
     final step = path.steps[_authoredStepIndex];
+    final active = _activeAuthoredNode(step);
+    if ((expectedStepId != null && expectedStepId != step.id) ||
+        (expectedNodeRef != null && expectedNodeRef != active?.ref) ||
+        (active != null && !_activeAuthoredNodeExists())) {
+      return;
+    }
     var nextIndex = _authoredNodeIndex + 1;
     while (nextIndex < step.nodes.length &&
         step.nodes[nextIndex].type == BlockType.eventGreenFlag) {
@@ -3542,15 +3687,34 @@ class _WorkshopWorkspaceViewState
     if (nextIndex < step.nodes.length) {
       setState(() {
         _authoredNodeIndex = nextIndex;
-        _authoredNodeInserted = false;
+        final next = step.nodes[nextIndex];
+        _authoredNodeInserted =
+            ref
+                .read(workspaceProvider.notifier)
+                .findById(_authoredNodeIds[next.ref] ?? '')
+                ?.type ==
+            next.type;
         _activeCategory = _categoryForLearningNode(step.nodes[nextIndex].type);
       });
+      _saveAuthoredProgress();
       return;
     }
+    _authoredCompletedSteps = {..._authoredCompletedSteps, step.id};
     if (_authoredStepIndex + 1 < path.steps.length) {
       _showAuthoredStep(_authoredStepIndex + 1);
     } else {
-      _closeAuthoredPath();
+      _saveAuthoredProgress(completed: true);
+      final catalog = ref.read(translationControllerProvider).catalog;
+      _closeAuthoredPath(saveProgress: false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            catalog.text('tutorial.official.finished', {
+              'title': path.titleFor(catalog.locale),
+            }),
+          ),
+        ),
+      );
     }
   }
 
@@ -3558,27 +3722,31 @@ class _WorkshopWorkspaceViewState
     LearningPathNodeTemplate? node,
     _LearningNodeGuide? guide,
   ) {
-    if (!_authoredNodeInserted || node == null || guide == null) {
+    if (!_activeAuthoredNodeExists() || node == null || guide == null) {
       return const <LearningPathNodeCallout>[];
     }
     return <LearningPathNodeCallout>[
       LearningPathNodeCallout(
         id: 'guide-${node.ref}',
         targetRef: node.ref,
-        title: guide.label,
+        title: guide.displayedLabel,
         body:
-            '${guide.explanation}\nSQLite: ${guide.sqliteCommand}'
+            '${guide.explanation}\n${guide.modeReference}\nSQLite: ${guide.sqliteCommand}'
             '${guide.comparison == null ? '' : '\n${guide.comparison}'}',
       ),
     ];
   }
 
-  void _closeAuthoredPath() {
+  void _closeAuthoredPath({bool saveProgress = true}) {
+    if (saveProgress) _saveAuthoredProgress();
+    _authoredLoadToken++;
     setState(() {
       _authoredPath = null;
       _authoredNodeIndex = 0;
       _authoredNodeInserted = false;
       _authoredNodeIds = const <String, String>{};
+      _authoredCompletedSteps = const <String>{};
+      _loadingAuthoredStep = false;
     });
   }
 
@@ -3667,15 +3835,78 @@ class _LearningNodeGuide {
     required this.explanation,
     required this.sqliteCommand,
     this.comparison,
+    this.modeLabel,
+    this.modeReference,
+    this.addPrompt,
+    this.addedSuffix,
+    this.waitingMessage,
+    this.continueLabel,
   });
 
   final String label;
   final String explanation;
   final String sqliteCommand;
   final String? comparison;
+  final String? modeLabel;
+  final String? modeReference;
+  final String? addPrompt;
+  final String? addedSuffix;
+  final String? waitingMessage;
+  final String? continueLabel;
+
+  String get displayedLabel => modeLabel ?? label;
+
+  _LearningNodeGuide forMode(
+    BlockType type,
+    String localeCode,
+    SqlAbstractionMode mode,
+  ) {
+    final simpleLabel = label;
+    final sqliteLabel = _sqliteKeywordFor(type, localeCode);
+    final de = localeCode == 'de';
+    final simple = mode == SqlAbstractionMode.simple;
+    return _LearningNodeGuide(
+      label: label,
+      explanation: explanation,
+      sqliteCommand: sqliteCommand,
+      comparison: comparison,
+      modeLabel: simple ? simpleLabel : sqliteLabel,
+      modeReference: simple
+          ? (de
+                ? '„$simpleLabel“ heißt in SQLite „$sqliteLabel“. '
+                      'Wechsle zu Erweitert, um den SQLite-Begriff auf dem Node zu sehen.'
+                : '“$simpleLabel” is called “$sqliteLabel” in SQLite. '
+                      'Switch to Advanced to see the SQLite term on the node.')
+          : (de
+                ? 'SQLite nennt diesen Node „$sqliteLabel“. '
+                      'Im Einfach-Modus heißt er „$simpleLabel“. '
+                : 'SQLite calls this node “$sqliteLabel”. '
+                      'In Simple Mode it is “$simpleLabel”.'),
+      addPrompt: de ? 'Jetzt einfügen' : 'Add now',
+      addedSuffix: de ? 'eingefügt' : 'added',
+      waitingMessage: de
+          ? 'Der violett-lime markierte Node in der Auswahl ist jetzt der einzige nächste Schritt.'
+          : 'The purple-lime highlighted node in the palette is the only next step now.',
+      continueLabel: de ? 'Weiter' : 'Continue',
+    );
+  }
 }
 
-_LearningNodeGuide _learningNodeGuide(BlockType type, String localeCode) {
+String _sqliteKeywordFor(BlockType type, String localeCode) {
+  final label = sqlLabelFor(
+    type,
+    SqlAbstractionMode.advanced,
+    const <String, dynamic>{},
+    localeCode,
+  );
+  return RegExp(r'[A-Z][A-Z_ ]*').firstMatch(label)?.group(0)?.trim() ?? label;
+}
+
+_LearningNodeGuide _learningNodeGuide(
+  BlockType type,
+  String localeCode,
+  SqlAbstractionMode mode,
+) {
   final de = localeCode == 'de';
   _LearningNodeGuide guide(
     String deLabel,
@@ -3691,7 +3922,7 @@ _LearningNodeGuide _learningNodeGuide(BlockType type, String localeCode) {
     sqliteCommand: command,
     comparison: de ? deComparison : enComparison,
   );
-  return switch (type) {
+  final result = switch (type) {
     BlockType.sqlSelect => guide(
       'Daten auswählen',
       'Select data',
@@ -3857,6 +4088,7 @@ _LearningNodeGuide _learningNodeGuide(BlockType type, String localeCode) {
       type.name,
     ),
   };
+  return result.forMode(type, localeCode, mode);
 }
 
 class _GuidedLearningCard extends StatelessWidget {
@@ -3905,16 +4137,16 @@ class _GuidedLearningCard extends StatelessWidget {
               children: [
                 Text(
                   inserted
-                      ? '${guide.label} eingefügt'
-                      : 'Jetzt einfügen: ${guide.label}',
+                      ? '${guide.displayedLabel} ${guide.addedSuffix}'
+                      : '${guide.addPrompt}: ${guide.displayedLabel}',
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   inserted
-                      ? '${guide.explanation}\nSQLite: ${guide.sqliteCommand}'
+                      ? '${guide.explanation}\n${guide.modeReference}\nSQLite: ${guide.sqliteCommand}'
                             '${guide.comparison == null ? '' : '\n${guide.comparison}'}'
-                      : 'Der violett-lime markierte Node in der Auswahl ist jetzt der einzige nächste Schritt.',
+                      : guide.waitingMessage!,
                   style: TextStyle(color: colors.muted, height: 1.35),
                 ),
                 if (inserted) ...[
@@ -3923,7 +4155,7 @@ class _GuidedLearningCard extends StatelessWidget {
                     key: const ValueKey('guided-learning-continue'),
                     onPressed: onContinue,
                     icon: const Icon(Icons.arrow_forward_rounded),
-                    label: const Text('Weiter'),
+                    label: Text(guide.continueLabel!),
                   ),
                 ],
               ],
@@ -4858,6 +5090,12 @@ class _PaletteState extends State<_Palette> {
                     block.key.toLowerCase().contains(query);
               })
               .toList(growable: false);
+    final orderedBlocks = widget.guidedBlockType == null
+        ? blocks
+        : [
+            ...blocks.where((block) => block.type == widget.guidedBlockType),
+            ...blocks.where((block) => block.type != widget.guidedBlockType),
+          ];
 
     return SizedBox(
       width: widget.width,
@@ -4934,7 +5172,7 @@ class _PaletteState extends State<_Palette> {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              children: blocks
+              children: orderedBlocks
                   .map(
                     (block) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),

@@ -10,6 +10,7 @@ void main() {
     final paths = decodeLearningPathBundle(jsonDecode(source));
 
     expect(paths, hasLength(11));
+    expect(paths.map((path) => path.id).toSet(), hasLength(paths.length));
     expect(
       paths.map((path) => path.id),
       containsAll(<String>[
@@ -27,7 +28,16 @@ void main() {
       ]),
     );
     for (final path in paths) {
+      expect(path.titleTranslations['de'], isNotEmpty);
+      expect(path.titleTranslations['en'], isNotEmpty);
+      expect(path.descriptionTranslations['de'], isNotEmpty);
+      expect(path.descriptionTranslations['en'], isNotEmpty);
       expect(path.steps, isNotEmpty, reason: '${path.id} has no steps');
+      expect(
+        path.steps.map((step) => step.id).toSet(),
+        hasLength(path.steps.length),
+        reason: '${path.id} needs unique step IDs for saved progress',
+      );
       expect(
         path.steps.first.mode,
         LearningPathMode.simple,

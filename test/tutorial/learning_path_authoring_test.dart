@@ -42,6 +42,33 @@ void main() {
     expect(restored.calloutCount, 1);
   });
 
+  test('published bundles resolve localized workshop metadata', () {
+    final path = AuthoredLearningPath.fromJson(<String, dynamic>{
+      'id': 'localized-path',
+      'title': <String, String>{
+        'de': 'Deutscher Workshop',
+        'en': 'English workshop',
+      },
+      'description': <String, String>{
+        'de': 'Deutsche Beschreibung',
+        'en': 'English description',
+      },
+      'steps': <Object>[
+        <String, dynamic>{
+          'id': 'step',
+          'title': 'Step',
+          'instruction': 'Inspect it.',
+        },
+      ],
+    });
+
+    expect(path.titleFor('en'), 'English workshop');
+    expect(path.titleFor('en-US'), 'English workshop');
+    expect(path.titleFor('de'), 'Deutscher Workshop');
+    expect(path.descriptionFor('fr'), 'English description');
+    expect(path.toJson()['title'], isA<Map<String, String>>());
+  });
+
   test('library persists, replaces and deletes authored paths', () async {
     final directory = await Directory.systemTemp.createTemp(
       'nodeql-learning-paths-',

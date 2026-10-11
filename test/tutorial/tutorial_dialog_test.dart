@@ -10,6 +10,65 @@ import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 
 void main() {
+  testWidgets(
+    'official overview counts workshop IDs and offers resume or repeat',
+    (tester) async {
+      const first = AuthoredLearningPath(
+        id: 'first',
+        title: 'First workshop',
+        description: 'Completed.',
+        steps: [LearningPathStep(id: 'one', title: 'One', instruction: '')],
+      );
+      const second = AuthoredLearningPath(
+        id: 'second',
+        title: 'Second workshop',
+        description: 'In progress.',
+        steps: [
+          LearningPathStep(id: 'two', title: 'Two', instruction: ''),
+          LearningPathStep(id: 'three', title: 'Three', instruction: ''),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TutorialDialog(
+            catalog: _englishCatalog(),
+            authoredPaths: const [first, second],
+            workshopProgress: const {
+              'first': NodeQlWorkshopProgress(
+                completed: true,
+                completedStepIds: {'one'},
+              ),
+              'second': NodeQlWorkshopProgress(
+                currentStepId: 'three',
+                completedStepIds: {'two'},
+              ),
+              'removed': NodeQlWorkshopProgress(
+                completed: true,
+                completedStepIds: {'old'},
+              ),
+            },
+            initialProgress: const {
+              TutorialKnowledgeMode.selectAndSimpleFilters:
+                  TutorialLessonProgress(practiceCompleted: true),
+            },
+            onStartAuthoredPath: (_) async {},
+            onComplete: () async {},
+          ),
+        ),
+      );
+      expect(find.text('1 of 1 steps completed'), findsOneWidget);
+      expect(find.text('1 of 2 steps completed'), findsOneWidget);
+      expect(find.text('Repeat in workspace'), findsOneWidget);
+      expect(find.text('Continue in workspace'), findsOneWidget);
+      expect(find.text('1 of 2 workshops completed'), findsWidgets);
+      expect(
+        find.byKey(const ValueKey('tutorial-lesson-selectAndSimpleFilters')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('launches a practical path directly in the real workspace', (
     tester,
   ) async {
@@ -92,7 +151,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Published workshops'), findsOneWidget);
+    expect(find.text('NodeQL Workshops'), findsOneWidget);
     final card = find.byKey(
       const ValueKey('authored-learning-path-published-select'),
     );

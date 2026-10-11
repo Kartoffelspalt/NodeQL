@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
+import 'package:nodeql/features/tutorial/workshop_icons.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 
 class LearningPathTimelinePanel extends StatelessWidget {
@@ -10,6 +12,9 @@ class LearningPathTimelinePanel extends StatelessWidget {
     required this.onStep,
     required this.onClose,
     this.lockNavigation = false,
+    this.mode,
+    this.completedStepIds = const <String>{},
+    this.onContinue,
     super.key,
   });
 
@@ -19,10 +24,19 @@ class LearningPathTimelinePanel extends StatelessWidget {
   final ValueChanged<int> onStep;
   final VoidCallback onClose;
   final bool lockNavigation;
+  final SqlAbstractionMode? mode;
+  final Set<String> completedStepIds;
+  final VoidCallback? onContinue;
 
   @override
   Widget build(BuildContext context) {
     final step = path.steps[stepIndex];
+    final simple = mode == null
+        ? step.mode == LearningPathMode.simple
+        : mode == SqlAbstractionMode.simple;
+    final completed = path.steps
+        .where((step) => completedStepIds.contains(step.id))
+        .length;
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       key: const ValueKey('learning-path-timeline-panel'),
@@ -43,7 +57,7 @@ class LearningPathTimelinePanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                Icons.timeline_rounded,
+                workshopIconFor(path.id),
                 color: colorScheme.onPrimaryContainer,
               ),
             ),
@@ -53,7 +67,7 @@ class LearningPathTimelinePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    path.title,
+                    path.titleFor(catalog.locale),
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       color: colorScheme.primary,
                       fontWeight: FontWeight.w800,
@@ -70,16 +84,12 @@ class LearningPathTimelinePanel extends StatelessWidget {
                   Chip(
                     visualDensity: VisualDensity.compact,
                     avatar: Icon(
-                      step.mode == LearningPathMode.simple
-                          ? Icons.looks_one_outlined
-                          : Icons.tune_rounded,
+                      simple ? Icons.looks_one_outlined : Icons.tune_rounded,
                       size: 16,
                     ),
                     label: Text(
                       catalog.text(
-                        step.mode == LearningPathMode.simple
-                            ? 'toolbar.simple'
-                            : 'toolbar.advanced',
+                        simple ? 'toolbar.simple' : 'toolbar.advanced',
                       ),
                     ),
                   ),
@@ -105,7 +115,15 @@ class LearningPathTimelinePanel extends StatelessWidget {
                             padding: const EdgeInsets.only(right: 7),
                             child: ActionChip(
                               key: ValueKey('learning-path-step-$index'),
-                              avatar: CircleAvatar(child: Text('${index + 1}')),
+                              avatar:
+                                  completedStepIds.contains(
+                                    path.steps[index].id,
+                                  )
+                                  ? const Icon(
+                                      Icons.check_circle_outline,
+                                      size: 18,
+                                    )
+                                  : CircleAvatar(child: Text('${index + 1}')),
                               label: Text(path.steps[index].title),
                               backgroundColor: index == stepIndex
                                   ? colorScheme.primaryContainer
@@ -135,11 +153,14 @@ class LearningPathTimelinePanel extends StatelessWidget {
                       icon: const Icon(Icons.arrow_back),
                     ),
                     FilledButton.icon(
-                      onPressed: lockNavigation
-                          ? null
-                          : stepIndex == path.steps.length - 1
-                          ? onClose
-                          : () => onStep(stepIndex + 1),
+                      key: const ValueKey('learning-path-continue'),
+                      onPressed:
+                          onContinue ??
+                          (lockNavigation
+                              ? null
+                              : stepIndex == path.steps.length - 1
+                              ? onClose
+                              : () => onStep(stepIndex + 1)),
                       icon: Icon(
                         stepIndex == path.steps.length - 1
                             ? Icons.check
@@ -159,6 +180,20 @@ class LearningPathTimelinePanel extends StatelessWidget {
                       icon: const Icon(Icons.close),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  catalog.text('tutorial.official.stepProgress', {
+                    'completed': completed,
+                    'total': path.steps.length,
+                  }),
+                ),
+                const SizedBox(height: 5),
+                SizedBox(
+                  width: 180,
+                  child: LinearProgressIndicator(
+                    value: completed / path.steps.length,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(

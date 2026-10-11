@@ -148,28 +148,47 @@ class AuthoredLearningPath {
     required this.title,
     required this.description,
     required this.steps,
+    this.titleTranslations = const <String, String>{},
+    this.descriptionTranslations = const <String, String>{},
   });
 
   final String id;
   final String title;
   final String description;
   final List<LearningPathStep> steps;
+  final Map<String, String> titleTranslations;
+  final Map<String, String> descriptionTranslations;
+
+  /// Resolves bundle metadata for the app's current language.
+  ///
+  /// Locally authored paths continue to use their plain string fields. A
+  /// published bundle can instead provide language maps without making old
+  /// exports unreadable.
+  String titleFor(String languageCode) =>
+      _localizedBundleText(titleTranslations, languageCode, title);
+
+  String descriptionFor(String languageCode) =>
+      _localizedBundleText(descriptionTranslations, languageCode, description);
 
   int get calloutCount =>
       steps.fold<int>(0, (count, step) => count + step.callouts.length);
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
-    'title': title,
-    'description': description,
+    'title': _bundleTextJson(title, titleTranslations),
+    'description': _bundleTextJson(description, descriptionTranslations),
     'steps': steps.map((step) => step.toJson()).toList(),
   };
 
   factory AuthoredLearningPath.fromJson(Map<String, dynamic> json) {
+    final title = _decodeBundleText(json['title']);
+    final description = _decodeBundleText(json['description']);
     return AuthoredLearningPath(
       id: '${json['id'] ?? ''}',
-      title: '${json['title'] ?? ''}',
-      description: '${json['description'] ?? ''}',
+      title: title.fallback,
+      description: description.fallback,
+      titleTranslations: title.translations,
+      descriptionTranslations: description.translations,
       steps: (json['steps'] as List? ?? const <Object>[])
           .whereType<Map>()
           .map(
@@ -179,6 +198,51 @@ class AuthoredLearningPath {
           .toList(growable: false),
     );
   }
+}
+
+class _BundleText {
+  const _BundleText({required this.fallback, required this.translations});
+
+  final String fallback;
+  final Map<String, String> translations;
+}
+
+_BundleText _decodeBundleText(Object? value) {
+  if (value is String) {
+    return _BundleText(fallback: value, translations: const <String, String>{});
+  }
+  if (value is! Map) {
+    return const _BundleText(fallback: '', translations: <String, String>{});
+  }
+  final translations = <String, String>{
+    for (final entry in value.entries)
+      if ('${entry.key}'.trim().isNotEmpty &&
+          '${entry.value}'.trim().isNotEmpty)
+        '${entry.key}'.trim().toLowerCase(): '${entry.value}'.trim(),
+  };
+  return _BundleText(
+    fallback:
+        translations['en'] ??
+        translations['de'] ??
+        translations.values.firstOrNull ??
+        '',
+    translations: Map.unmodifiable(translations),
+  );
+}
+
+Object _bundleTextJson(String fallback, Map<String, String> translations) =>
+    translations.isEmpty ? fallback : translations;
+
+String _localizedBundleText(
+  Map<String, String> translations,
+  String languageCode,
+  String fallback,
+) {
+  final normalized = languageCode.toLowerCase().split(RegExp('[-_]')).first;
+  return translations[languageCode.toLowerCase()] ??
+      translations[normalized] ??
+      translations['en'] ??
+      fallback;
 }
 
 class LearningPathLibraryState {
