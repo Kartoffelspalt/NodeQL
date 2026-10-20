@@ -18,6 +18,7 @@ analyzer:
     - linux/**
     # Separate Flutter package with its own dependency graph and analyzer run.
     - tools/workshop_admin/**
+    - tools/onboarding_studio/**
 include: package:flutter_lints/flutter.yaml
 
 linter:
