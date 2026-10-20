@@ -27,6 +27,77 @@ enum TutorialKnowledgeMode {
 
 enum TutorialWorkshopArea { sqlite, nodeQl }
 
+/// Progress for an official, bundled workshop, keyed by stable content IDs.
+class NodeQlWorkshopProgress {
+  const NodeQlWorkshopProgress({
+    this.currentStepId = '',
+    this.currentNodeRef = '',
+    this.nodeInserted = false,
+    this.completedStepIds = const <String>{},
+    this.completed = false,
+    this.workspaceJson,
+    this.nodeIds = const <String, String>{},
+    this.abstractionMode = 'simple',
+  });
+
+  final String currentStepId;
+  final String currentNodeRef;
+  final bool nodeInserted;
+  final Set<String> completedStepIds;
+  final bool completed;
+  final String? workspaceJson;
+  final Map<String, String> nodeIds;
+  final String abstractionMode;
+
+  bool get started => currentStepId.isNotEmpty;
+
+  int completedCount(Iterable<String> stepIds) =>
+      stepIds.where(completedStepIds.contains).length;
+
+  bool isCompleteFor(Iterable<String> stepIds) =>
+      completed && stepIds.every(completedStepIds.contains);
+
+  Map<String, dynamic> toJson() => {
+    'currentStepId': currentStepId,
+    'currentNodeRef': currentNodeRef,
+    'nodeInserted': nodeInserted,
+    'completedStepIds': completedStepIds.toList()..sort(),
+    'completed': completed,
+    'workspaceJson': workspaceJson,
+    'nodeIds': nodeIds,
+    'abstractionMode': abstractionMode,
+  };
+
+  factory NodeQlWorkshopProgress.fromJson(Object? value) {
+    if (value is! Map) return const NodeQlWorkshopProgress();
+    return NodeQlWorkshopProgress(
+      currentStepId: value['currentStepId'] is String
+          ? value['currentStepId'] as String
+          : '',
+      currentNodeRef: value['currentNodeRef'] is String
+          ? value['currentNodeRef'] as String
+          : '',
+      nodeInserted: value['nodeInserted'] == true,
+      completedStepIds: value['completedStepIds'] is List
+          ? (value['completedStepIds'] as List).whereType<String>().toSet()
+          : const <String>{},
+      completed: value['completed'] == true,
+      workspaceJson: value['workspaceJson'] is String
+          ? value['workspaceJson'] as String
+          : null,
+      nodeIds: {
+        if (value['nodeIds'] is Map)
+          for (final entry in (value['nodeIds'] as Map).entries)
+            if (entry.key is String && entry.value is String)
+              entry.key as String: entry.value as String,
+      },
+      abstractionMode: value['abstractionMode'] == 'advanced'
+          ? 'advanced'
+          : 'simple',
+    );
+  }
+}
+
 extension TutorialKnowledgeModeMetadata on TutorialKnowledgeMode {
   TutorialWorkshopArea get area => switch (this) {
     TutorialKnowledgeMode.databaseTools ||

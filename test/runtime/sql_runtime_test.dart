@@ -38,6 +38,65 @@ void main() {
   );
 
   test(
+    'automatic preview rejects injected writes without changing the database',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'nodeql_read_only_preview',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final path = '${tempDir.path}${Platform.pathSeparator}preview.db';
+      final database = sqlite3.open(path);
+      database.execute('''
+      CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);
+      INSERT INTO notes (body) VALUES ('keep me');
+    ''');
+      database.close();
+
+      final controller = SqlRuntimeController();
+      await controller.attachDatabasePath(path);
+
+      final result = await controller.executeReadOnlyPreview(
+        'SELECT * FROM notes; DELETE FROM notes; -- injected write',
+      );
+
+      expect(result.success, isFalse);
+      expect(result.message, startsWith('Live preview blocked:'));
+      final verification = sqlite3.open(path);
+      expect(
+        verification.select('SELECT body FROM notes;').single['body'],
+        'keep me',
+      );
+      verification.close();
+    },
+  );
+
+  test('automatic preview still returns rows for a read-only query', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'nodeql_read_only_preview_query',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+    final path = '${tempDir.path}${Platform.pathSeparator}preview.db';
+    final database = sqlite3.open(path);
+    database.execute('''
+      CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);
+      INSERT INTO notes (body) VALUES ('visible');
+    ''');
+    database.close();
+
+    final controller = SqlRuntimeController();
+    await controller.attachDatabasePath(path);
+
+    final result = await controller.executeReadOnlyPreview(
+      'SELECT body FROM notes;',
+    );
+
+    expect(result.success, isTrue);
+    expect(result.rows, <Map<String, String>>[
+      <String, String>{'body': 'visible'},
+    ]);
+  });
+
+  test(
     'executes a visual SQLite program instead of accepting node SQLite text',
     () async {
       final tempDir = await Directory.systemTemp.createTemp(
@@ -101,6 +160,31 @@ void main() {
     ]);
     expect(controller.state.lastMessage, 'OK');
   });
+
+  test(
+    'clears the database connection and query output for a new project',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp('nodeql_sql_clear');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final path = '${tempDir.path}${Platform.pathSeparator}runtime.db';
+      final database = sqlite3.open(path);
+      database.execute(
+        'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);',
+      );
+      database.close();
+
+      final controller = SqlRuntimeController();
+      await controller.attachDatabasePath(path);
+      await controller.executeWithSnapshot('SELECT * FROM notes;');
+      controller.clearDatabase();
+
+      expect(controller.state.dbPath, isNull);
+      expect(controller.state.schemas, isEmpty);
+      expect(controller.state.lastRows, isEmpty);
+      expect(controller.state.lastSql, isEmpty);
+      expect(controller.state.lastMessage, isNull);
+    },
+  );
 
   test(
     'preserves duplicate JOIN columns and their positional values',

@@ -3,6 +3,17 @@ import 'package:nodeql/data/project/project_file_paths.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('bounds project source size before decoding', () {
+    expect(
+      ProjectFileLimits.allowsSourceSize(ProjectFileLimits.maxSourceBytes),
+      isTrue,
+    );
+    expect(
+      ProjectFileLimits.allowsSourceSize(ProjectFileLimits.maxSourceBytes + 1),
+      isFalse,
+    );
+  });
+
   test('Windows project files store portable relative database paths', () {
     final windows = p.Context(style: p.Style.windows);
     final relative = ProjectFilePaths.relativeDatabasePath(

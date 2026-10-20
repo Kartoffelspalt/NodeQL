@@ -4,8 +4,114 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
+import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 
 void main() {
+  test(
+    'persists official workshop snapshots alongside legacy progress',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('nodeql_workshop_');
+      addTearDown(() => temp.delete(recursive: true));
+      final file = File('${temp.path}/tutorial.json');
+      final gate = Completer<void>();
+      final controller = TutorialController(
+        storageFile: () async {
+          await gate.future;
+          return file;
+        },
+      );
+      addTearDown(controller.dispose);
+      final workspace = WorkspaceController()..resetWithRoot();
+      addTearDown(workspace.dispose);
+      final select = workspace.addTemplate(
+        BlockType.sqlSelect,
+        workspace.suggestedTemplatePosition(BlockType.sqlSelect),
+        defaults: {'columns': 'name', 'table': 'customers'},
+      );
+      final where = workspace.addTemplate(
+        BlockType.sqlWhere,
+        workspace.suggestedTemplatePosition(BlockType.sqlWhere),
+      );
+      final progress = NodeQlWorkshopProgress(
+        currentStepId: 'filter',
+        currentNodeRef: 'where',
+        nodeInserted: true,
+        completedStepIds: {'projection'},
+        workspaceJson: workspace.toJsonString(),
+        nodeIds: {'select': select.id, 'where': where.id},
+        abstractionMode: 'advanced',
+      );
+      final save = controller.saveWorkshopProgress('select-workshop', progress);
+      gate.complete();
+      await save;
+      await controller.saveLessonProgress(
+        TutorialKnowledgeMode.dataTypes,
+        const TutorialLessonProgress(completedPracticeSteps: {0}),
+      );
+      await controller.complete();
+      final restored = TutorialController(storageFile: () async => file);
+      addTearDown(restored.dispose);
+      await restored.initialize();
+      final saved = restored.state.workshopProgressFor('select-workshop');
+      expect(saved.toJson(), progress.toJson());
+      expect(
+        restored.state
+            .progressFor(TutorialKnowledgeMode.dataTypes)
+            .completedPracticeSteps,
+        {0},
+      );
+      expect(restored.state.completed, isTrue);
+      expect(saved.completedCount(['filter', 'projection']), 1);
+      expect(saved.isCompleteFor(['filter', 'projection']), isFalse);
+      expect(restored.state.workshopProgressFor('missing').started, isFalse);
+      final restoredWorkspace = WorkspaceController()
+        ..loadFromJsonString(saved.workspaceJson!);
+      addTearDown(restoredWorkspace.dispose);
+      expect(restoredWorkspace.findById(select.id)?.inputs['columns'], 'name');
+      expect(restoredWorkspace.findById(where.id)?.type, BlockType.sqlWhere);
+      const finished = NodeQlWorkshopProgress(
+        completed: true,
+        completedStepIds: {'projection', 'filter'},
+      );
+      await controller.saveWorkshopProgress('select-workshop', finished);
+      final afterFinish = TutorialController(storageFile: () async => file);
+      addTearDown(afterFinish.dispose);
+      await afterFinish.initialize();
+      expect(
+        afterFinish.state.workshopProgressFor('select-workshop').isCompleteFor([
+          'projection',
+          'filter',
+        ]),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'workshop completion follows stable step IDs and tolerates malformed fields',
+    () {
+      const completed = NodeQlWorkshopProgress(
+        completed: true,
+        completedStepIds: {'first', 'second'},
+      );
+      expect(completed.isCompleteFor(['second', 'first']), isTrue);
+      expect(completed.isCompleteFor(['first', 'second', 'new']), isFalse);
+      expect(completed.completedCount(['first', 'new']), 1);
+      final malformed = NodeQlWorkshopProgress.fromJson({
+        'currentStepId': 12,
+        'currentNodeRef': [],
+        'completedStepIds': 'bad',
+        'workspaceJson': {},
+        'nodeIds': {'ok': 'node', 'bad': 42},
+      });
+      expect(malformed.started, isFalse);
+      expect(malformed.nodeIds, {'ok': 'node'});
+      expect(malformed.completedStepIds, isEmpty);
+      expect(malformed.workspaceJson, isNull);
+    },
+  );
+
   test(
     'does not lose a mission saved while startup is still reading',
     () async {

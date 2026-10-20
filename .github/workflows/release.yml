@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   FLUTTER_VERSION: '3.44.1'
@@ -22,6 +23,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       should-release: ${{ steps.release.outputs.should-release }}
+      release-pr-number: ${{ steps.release-notes.outputs.pr-number }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,6 +73,28 @@ jobs:
           else
             echo "should-release=true" >> "${GITHUB_OUTPUT}"
           fi
+      - name: Find the dev-to-master release pull request
+        id: release-notes
+        if: steps.release.outputs.should-release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          pull_requests="$(gh api \
+            --header 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls")"
+          pr_number="$(jq -r \
+            --arg base_branch "${BASE_BRANCH}" \
+            '.[] | select(.base.ref == $base_branch and .head.ref == "dev" and .merged_at != null) | .number' \
+            <<< "${pull_requests}" | head -n 1)"
+
+          if [[ -z "${pr_number}" ]]; then
+            echo "A new release must be published by merging a pull request from dev into ${BASE_BRANCH}." >&2
+            exit 1
+          fi
+
+          echo "pr-number=${pr_number}" >> "${GITHUB_OUTPUT}"
 
   quality:
     name: Quality gates
@@ -236,6 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -243,6 +268,21 @@ jobs:
           merge-multiple: true
       - name: Generate checksums
         run: cd artifacts && sha256sum * > SHA256SUMS.txt
+      - name: Read release description from pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR_NUMBER: ${{ needs.prepare.outputs.release-pr-number }}
+        shell: bash
+        run: |
+          gh pr view "${RELEASE_PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json body \
+            --jq '.body' > release-notes.md
+
+          if [[ ! -s release-notes.md ]]; then
+            echo "The release pull request #${RELEASE_PR_NUMBER} has no description." >&2
+            exit 1
+          fi
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -252,5 +292,5 @@ jobs:
           gh release create "${RELEASE_TAG}" artifacts/* \
             --repo "${GITHUB_REPOSITORY}" \
             --target "${GITHUB_SHA}" \
-            --generate-notes \
+            --notes-file release-notes.md \
             --title "NodeQL ${RELEASE_VERSION}"

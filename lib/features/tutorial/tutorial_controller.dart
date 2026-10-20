@@ -10,11 +10,16 @@ class TutorialState {
     this.loading = true,
     this.completed = false,
     this.lessonProgress = const {},
+    this.workshopProgress = const {},
   });
 
   final bool loading;
   final bool completed;
   final Map<TutorialKnowledgeMode, TutorialLessonProgress> lessonProgress;
+  final Map<String, NodeQlWorkshopProgress> workshopProgress;
+
+  NodeQlWorkshopProgress workshopProgressFor(String id) =>
+      workshopProgress[id] ?? const NodeQlWorkshopProgress();
 
   TutorialLessonProgress progressFor(TutorialKnowledgeMode mode) =>
       lessonProgress[mode] ?? const TutorialLessonProgress();
@@ -70,6 +75,14 @@ class TutorialController extends StateNotifier<TutorialState> {
         loading: false,
         completed: decoded is Map && decoded['completed'] == true,
         lessonProgress: lessonProgress,
+        workshopProgress: {
+          if (decoded is Map && decoded['workshops'] is Map)
+            for (final entry in (decoded['workshops'] as Map).entries)
+              if (entry.key is String)
+                entry.key as String: NodeQlWorkshopProgress.fromJson(
+                  entry.value,
+                ),
+        },
       );
     } catch (_) {
       state = const TutorialState(loading: false);
@@ -83,6 +96,7 @@ class TutorialController extends StateNotifier<TutorialState> {
       loading: false,
       completed: true,
       lessonProgress: state.lessonProgress,
+      workshopProgress: state.workshopProgress,
     );
     await _persist();
   }
@@ -97,18 +111,38 @@ class TutorialController extends StateNotifier<TutorialState> {
       loading: false,
       completed: state.completed,
       lessonProgress: {...state.lessonProgress, mode: progress},
+      workshopProgress: state.workshopProgress,
+    );
+    await _persist();
+  }
+
+  Future<void> saveWorkshopProgress(
+    String id,
+    NodeQlWorkshopProgress progress,
+  ) async {
+    if (state.loading) await initialize();
+    if (!mounted) return;
+    state = TutorialState(
+      loading: false,
+      completed: state.completed,
+      lessonProgress: state.lessonProgress,
+      workshopProgress: {...state.workshopProgress, id: progress},
     );
     await _persist();
   }
 
   Future<void> _persist() {
     final payload = jsonEncode({
-      'schemaVersion': 4,
+      'schemaVersion': 5,
       'completed': state.completed,
       'updatedAt': DateTime.now().toIso8601String(),
       'lessons': {
         for (final entry in state.lessonProgress.entries)
           entry.key.name: entry.value.toJson(),
+      },
+      'workshops': {
+        for (final entry in state.workshopProgress.entries)
+          entry.key: entry.value.toJson(),
       },
     });
     _pendingWrite = _pendingWrite.then((_) async {

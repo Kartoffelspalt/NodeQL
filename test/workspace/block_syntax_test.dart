@@ -137,7 +137,7 @@ void main() {
         const <String, dynamic>{},
         'de',
       ),
-      'Zeige [select_mode] [Spalten] aus Tabelle [table_name] als [table_alias]',
+      'Zeige [Spalten] aus Tabelle [table_name]',
     );
     expect(simpleAllColumnsLabel('de-DE'), 'Alles');
     expect(simpleAllColumnsLabel('en'), 'Everything');

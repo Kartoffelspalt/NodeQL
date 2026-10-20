@@ -267,6 +267,15 @@ String _localeTag(Locale locale) => locale.countryCode == null
 
 const builtInMessages = <String, Map<String, String>>{
   'de': {
+    'tutorial.official.title': 'NodeQL Workshops',
+    'tutorial.official.badge': 'Offiziell',
+    'tutorial.official.progress':
+        '{completed} von {total} Workshops abgeschlossen',
+    'tutorial.official.body':
+        '{workshops} offizielle NodeQL Workshops mit {missions} geführten Schritten. Baue echte Nodes, lerne ihre SQLite-Bezeichnungen und setze deine gespeicherte Arbeitsfläche fort.',
+    'tutorial.official.stepProgress':
+        '{completed} von {total} Schritten abgeschlossen',
+    'tutorial.official.finished': 'Workshop abgeschlossen: {title}',
     'app.name': 'NodeQL',
     'toolbar.mountDatabase': 'DB laden',
     'toolbar.browseDatabase': 'Tabellenbrowser',

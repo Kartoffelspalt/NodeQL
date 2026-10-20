@@ -24,18 +24,21 @@ Der empfohlene Ablauf ist:
    hinzufügen.
 
 Eigene Learning Paths werden lokal in `nodeql_learning_paths.json` im
-Application-Support-Verzeichnis des Admin-Builds gespeichert. **Start** lädt
-den jeweiligen Node-Snapshot, zeigt die Schritt-Timeline oberhalb der
-Arbeitsfläche und verankert alle Beschriftungen an den gespeicherten Nodes.
+Application-Support-Verzeichnis des Admin-Builds gespeichert. **Start** öffnet
+den Pfad im geführten Player. Dieser zeigt die Schritt-Timeline oberhalb der
+Arbeitsfläche und verankert Beschriftungen an den aufgebauten Nodes.
 **Publish bundle** exportiert die veröffentlichbare `workshops.json`.
 
 ## Deklarativ im Quellcode
 
-Die praktischen Tutorials werden in `lib/features/tutorial/tutorial_practice.dart`
-deklariert. Ein Eintrag in `_practiceDefinitions` genügt: Der
-`workshopTutorialCatalog` registriert ihn automatisch, zeigt ihn in der
-Workshop-Übersicht an und stellt ihn der Übungsansicht bereit. Es gibt keine
-zweite UI-Liste, die gepflegt werden muss.
+Die offiziellen Workshops stammen aus `assets/workshops/workshops.json`.
+Ihre Übersicht und ihr Fortschritt verwenden stabile Workshop- und Schritt-IDs;
+die reguläre App zeigt ausschließlich diese veröffentlichten Pfade.
+
+Die älteren Tutorial-APIs in `lib/features/tutorial/tutorial_practice.dart`
+bleiben für Kompatibilität erhalten, sind aber nicht die Quelle des offiziellen
+Curriculums. Der Legacy-Katalog enthält nur noch die beiden Theorie-Module
+und wird bei einem leeren Bundle als Fallback verwendet.
 
 Für neue Dateien kann die kleine Authoring-API importiert werden:
 

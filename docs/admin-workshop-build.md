@@ -38,8 +38,12 @@ rein lokal. Der Release-Workflow im Repository wechselt nie in das
    übernehmen und normal testen.
 
 Die reguläre Anwendung lädt dieses versionierte Bundle beim Start des
-Workshop-Bereichs. Die Einträge erscheinen dort unter **Published workshops**
-und können inklusive Timeline und Node-Beschriftungen abgespielt werden. Zum
+Workshop-Bereichs. Die Einträge erscheinen dort als offizielle **NodeQL Workshops**
+mit Timeline, Node-Beschriftungen und Fortschrittsanzeige. Pro Workshop werden
+abgeschlossene Schritt-IDs, der aktuelle Node, Simple-/Advanced-Modus und die
+Arbeitsfläche in `nodeql_tutorial.json` gespeichert. **Fortsetzen** stellt diese
+Arbeitsfläche wieder her; abgeschlossene Workshops können wiederholt werden.
+Beim Wechsel zum nächsten Schritt bleiben die aufgebauten Nodes erhalten. Zum
 Veröffentlichen ist ausschließlich das JSON-Bundle nötig; der Admin-Build wird
 nicht verteilt.
 

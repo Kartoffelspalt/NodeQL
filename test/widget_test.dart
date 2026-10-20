@@ -12,7 +12,9 @@ import 'package:nodeql/core/app/nodeql_app.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
-import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
+import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
+import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
+import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
@@ -27,13 +29,61 @@ import 'package:nodeql/localization/translation_controller.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
-  testWidgets('an old mission button cannot skip the newly loaded mission', (
+  testWidgets('official workshops preserve nodes, resume and repeat', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final directory = Directory.systemTemp.createTempSync('nodeql-mission-');
+    final directory = Directory.systemTemp.createTempSync('nodeql-official-');
     addTearDown(() => directory.deleteSync(recursive: true));
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      pathProvider,
+      (_) async => directory.path,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        pathProvider,
+        null,
+      ),
+    );
+    const path = AuthoredLearningPath(
+      id: 'official-select',
+      title: 'Official SELECT',
+      description: 'Build a query and review it.',
+      steps: [
+        LearningPathStep(
+          id: 'projection',
+          title: 'Projection',
+          instruction: 'Add SELECT.',
+          nodes: [
+            LearningPathNodeTemplate(ref: 'select', type: BlockType.sqlSelect),
+          ],
+        ),
+        LearningPathStep(
+          id: 'filter',
+          title: 'Filter',
+          instruction: 'Add WHERE.',
+          nodes: [
+            LearningPathNodeTemplate(ref: 'where', type: BlockType.sqlWhere),
+          ],
+        ),
+        LearningPathStep(
+          id: 'review',
+          title: 'Review',
+          instruction: 'Review the same SELECT.',
+          mode: LearningPathMode.advanced,
+          nodes: [
+            LearningPathNodeTemplate(ref: 'select', type: BlockType.sqlSelect),
+          ],
+        ),
+        LearningPathStep(
+          id: 'summary',
+          title: 'Summary',
+          instruction: 'Review your progress.',
+        ),
+      ],
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -43,9 +93,19 @@ void main() {
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
           ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
           tutorialControllerProvider.overrideWith(
             (_) => TutorialController(
-              storageFile: () async => File('${directory.path}/progress.json'),
+              storageFile: () async =>
+                  throw const FileSystemException('in-memory widget test'),
+            ),
+          ),
+          learningPathLibraryProvider.overrideWith(
+            (_) => LearningPathLibraryController(
+              enableLocalDrafts: false,
+              bundledPaths: () async => const [path],
             ),
           ),
         ],
@@ -53,77 +113,164 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final rootContainer = ProviderScope.containerOf(
+    final root = ProviderScope.containerOf(
       tester.element(find.byKey(const ValueKey('open-workshop'))),
     );
-    await tester.runAsync(
-      () =>
-          rootContainer.read(tutorialControllerProvider.notifier).initialize(),
-    );
-    expect(rootContainer.read(tutorialControllerProvider).loading, isFalse);
+    await tester.runAsync(() async {
+      await root.read(tutorialControllerProvider.notifier).initialize();
+      await root.read(learningPathLibraryProvider.notifier).initialize();
+    });
+
+    Future<void> chooseWorkshop() async {
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('workshop-choose-path')),
+          )
+          .onPressed!();
+      await tester.pumpAndSettle();
+      expect(find.text('NodeQL Workshops'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('tutorial-lesson-selectAndSimpleFilters')),
+        findsNothing,
+      );
+      final card = find.byKey(
+        const ValueKey('authored-learning-path-official-select'),
+      );
+      await tester.ensureVisible(card);
+      await tester.tap(card);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(LearningPathTimelinePanel), findsOneWidget);
+    }
+
+    Future<void> insert(BlockType type) async {
+      final marker = find.byKey(ValueKey('guided-palette-$type'));
+      await tester.ensureVisible(marker);
+      await tester.tap(marker);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> advance() async {
+      await tester.tap(find.byKey(const ValueKey('guided-learning-continue')));
+      await tester.pumpAndSettle();
+    }
+
+    LearningPathTimelinePanel timeline() =>
+        tester.widget<LearningPathTimelinePanel>(
+          find.byType(LearningPathTimelinePanel),
+        );
+
     await tester.tap(find.byKey(const ValueKey('open-workshop')));
     await tester.pumpAndSettle();
-    final activeWorkshop = ProviderScope.containerOf(
-      tester.element(find.byKey(const ValueKey('workshop-choose-path'))),
+    await chooseWorkshop();
+    final workshop = ProviderScope.containerOf(
+      tester.element(find.byType(LearningPathTimelinePanel)),
     );
-    expect(
-      activeWorkshop.read(tutorialControllerProvider.notifier),
-      same(rootContainer.read(tutorialControllerProvider.notifier)),
-    );
-    tester
+    final workspace = workshop.read(workspaceProvider.notifier);
+    await insert(BlockType.sqlSelect);
+    final selectId = root
+        .read(tutorialControllerProvider)
+        .workshopProgressFor(path.id)
+        .nodeIds['select']!;
+    final staleContinue = tester
         .widget<FilledButton>(
-          find.byKey(const ValueKey('workshop-choose-path')),
-        )
-        .onPressed!();
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('tutorial-lesson-selectAndSimpleFilters')),
-      findsOneWidget,
-    );
-    expect(find.text('Build a SELECT query'), findsOneWidget);
-    expect(find.text('Project: run a filtered SELECT'), findsOneWidget);
-    final beginner = find.byKey(
-      const ValueKey('tutorial-lesson-selectAndSimpleFilters'),
-    );
-    await tester.ensureVisible(beginner);
-    await tester.tap(beginner);
-    await tester.pumpAndSettle();
-
-    final workshopContainer = ProviderScope.containerOf(
-      tester.element(find.byType(TutorialPracticePanel)),
-    );
-    final workspace = workshopContainer.read(workspaceProvider.notifier);
-    workspace.addTemplate(
-      BlockType.sqlSelect,
-      workspace.suggestedTemplatePosition(BlockType.sqlSelect),
-      defaults: {'columns': 'name', 'table': 'customers'},
-    );
-    await tester.pumpAndSettle();
-    final oldAction = tester
-        .widget<FilledButton>(
-          find.byKey(const ValueKey('tutorial-practice-check')),
+          find.byKey(const ValueKey('guided-learning-continue')),
         )
         .onPressed!;
-    oldAction();
+    await advance();
+    expect(timeline().stepIndex, 1);
+    expect(timeline().completedStepIds, {'projection'});
+    expect(find.text('Add now: Filter rows'), findsOneWidget);
+    expect(workspace.findById(selectId)?.type, BlockType.sqlSelect);
+    staleContinue();
     await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<TutorialPracticePanel>(find.byType(TutorialPracticePanel))
-          .session
-          .stepIndex,
-      1,
-    );
+    expect(timeline().stepIndex, 1);
+    tester
+        .widget<SegmentedButton<SqlAbstractionMode>>(
+          find.byKey(const ValueKey('workshop-sql-mode')),
+        )
+        .onSelectionChanged!({SqlAbstractionMode.advanced});
+    await tester.pumpAndSettle();
+    expect(timeline().mode, SqlAbstractionMode.advanced);
+    expect(find.text('Add now: WHERE'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('workshop-mode-exit')));
+    await tester.pumpAndSettle();
+    final saved = root
+        .read(tutorialControllerProvider)
+        .workshopProgressFor(path.id);
+    expect(saved.currentStepId, 'filter');
+    expect(saved.abstractionMode, 'advanced');
 
-    oldAction();
+    await tester.tap(find.byKey(const ValueKey('open-workshop')));
+    await tester.pumpAndSettle();
+    await chooseWorkshop();
+    expect(timeline().stepIndex, 1);
+    expect(timeline().mode, SqlAbstractionMode.advanced);
+    final resumed = ProviderScope.containerOf(
+      tester.element(find.byType(LearningPathTimelinePanel)),
+    );
+    expect(
+      resumed.read(workspaceProvider.notifier).findById(selectId)?.type,
+      BlockType.sqlSelect,
+    );
+    await insert(BlockType.sqlWhere);
+    expect(find.text('WHERE added'), findsOneWidget);
+    tester
+        .widget<SegmentedButton<SqlAbstractionMode>>(
+          find.byKey(const ValueKey('workshop-sql-mode')),
+        )
+        .onSelectionChanged!({SqlAbstractionMode.simple});
+    await tester.pumpAndSettle();
+    expect(find.text('Filter rows added'), findsOneWidget);
+    expect(
+      find.textContaining('“Filter rows” is called “WHERE” in SQLite.'),
+      findsWidgets,
+    );
+    await advance();
+    expect(timeline().stepIndex, 2);
+    expect(
+      find.byKey(const ValueKey('guided-palette-BlockType.sqlSelect')),
+      findsNothing,
+    );
+    expect(
+      resumed.read(workspaceProvider.notifier).findById(selectId)?.type,
+      BlockType.sqlSelect,
+    );
+    final resumedWorkspace = resumed.read(workspaceProvider.notifier);
+    resumedWorkspace.purgeSelectedNode(selectId);
     await tester.pumpAndSettle();
     expect(
-      tester
-          .widget<TutorialPracticePanel>(find.byType(TutorialPracticePanel))
-          .session
-          .stepIndex,
-      1,
+      find.byKey(const ValueKey('guided-learning-continue')),
+      findsNothing,
     );
+    expect(
+      find.byKey(const ValueKey('guided-palette-BlockType.sqlSelect')),
+      findsOneWidget,
+    );
+    await insert(BlockType.sqlSelect);
+    await advance();
+    expect(timeline().stepIndex, 3);
+    await tester.tap(find.byKey(const ValueKey('learning-path-continue')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LearningPathTimelinePanel), findsNothing);
+    expect(
+      root
+          .read(tutorialControllerProvider)
+          .workshopProgressFor(path.id)
+          .isCompleteFor(path.steps.map((step) => step.id)),
+      isTrue,
+    );
+    await chooseWorkshop();
+    expect(timeline().stepIndex, 0);
+    expect(timeline().completedStepIds, isEmpty);
+    expect(resumed.read(workspaceProvider.notifier).findById(selectId), isNull);
+    expect(
+      find.byKey(const ValueKey('guided-palette-BlockType.sqlSelect')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('toolbar transforms the app into an isolated workshop mode', (
@@ -138,6 +285,9 @@ void main() {
         ),
         pluginPaletteProvider.overrideWith(
           (_) => _ReadyPluginPaletteController(),
+        ),
+        onboardingLaunchProvider.overrideWith(
+          (_) => _SeenOnboardingLaunchController(),
         ),
         sqlModeProvider.overrideWith(
           (_) => SqlModeController.session(
@@ -284,6 +434,9 @@ void main() {
           ),
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
           ),
         ],
         child: const NodeQlApp(),
@@ -668,26 +821,6 @@ void main() {
       ),
     );
 
-    expect(find.text('No Alias'), findsOneWidget);
-    await tester.tap(find.text('No Alias'));
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey<String>('table-alias-submit')),
-          )
-          .style
-          ?.shape
-          ?.resolve(<WidgetState>{}),
-      isA<RoundedRectangleBorder>().having(
-        (shape) => shape.borderRadius,
-        'borderRadius',
-        BorderRadius.circular(NodeQlSurfaceStyle.neoBrutalism.radiusMedium),
-      ),
-    );
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.extension_outlined).first);
@@ -796,6 +929,9 @@ void main() {
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
           ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
         ],
         child: const NodeQlApp(),
       ),
@@ -854,6 +990,93 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('UPDATE filter selection releases the following inline slots', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer(
+      overrides: [
+        translationControllerProvider.overrideWith(
+          (_) => _ReadyTranslationController(),
+        ),
+        pluginPaletteProvider.overrideWith(
+          (_) => _ReadyPluginPaletteController(),
+        ),
+        onboardingLaunchProvider.overrideWith(
+          (_) => _SeenOnboardingLaunchController(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const NodeQlApp()),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+
+    final workspace = container.read(workspaceProvider.notifier);
+    final update = workspace.addTemplate(
+      BlockType.sqlUpdate,
+      const Offset(40, 260),
+    );
+    await tester.pumpAndSettle();
+
+    final filterSlot = find.byKey(
+      ValueKey<String>('inline-slot-${update.id}-where_column'),
+    );
+    final operatorSlot = find.byKey(
+      ValueKey<String>('inline-slot-${update.id}-operator'),
+    );
+    expect(filterSlot, findsOneWidget);
+    expect(operatorSlot, findsOneWidget);
+
+    await tester.tap(filterSlot);
+    await tester.pumpAndSettle();
+    final firstOverlay = find.byKey(const ValueKey('inline-option-overlay'));
+    expect(firstOverlay, findsOneWidget);
+    await tester.tap(
+      find.descendant(of: firstOverlay, matching: find.text('id')),
+    );
+    await tester.pumpAndSettle();
+    expect(firstOverlay, findsNothing);
+
+    await tester.tap(operatorSlot);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('inline-option-overlay')), findsOneWidget);
+  });
+
+  testWidgets('opens and skips the interactive onboarding overlay', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _ReadyTranslationController(),
+          ),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
+        ],
+        child: const NodeQlApp(),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+
+    await tester.tap(find.byKey(const ValueKey<String>('open-onboarding')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose nodes'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('onboarding-skip')));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose nodes'), findsNothing);
+  });
 }
 
 class _ReadyPluginPaletteController extends PluginPaletteController {
@@ -864,6 +1087,13 @@ class _ReadyPluginPaletteController extends PluginPaletteController {
   Future<void> reload() async {
     state = const PluginPaletteState();
   }
+}
+
+class _SeenOnboardingLaunchController extends OnboardingLaunchController {
+  _SeenOnboardingLaunchController() : super(initiallySeen: true);
+
+  @override
+  Future<void> initialize() async {}
 }
 
 class _WorkshopTranslationController extends _ReadyTranslationController {

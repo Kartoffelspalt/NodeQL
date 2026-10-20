@@ -48,6 +48,8 @@ final workspaceTabsProvider =
     });
 
 class WorkspaceTabsController extends StateNotifier<WorkspaceTabsState> {
+  static const int maxProjectTabs = 32;
+
   WorkspaceTabsController(
     this._workspace, {
     required String initialWorkspaceJson,
@@ -223,6 +225,7 @@ class WorkspaceTabsController extends StateNotifier<WorkspaceTabsState> {
     if (raw is! Map) return false;
     final items = raw['items'];
     if (items is! List) return false;
+    if (items.length > maxProjectTabs) return false;
     final tabs = <WorkspaceTab>[];
     for (final item in items) {
       if (item is! Map || item['workspace'] is! Map) continue;
@@ -267,10 +270,9 @@ class WorkspaceTabsController extends StateNotifier<WorkspaceTabsState> {
   List<BlockNode> _rootsFromJson(String source) {
     final decoded = jsonDecode(source) as Map<String, dynamic>;
     final roots = decoded['roots'] as List<dynamic>? ?? const <dynamic>[];
-    return roots
-        .whereType<Map>()
-        .map((root) => BlockNode.fromJson(Map<String, dynamic>.from(root)))
-        .toList(growable: false);
+    return BlockNode.fromJsonList(
+      roots.whereType<Map>().map((root) => Map<String, dynamic>.from(root)),
+    );
   }
 
   String _emptyWorkspaceJson(String id) => jsonEncode(<String, dynamic>{

@@ -5,10 +5,10 @@ notes.
 
 ## Current screenshots
 
-- `darkmode-preview.png`: visual SQLite workbench in Dark Mode.
-- `whitemode-preview.png`: visual SQLite workbench in White Mode.
-- `NodeQL-Einfuehrung.png`: interactive onboarding tutorial.
-- `Plugins.png`: plugin blocks and Plugin SDK integration.
+- `NodeQLApp.png`: visual SQLite workbench in Dark Mode.
+- `NodeQLAppWhite.png`: visual SQLite workbench in White Mode.
+- `NodeQLTableBrowser.png`: database table browser.
+- `NodeQLWorkshop.png`: visual query workshop.
 
 ## Contribution guidelines
 

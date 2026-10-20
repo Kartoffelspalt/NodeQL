@@ -1,5 +1,15 @@
 import 'package:path/path.dart' as p;
 
+/// Bounds applied before a project file is decoded into a workspace.
+class ProjectFileLimits {
+  const ProjectFileLimits._();
+
+  static const int maxSourceBytes = 4 * 1024 * 1024;
+
+  static bool allowsSourceSize(int byteLength) =>
+      byteLength >= 0 && byteLength <= maxSourceBytes;
+}
+
 /// Paths stored inside a project file use `/` on every desktop platform.
 class ProjectFilePaths {
   const ProjectFilePaths._();
