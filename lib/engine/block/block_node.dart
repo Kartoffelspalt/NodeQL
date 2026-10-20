@@ -129,7 +129,36 @@ abstract class BlockNode {
     'inputs': inputs,
   };
 
-  static BlockNode fromJson(Map<String, dynamic> json) {
+  static const int maxDecodedNodes = 1000;
+  static const int maxDecodedDepth = 64;
+  static const int maxChildrenPerNode = 128;
+  static const int maxInputEntries = 64;
+  static const int maxInputCollectionEntries = 128;
+  static const int maxInputCollectionDepth = 32;
+  static const int maxInputStringLength = 16 * 1024;
+
+  static BlockNode fromJson(Map<String, dynamic> json) =>
+      _fromJson(json, _BlockNodeDecodeBudget(), 1);
+
+  /// Decodes a workspace root collection with one budget shared by every
+  /// root. Project JSON is untrusted at this boundary, so independent root
+  /// trees must not bypass the node limit.
+  static List<BlockNode> fromJsonList(Iterable<Map<String, dynamic>> json) {
+    final budget = _BlockNodeDecodeBudget();
+    return <BlockNode>[for (final node in json) _fromJson(node, budget, 1)];
+  }
+
+  static BlockNode _fromJson(
+    Map<String, dynamic> json,
+    _BlockNodeDecodeBudget budget,
+    int depth,
+  ) {
+    if (depth > maxDecodedDepth) {
+      throw const FormatException('Workspace block nesting exceeds the limit.');
+    }
+    if (++budget.nodeCount > maxDecodedNodes) {
+      throw const FormatException('Workspace contains too many blocks.');
+    }
     final type = BlockType.values.firstWhere(
       (value) => value.name == json['type'],
     );
@@ -142,8 +171,12 @@ abstract class BlockNode {
     final nextJson = json['next'] as Map<String, dynamic>?;
     final childrenJson = (json['children'] as List<dynamic>? ?? <dynamic>[])
         .cast<Map<String, dynamic>>();
+    if (childrenJson.length > maxChildrenPerNode) {
+      throw const FormatException('A workspace block has too many children.');
+    }
     final inputs =
         (json['inputs'] as Map<String, dynamic>? ?? <String, dynamic>{});
+    _validateInputs(inputs);
 
     BlockNode node;
     switch (type) {
@@ -277,10 +310,64 @@ abstract class BlockNode {
         );
     }
 
-    node.next = nextJson == null ? null : BlockNode.fromJson(nextJson);
-    node.children = childrenJson.map(BlockNode.fromJson).toList();
+    node.next = nextJson == null
+        ? null
+        : _fromJson(nextJson, budget, depth + 1);
+    node.children = childrenJson
+        .map((child) => _fromJson(child, budget, depth + 1))
+        .toList();
     return node;
   }
+
+  static void _validateInputs(Map<String, dynamic> inputs) {
+    if (inputs.length > maxInputEntries) {
+      throw const FormatException('A workspace block has too many inputs.');
+    }
+    for (final entry in inputs.entries) {
+      if (entry.key.length > maxInputStringLength) {
+        throw const FormatException('A workspace input name is too long.');
+      }
+      _validateInputValue(entry.value, 1);
+    }
+  }
+
+  static void _validateInputValue(Object? value, int depth) {
+    if (depth > maxInputCollectionDepth) {
+      throw const FormatException('Workspace input nesting exceeds the limit.');
+    }
+    switch (value) {
+      case String value:
+        if (value.length > maxInputStringLength) {
+          throw const FormatException('A workspace input is too long.');
+        }
+      case num _ || bool _ || null:
+        return;
+      case List values:
+        if (values.length > maxInputCollectionEntries) {
+          throw const FormatException('A workspace input list is too large.');
+        }
+        for (final item in values) {
+          _validateInputValue(item, depth + 1);
+        }
+      case Map values:
+        if (values.length > maxInputCollectionEntries) {
+          throw const FormatException('A workspace input map is too large.');
+        }
+        for (final entry in values.entries) {
+          if (entry.key is! String ||
+              (entry.key as String).length > maxInputStringLength) {
+            throw const FormatException('A workspace input name is invalid.');
+          }
+          _validateInputValue(entry.value, depth + 1);
+        }
+      default:
+        throw const FormatException('A workspace input has an invalid value.');
+    }
+  }
+}
+
+class _BlockNodeDecodeBudget {
+  int nodeCount = 0;
 }
 
 class EventBlock extends BlockNode {

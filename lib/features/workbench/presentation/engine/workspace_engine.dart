@@ -964,7 +964,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     final decoded = jsonDecode(source) as Map<String, dynamic>;
     final rootsRaw = (decoded['roots'] as List<dynamic>? ?? <dynamic>[])
         .cast<Map<String, dynamic>>();
-    final roots = rootsRaw.map(BlockNode.fromJson).toList(growable: false);
+    final roots = BlockNode.fromJsonList(rootsRaw);
     final panRaw =
         decoded['pan'] as Map<String, dynamic>? ?? <String, dynamic>{};
     state = state.copyWith(

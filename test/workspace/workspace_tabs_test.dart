@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
@@ -68,6 +70,29 @@ void main() {
       const SqlCompiler().compileWorkspace(restored.executionRoots()).sql,
       'SELECT * FROM one;\nSELECT * FROM two;',
     );
+  });
+
+  test('rejects project payloads with too many tabs', () {
+    final workspace = WorkspaceController()..resetWithRoot();
+    final tabs = WorkspaceTabsController(
+      workspace,
+      initialWorkspaceJson: workspace.toJsonString(),
+    );
+    final workspacePayload = jsonDecode(workspace.toJsonString());
+    final payload = <String, dynamic>{
+      'activeTabId': 'tab_0',
+      'items': List<Map<String, dynamic>>.generate(
+        WorkspaceTabsController.maxProjectTabs + 1,
+        (index) => <String, dynamic>{
+          'id': 'tab_$index',
+          'name': 'Tab $index',
+          'workspace': workspacePayload,
+        },
+      ),
+    };
+
+    expect(tabs.loadFromProjectJson(payload), isFalse);
+    expect(tabs.state.tabs, hasLength(1));
   });
 
   test('imported nodes open in a separate tab without replacing the query', () {

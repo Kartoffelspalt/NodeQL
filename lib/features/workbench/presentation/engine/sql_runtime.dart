@@ -249,6 +249,58 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     }
   }
 
+  /// Executes SQL for the automatic workbench preview without allowing the
+  /// preview to change the connected database. This is intentionally separate
+  /// from [executeWithSnapshot]: opening a project must never turn its stored
+  /// workspace into an implicit write capability.
+  Future<SqlExecutionResult> executeReadOnlyPreview(String sql) async {
+    final dbPath = state.dbPath;
+    if (dbPath == null) {
+      const message = 'No database connected.';
+      state = state.copyWith(lastMessage: message);
+      return const SqlExecutionResult(success: false, message: message);
+    }
+    try {
+      final result = await Isolate.run(
+        () => _runReadOnlyPreview(dbPath, sql, _maxPreviewRows),
+      );
+      if (!mounted) {
+        return const SqlExecutionResult(
+          success: false,
+          message: 'Runtime closed.',
+        );
+      }
+      final message = result.truncated
+          ? 'OK (showing first $_maxPreviewRows rows)'
+          : 'OK';
+      state = state.copyWith(
+        lastSql: sql,
+        lastRows: result.rows,
+        lastMessage: message,
+      );
+      return SqlExecutionResult(
+        success: true,
+        message: message,
+        rows: result.rows,
+        truncated: result.truncated,
+      );
+    } catch (e) {
+      if (!mounted) {
+        return const SqlExecutionResult(
+          success: false,
+          message: 'Runtime closed.',
+        );
+      }
+      final message = 'Live preview blocked: $e';
+      state = state.copyWith(
+        lastSql: sql,
+        lastRows: const [],
+        lastMessage: message,
+      );
+      return SqlExecutionResult(success: false, message: message);
+    }
+  }
+
   /// Runs a visual SQLite program. SQLite text is rendered only here, at the
   /// database adapter boundary, rather than being assembled by workspace UI.
   Future<void> executeProgram(SqliteProgram program) async {
@@ -374,6 +426,30 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
           }
         }
         return const _QueryResult(rows: [], truncated: false);
+      }
+      return _readPreparedStatements(statements, maxRows);
+    } finally {
+      for (final statement in statements) {
+        statement.close();
+      }
+      database.close();
+    }
+  }
+
+  static _QueryResult _runReadOnlyPreview(
+    String path,
+    String sql,
+    int maxRows,
+  ) {
+    final database = sqlite3.open(path, mode: OpenMode.readOnly);
+    var statements = <PreparedStatement>[];
+    try {
+      statements = database.prepareMultiple(sql);
+      if (statements.isEmpty ||
+          statements.any((statement) => !statement.isReadOnly)) {
+        throw const FormatException(
+          'Automatic previews accept only read-only SQL statements.',
+        );
       }
       return _readPreparedStatements(statements, maxRows);
     } finally {

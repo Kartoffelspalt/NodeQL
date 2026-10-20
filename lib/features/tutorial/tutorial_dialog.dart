@@ -1026,7 +1026,7 @@ class _LessonOverview extends StatelessWidget {
               context,
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 12), 
           LayoutBuilder(
             builder: (context, constraints) {
               final twoColumns = constraints.maxWidth >= 720;

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -1100,7 +1101,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (sql == _lastLivePreviewSql) return;
     _livePreviewExecuting = true;
     try {
-      await ref.read(sqlRuntimeProvider.notifier).executeWithSnapshot(sql);
+      await ref.read(sqlRuntimeProvider.notifier).executeReadOnlyPreview(sql);
       _lastLivePreviewSql = sql;
     } finally {
       _livePreviewExecuting = false;
@@ -1226,8 +1227,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       final activeProjectPath = _activeProjectPath;
       if (activeProjectPath != null && await File(activeProjectPath).exists()) {
         try {
-          final source = await File(activeProjectPath).readAsString();
-          if (source.trim().isNotEmpty) {
+          final source = await _readBoundedProjectSource(
+            File(activeProjectPath),
+          );
+          if (source != null && source.trim().isNotEmpty) {
             await _loadProjectPayload(source, projectPath: activeProjectPath);
             return;
           }
@@ -1258,8 +1261,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           : null)));
     if (sourceFile == null) return;
 
-    final source = await sourceFile.readAsString();
-    if (source.trim().isEmpty) return;
+    final source = await _readBoundedProjectSource(sourceFile);
+    if (source == null || source.trim().isEmpty) return;
     await _loadProjectPayload(source);
     await _syncRecentProjectsToNativeMenu();
   }
@@ -1475,7 +1478,20 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     BuildContext context,
     String path,
   ) async {
-    final source = await File(path).readAsString();
+    final source = await _readBoundedProjectSource(File(path));
+    if (source == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Project files must not exceed '
+              '${ProjectFileLimits.maxSourceBytes ~/ (1024 * 1024)} MiB.',
+            ),
+          ),
+        );
+      }
+      return null;
+    }
     final inspection = _projectUpgradeService.inspect(source);
     if (inspection.kind == ProjectFileUpgradeKind.current) return source;
 
@@ -1553,6 +1569,17 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       }
       return null;
     }
+  }
+
+  Future<String?> _readBoundedProjectSource(File file) async {
+    final bytes = BytesBuilder(copy: false);
+    var byteLength = 0;
+    await for (final chunk in file.openRead()) {
+      byteLength += chunk.length;
+      if (!ProjectFileLimits.allowsSourceSize(byteLength)) return null;
+      bytes.add(chunk);
+    }
+    return utf8.decode(bytes.takeBytes());
   }
 
   String _projectBackupPath(String projectPath) {
