@@ -4,15 +4,15 @@ import 'package:nodeql/features/tutorial/tutorial_framework.dart';
 
 void main() {
   test('the Workshop UI catalog is complete and can look up stable ids', () {
-    expect(workshopTutorialCatalog.tutorials, hasLength(10));
-    expect(workshopTutorialCatalog.missionCount, 27);
+    expect(workshopTutorialCatalog.tutorials, hasLength(2));
+    expect(workshopTutorialCatalog.missionCount, 0);
     expect(
-      workshopTutorialCatalog.byId('selectAndSimpleFilters')?.mode,
-      TutorialKnowledgeMode.selectAndSimpleFilters,
+      workshopTutorialCatalog.byId('database-tools')?.mode,
+      TutorialKnowledgeMode.databaseTools,
     );
     expect(
-      workshopTutorialCatalog.byMode(TutorialKnowledgeMode.transactions)?.id,
-      'transactions',
+      workshopTutorialCatalog.byMode(TutorialKnowledgeMode.plugins)?.id,
+      'plugins',
     );
   });
 

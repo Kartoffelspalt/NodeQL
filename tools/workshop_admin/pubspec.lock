@@ -347,7 +347,7 @@ packages:
       path: "../.."
       relative: true
     source: path
-    version: "0.4.3+2"
+    version: "0.4.4+3"
   objective_c:
     dependency: transitive
     description:

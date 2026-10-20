@@ -15,7 +15,6 @@ import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
 import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
 import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
-import 'package:nodeql/features/tutorial/tutorial_practice_panel.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
@@ -272,108 +271,6 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('an old mission button cannot skip the newly loaded mission', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final directory = Directory.systemTemp.createTempSync('nodeql-mission-');
-    addTearDown(() => directory.deleteSync(recursive: true));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          translationControllerProvider.overrideWith(
-            (_) => _WorkshopTranslationController(),
-          ),
-          pluginPaletteProvider.overrideWith(
-            (_) => _ReadyPluginPaletteController(),
-          ),
-          onboardingLaunchProvider.overrideWith(
-            (_) => _SeenOnboardingLaunchController(),
-          ),
-          tutorialControllerProvider.overrideWith(
-            (_) => TutorialController(
-              storageFile: () async => File('${directory.path}/progress.json'),
-            ),
-          ),
-        ],
-        child: const NodeQlApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final rootContainer = ProviderScope.containerOf(
-      tester.element(find.byKey(const ValueKey('open-workshop'))),
-    );
-    await tester.runAsync(
-      () =>
-          rootContainer.read(tutorialControllerProvider.notifier).initialize(),
-    );
-    expect(rootContainer.read(tutorialControllerProvider).loading, isFalse);
-    await tester.tap(find.byKey(const ValueKey('open-workshop')));
-    await tester.pumpAndSettle();
-    final activeWorkshop = ProviderScope.containerOf(
-      tester.element(find.byKey(const ValueKey('workshop-choose-path'))),
-    );
-    expect(
-      activeWorkshop.read(tutorialControllerProvider.notifier),
-      same(rootContainer.read(tutorialControllerProvider.notifier)),
-    );
-    tester
-        .widget<FilledButton>(
-          find.byKey(const ValueKey('workshop-choose-path')),
-        )
-        .onPressed!();
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('tutorial-lesson-selectAndSimpleFilters')),
-      findsOneWidget,
-    );
-    expect(find.text('Build a SELECT query'), findsOneWidget);
-    expect(find.text('Project: run a filtered SELECT'), findsOneWidget);
-    final beginner = find.byKey(
-      const ValueKey('tutorial-lesson-selectAndSimpleFilters'),
-    );
-    await tester.ensureVisible(beginner);
-    await tester.tap(beginner);
-    await tester.pumpAndSettle();
-
-    final workshopContainer = ProviderScope.containerOf(
-      tester.element(find.byType(TutorialPracticePanel)),
-    );
-    final workspace = workshopContainer.read(workspaceProvider.notifier);
-    workspace.addTemplate(
-      BlockType.sqlSelect,
-      workspace.suggestedTemplatePosition(BlockType.sqlSelect),
-      defaults: {'columns': 'name', 'table': 'customers'},
-    );
-    await tester.pumpAndSettle();
-    final oldAction = tester
-        .widget<FilledButton>(
-          find.byKey(const ValueKey('tutorial-practice-check')),
-        )
-        .onPressed!;
-    oldAction();
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<TutorialPracticePanel>(find.byType(TutorialPracticePanel))
-          .session
-          .stepIndex,
-      1,
-    );
-
-    oldAction();
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<TutorialPracticePanel>(find.byType(TutorialPracticePanel))
-          .session
-          .stepIndex,
-      1,
-    );
   });
 
   testWidgets('toolbar transforms the app into an isolated workshop mode', (

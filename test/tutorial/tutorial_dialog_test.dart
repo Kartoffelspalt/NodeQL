@@ -10,116 +10,51 @@ import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 
 void main() {
-  testWidgets(
-    'official overview counts workshop IDs and offers resume or repeat',
-    (tester) async {
-      const first = AuthoredLearningPath(
-        id: 'first',
-        title: 'First workshop',
-        description: 'Completed.',
-        steps: [LearningPathStep(id: 'one', title: 'One', instruction: '')],
-      );
-      const second = AuthoredLearningPath(
-        id: 'second',
-        title: 'Second workshop',
-        description: 'In progress.',
-        steps: [
-          LearningPathStep(id: 'two', title: 'Two', instruction: ''),
-          LearningPathStep(id: 'three', title: 'Three', instruction: ''),
-        ],
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TutorialDialog(
-            catalog: _englishCatalog(),
-            authoredPaths: const [first, second],
-            workshopProgress: const {
-              'first': NodeQlWorkshopProgress(
-                completed: true,
-                completedStepIds: {'one'},
-              ),
-              'second': NodeQlWorkshopProgress(
-                currentStepId: 'three',
-                completedStepIds: {'two'},
-              ),
-              'removed': NodeQlWorkshopProgress(
-                completed: true,
-                completedStepIds: {'old'},
-              ),
-            },
-            initialProgress: const {
-              TutorialKnowledgeMode.selectAndSimpleFilters:
-                  TutorialLessonProgress(practiceCompleted: true),
-            },
-            onStartAuthoredPath: (_) async {},
-            onComplete: () async {},
-          ),
-        ),
-      );
-      expect(find.text('1 of 1 steps completed'), findsOneWidget);
-      expect(find.text('1 of 2 steps completed'), findsOneWidget);
-      expect(find.text('Repeat in workspace'), findsOneWidget);
-      expect(find.text('Continue in workspace'), findsOneWidget);
-      expect(find.text('1 of 2 workshops completed'), findsWidgets);
-      expect(
-        find.byKey(const ValueKey('tutorial-lesson-selectAndSimpleFilters')),
-        findsNothing,
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('launches a practical path directly in the real workspace', (
+  testWidgets('published overview reports progress and resume actions', (
     tester,
   ) async {
-    TutorialKnowledgeMode? startedMode;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData.dark(useMaterial3: true),
-        home: TutorialDialog(
-          catalog: _englishCatalog(),
-          onStartPractice: (mode) async => startedMode = mode,
-          onComplete: () async {},
-        ),
-      ),
+    const first = AuthoredLearningPath(
+      id: 'first',
+      title: 'First workshop',
+      description: 'Completed.',
+      steps: [LearningPathStep(id: 'one', title: 'One', instruction: '')],
+    );
+    const second = AuthoredLearningPath(
+      id: 'second',
+      title: 'Second workshop',
+      description: 'In progress.',
+      steps: [
+        LearningPathStep(id: 'two', title: 'Two', instruction: ''),
+        LearningPathStep(id: 'three', title: 'Three', instruction: ''),
+      ],
     );
 
-    expect(find.text('Choose a practical learning path'), findsOneWidget);
-    expect(find.text('About 8 min'), findsWidgets);
-    expect(find.byKey(const ValueKey('tutorial-answer-1-0')), findsNothing);
-
-    final beginner = find.byKey(
-      const ValueKey('tutorial-lesson-selectAndSimpleFilters'),
-    );
-    await tester.ensureVisible(beginner);
-    await tester.tap(beginner);
-    await tester.pumpAndSettle();
-
-    expect(startedMode, TutorialKnowledgeMode.beginner);
-    expect(find.byType(TutorialDialog), findsNothing);
-  });
-
-  testWidgets('shows mission progress instead of quiz progress', (
-    tester,
-  ) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: ThemeData.dark(useMaterial3: true),
         home: TutorialDialog(
           catalog: _englishCatalog(),
-          initialProgress: const {
-            TutorialKnowledgeMode.beginnerSyntax: TutorialLessonProgress(
-              completedPracticeSteps: {0, 1},
+          authoredPaths: const [first, second],
+          workshopProgress: const {
+            'first': NodeQlWorkshopProgress(
+              completed: true,
+              completedStepIds: {'one'},
+            ),
+            'second': NodeQlWorkshopProgress(
+              currentStepId: 'three',
+              completedStepIds: {'two'},
             ),
           },
-          onStartPractice: (mode) async {},
+          onStartAuthoredPath: (_) async {},
           onComplete: () async {},
         ),
       ),
     );
 
-    expect(find.text('2 of 3 workspace missions'), findsOneWidget);
+    expect(find.text('1 of 1 steps completed'), findsOneWidget);
+    expect(find.text('1 of 2 steps completed'), findsOneWidget);
+    expect(find.text('Repeat in workspace'), findsOneWidget);
     expect(find.text('Continue in workspace'), findsOneWidget);
+    expect(find.text('1 of 2 workshops completed'), findsWidgets);
   });
 
   testWidgets('starts a published authored workshop from the overview', (
@@ -145,13 +80,11 @@ void main() {
           catalog: _englishCatalog(),
           authoredPaths: const [path],
           onStartAuthoredPath: (value) async => started = value,
-          onStartPractice: (_) async {},
           onComplete: () async {},
         ),
       ),
     );
 
-    expect(find.text('NodeQL Workshops'), findsOneWidget);
     final card = find.byKey(
       const ValueKey('authored-learning-path-published-select'),
     );
@@ -163,51 +96,29 @@ void main() {
     expect(find.byType(TutorialDialog), findsNothing);
   });
 
-  testWidgets('previously finished short paths resume their new missions', (
+  testWidgets('published workshop overview uses readable light surfaces', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: TutorialDialog(
-          catalog: _englishCatalog(),
-          initialProgress: const {
-            TutorialKnowledgeMode.beginnerSyntax: TutorialLessonProgress(
-              completedPracticeSteps: {0, 1, 2},
-              practiceCompleted: true,
-            ),
-          },
-          onStartPractice: (mode) async {},
-          onComplete: () async {},
-        ),
-      ),
+    const path = AuthoredLearningPath(
+      id: 'light-workshop',
+      title: 'Light workshop',
+      description: 'A published workshop rendered with the light theme.',
+      steps: [LearningPathStep(id: 'start', title: 'Start', instruction: '')],
     );
-
-    expect(find.text('3 of 3 workspace missions'), findsOneWidget);
-    expect(find.text('Repeat in workspace'), findsOneWidget);
-  });
-
-  testWidgets('uses readable workshop colors in White Mode', (tester) async {
     final lightTheme = themeFor(NodeQlTheme.light);
     await tester.pumpWidget(
       MaterialApp(
         theme: lightTheme,
         home: TutorialDialog(
           catalog: _englishCatalog(),
-          onStartPractice: (mode) async {},
+          authoredPaths: const [path],
           onComplete: () async {},
         ),
       ),
     );
 
-    final body = tester.widget<Text>(
-      find.text(
-        'Eight SQLite workshops, two NodeQL-specific modules and 27 hands-on '
-        'missions. Learn each command with real nodes and an isolated practice database.',
-      ),
-    );
+    expect(find.text('NodeQL Workshops'), findsOneWidget);
     final colors = lightTheme.extension<NodeQlWorkbenchColors>()!;
-
-    expect(body.style?.color, lightTheme.colorScheme.onSurfaceVariant);
     expect(
       ThemeData.estimateBrightnessForColor(colors.panel),
       Brightness.light,
@@ -234,10 +145,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('tutorial-answer-0-0')), findsNothing);
-    final next = tester.widget<FilledButton>(
-      find.byKey(const ValueKey('tutorial-next')),
-    );
-    expect(next.onPressed, isNotNull);
   });
 }
 

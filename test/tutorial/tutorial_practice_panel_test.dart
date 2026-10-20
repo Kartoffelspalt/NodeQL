@@ -59,8 +59,7 @@ void main() {
   testWidgets('Simple Mode explains labels while showing live SQLite', (
     tester,
   ) async {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
+    final definition = _practiceDefinition();
     final result = definition.evaluate([
       EventBlock(id: 'event', position: Offset.zero),
     ], 0);
@@ -72,7 +71,7 @@ void main() {
           body: TutorialPracticePanel(
             catalog: _englishCatalog(),
             session: const TutorialPracticeSession(
-              mode: TutorialKnowledgeMode.beginner,
+              mode: TutorialKnowledgeMode.selectAndSimpleFilters,
             ),
             definition: definition,
             result: result,
@@ -89,7 +88,7 @@ void main() {
 
     expect(find.text('Simple Mode'), findsOneWidget);
     expect(find.textContaining('plain-language node labels'), findsOneWidget);
-    expect(find.text('0 of 2 requirements complete'), findsOneWidget);
+    expect(find.text('0 of 1 requirements complete'), findsOneWidget);
     expect(
       find.text('Next: SELECT is connected to EXECUTE QUERY'),
       findsOneWidget,
@@ -108,8 +107,7 @@ void main() {
   testWidgets('description panel can be resized within its safe limits', (
     tester,
   ) async {
-    final definition =
-        tutorialPracticeDefinitions[TutorialKnowledgeMode.beginner]!;
+    final definition = _practiceDefinition();
     final result = definition.evaluate([
       EventBlock(id: 'event', position: Offset.zero),
     ], 0);
@@ -121,7 +119,7 @@ void main() {
           body: TutorialPracticePanel(
             catalog: _englishCatalog(),
             session: const TutorialPracticeSession(
-              mode: TutorialKnowledgeMode.beginner,
+              mode: TutorialKnowledgeMode.selectAndSimpleFilters,
             ),
             definition: definition,
             result: result,
@@ -147,6 +145,19 @@ void main() {
     expect(resizedHeight, 360);
   });
 }
+
+TutorialPracticeDefinition _practiceDefinition() => TutorialPracticeDefinition(
+  mode: TutorialKnowledgeMode.selectAndSimpleFilters,
+  simpleStarter: const [],
+  advancedStarter: const [],
+  steps: [
+    workshopMission(
+      id: 'select',
+      checks: const [TutorialPracticeCheck.selectConnected],
+      focusNodes: const [BlockType.sqlSelect],
+    ),
+  ],
+);
 
 TranslationCatalog _englishCatalog() {
   final decoded =
