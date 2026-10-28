@@ -11,6 +11,7 @@ import 'package:http/testing.dart';
 import 'package:nodeql/core/app/nodeql_app.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
 import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
@@ -66,6 +67,14 @@ void main() {
           instruction: 'Add WHERE.',
           nodes: [
             LearningPathNodeTemplate(ref: 'where', type: BlockType.sqlWhere),
+            LearningPathNodeTemplate(
+              ref: 'filterValue',
+              type: BlockType.sqlText,
+              defaults: <String, dynamic>{
+                'literal_type': 'text',
+                'text': 'Berlin',
+              },
+            ),
           ],
         ),
         LearningPathStep(
@@ -227,6 +236,37 @@ void main() {
     expect(
       find.textContaining('“Filter rows” is called “WHERE” in SQLite.'),
       findsWidgets,
+    );
+    await advance();
+    expect(timeline().stepIndex, 1);
+    final whereId = root
+        .read(tutorialControllerProvider)
+        .workshopProgressFor(path.id)
+        .nodeIds['where']!;
+    final textValue = find.byKey(
+      const ValueKey<String>('palette-draggable-sqlite.datatype.text'),
+    );
+    final valueSlot = find.byKey(
+      ValueKey<String>('inline-slot-$whereId-value'),
+    );
+    await tester.ensureVisible(textValue);
+    expect(valueSlot, findsOneWidget);
+    await tester.drag(
+      textValue,
+      tester.getCenter(valueSlot) - tester.getCenter(textValue),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      resumed
+          .read(workspaceProvider.notifier)
+          .findAnyNodeById(
+            root
+                .read(tutorialControllerProvider)
+                .workshopProgressFor(path.id)
+                .nodeIds['filterValue']!,
+          )
+          ?.type,
+      BlockType.sqlText,
     );
     await advance();
     expect(timeline().stepIndex, 2);
@@ -1044,6 +1084,68 @@ void main() {
     await tester.tap(operatorSlot);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('inline-option-overlay')), findsOneWidget);
+  });
+
+  testWidgets('value palette nodes only drop into a compatible input slot', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer(
+      overrides: [
+        translationControllerProvider.overrideWith(
+          (_) => _ReadyTranslationController(),
+        ),
+        pluginPaletteProvider.overrideWith(
+          (_) => _ReadyPluginPaletteController(),
+        ),
+        onboardingLaunchProvider.overrideWith(
+          (_) => _SeenOnboardingLaunchController(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const NodeQlApp()),
+    );
+    await tester.pumpAndSettle(const Duration(milliseconds: 20));
+
+    final workspace = container.read(workspaceProvider.notifier);
+    final where = workspace.addTemplate(
+      BlockType.sqlWhere,
+      const Offset(360, 240),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('SQLite data types'));
+    await tester.pumpAndSettle();
+    final textValue = find.byKey(
+      const ValueKey<String>('palette-draggable-sqlite.datatype.text'),
+    );
+    final valueSlot = find.byKey(
+      ValueKey<String>('inline-slot-${where.id}-value'),
+    );
+    expect(textValue, findsOneWidget);
+    expect(valueSlot, findsOneWidget);
+
+    await tester.tap(textValue);
+    await tester.pumpAndSettle();
+    expect(reporterForInput(where, 'value'), isNull);
+    expect(
+      workspace.allBlocks().where((node) => node.type == BlockType.sqlText),
+      isEmpty,
+    );
+
+    final dragOffset =
+        tester.getCenter(valueSlot) - tester.getCenter(textValue);
+    await tester.drag(textValue, dragOffset);
+    await tester.pumpAndSettle();
+
+    expect(reporterForInput(where, 'value')?.type, BlockType.sqlText);
+    expect(
+      workspace.allBlocks().where((node) => node.type == BlockType.sqlText),
+      isEmpty,
+    );
   });
 
   testWidgets('opens and skips the interactive onboarding overlay', (

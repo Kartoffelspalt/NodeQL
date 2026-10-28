@@ -305,17 +305,32 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _touch();
   }
 
-  void setReporterInput(
+  /// Creates a reporter directly inside an input slot.
+  ///
+  /// Reporter nodes are expressions, so they must not be added to the
+  /// workspace as standalone blocks. Returning the embedded node lets guided
+  /// flows apply their own defaults and persist the resulting slot value.
+  BlockNode? setReporterInput(
     BlockNode node,
     String key,
     BlockType reporterType, {
     Map<String, dynamic>? defaults,
   }) {
-    if (!isReporterType(reporterType)) return;
+    if (!isReporterType(reporterType)) return null;
     _pushUndoSnapshot();
     final reporter = _createNode(reporterType, Offset.zero);
     if (defaults != null) reporter.inputs.addAll(defaults);
     reporter.inputs.remove('__width');
+    setReporterForInput(node, key, reporter);
+    _relayoutAll();
+    _touch();
+    return reporter;
+  }
+
+  /// Persists changes made to a reporter after it has been embedded in [node].
+  /// This deliberately does not create another undo entry: the reporter was
+  /// created as part of the same palette drop.
+  void refreshReporterInput(BlockNode node, String key, BlockNode reporter) {
     setReporterForInput(node, key, reporter);
     _relayoutAll();
     _touch();
@@ -373,7 +388,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     _touch();
   }
 
-  void setNestedReporterInput(
+  BlockNode? setNestedReporterInput(
     BlockNode node,
     String key,
     BlockNode reporter,
@@ -381,7 +396,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     BlockType nestedType, {
     Map<String, dynamic>? defaults,
   }) {
-    if (!isReporterType(nestedType)) return;
+    if (!isReporterType(nestedType)) return null;
     _pushUndoSnapshot();
     final nested = _createNode(nestedType, Offset.zero);
     if (defaults != null) nested.inputs.addAll(defaults);
@@ -390,6 +405,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     setReporterForInput(node, key, reporter);
     _relayoutAll();
     _touch();
+    return nested;
   }
 
   void updateNestedReporterInput(
@@ -635,6 +651,42 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       for (final node in _walk(root)) {
         if (node.id == id) return node;
       }
+    }
+    return null;
+  }
+
+  /// Finds a workspace block or a reporter embedded in one of its input slots.
+  /// Embedded reporters are serialized in the owning block, so they are not
+  /// part of the draggable workspace tree returned by [findById].
+  BlockNode? findAnyNodeById(String id) {
+    final block = findById(id);
+    if (block != null) return block;
+    final visited = <String>{};
+    for (final root in state.roots) {
+      for (final node in _walk(root)) {
+        final reporter = _findEmbeddedReporterById(node, id, visited);
+        if (reporter != null) return reporter;
+      }
+    }
+    return null;
+  }
+
+  BlockNode? _findEmbeddedReporterById(
+    BlockNode owner,
+    String id,
+    Set<String> visited,
+  ) {
+    final rawReporters = owner.inputs[reporterInputsKey];
+    if (rawReporters is! Map) return null;
+    for (final rawReporter in rawReporters.values) {
+      if (rawReporter is! Map) continue;
+      final reporter = BlockNode.fromJson(
+        Map<String, dynamic>.from(rawReporter),
+      );
+      if (!visited.add(reporter.id)) continue;
+      if (reporter.id == id) return reporter;
+      final nested = _findEmbeddedReporterById(reporter, id, visited);
+      if (nested != null) return nested;
     }
     return null;
   }
