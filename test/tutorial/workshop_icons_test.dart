@@ -88,6 +88,30 @@ void main() {
       expect(tester.takeException(), isNull, reason: path.id);
     }
   });
+
+  testWidgets('workshop step number avatars keep a compact fixed size', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LearningPathTimelinePanel(
+            catalog: _englishCatalog(),
+            path: paths.first,
+            stepIndex: 0,
+            onStep: (_) {},
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+
+    final avatars = tester.widgetList<CircleAvatar>(find.byType(CircleAvatar));
+    expect(avatars, isNotEmpty);
+    expect(avatars.every((avatar) => avatar.radius == 10), isTrue);
+  });
 }
 
 TranslationCatalog _englishCatalog() {

@@ -9059,6 +9059,7 @@ class _NodeView extends ConsumerWidget {
     if (_isDropdownToken(rawToken, mappedKey)) {
       final picked = await _pickInlineOptionOverlay(
         context: context,
+        nodeId: node.id,
         options: options,
         anchorGlobal: anchorGlobal,
         localeCode: localeCode,
@@ -9944,6 +9945,7 @@ class _NodeView extends ConsumerWidget {
 
   Future<String?> _pickInlineOptionOverlay({
     required BuildContext context,
+    required String nodeId,
     required List<String> options,
     required Offset anchorGlobal,
     required String localeCode,
@@ -9973,9 +9975,28 @@ class _NodeView extends ConsumerWidget {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final foreground = Theme.of(context).colorScheme.onSurface;
+    final openedRevision = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(workspaceProvider).revision;
     entry = OverlayEntry(
       builder: (ctx) => Stack(
         children: [
+          Consumer(
+            builder: (context, ref, _) {
+              final revision = ref.watch(
+                workspaceProvider.select((state) => state.revision),
+              );
+              if (revision != openedRevision ||
+                  ref
+                          .read(workspaceProvider.notifier)
+                          .findAnyNodeById(nodeId) ==
+                      null) {
+                WidgetsBinding.instance.addPostFrameCallback((_) => close());
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,

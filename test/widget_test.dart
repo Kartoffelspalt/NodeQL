@@ -1031,7 +1031,7 @@ void main() {
     );
   });
 
-  testWidgets('UPDATE filter selection releases the following inline slots', (
+  testWidgets('closes schema options after workspace mutations', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
@@ -1084,6 +1084,23 @@ void main() {
     await tester.tap(operatorSlot);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('inline-option-overlay')), findsOneWidget);
+
+    final select = workspace.addTemplate(
+      BlockType.sqlSelect,
+      const Offset(500, 260),
+    );
+    await tester.pumpAndSettle();
+
+    expect(workspace.findAnyNodeById(select.id), isNotNull);
+    expect(find.byKey(const ValueKey('inline-option-overlay')), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    workspace.selectAt(update.position + const Offset(10, 10));
+    workspace.deleteSelected();
+    await tester.pumpAndSettle();
+
+    expect(workspace.findAnyNodeById(update.id), isNull);
+    expect(find.byKey(const ValueKey('inline-option-overlay')), findsNothing);
   });
 
   testWidgets('value palette nodes only drop into a compatible input slot', (
