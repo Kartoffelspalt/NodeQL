@@ -59,6 +59,13 @@ import 'dart:io';
 
 const int _maxVisibleColumnSelections = 3;
 const String _appIconAsset = 'assets/appicon/iconv4dark.png';
+typedef _ReporterAddedCallback =
+    void Function(
+      BlockNode owner,
+      String inputKey,
+      BlockNode reporter,
+      BlockNode rootReporter,
+    );
 
 class _NodeQlAppIcon extends StatelessWidget {
   const _NodeQlAppIcon({required this.size});
@@ -3268,6 +3275,8 @@ class _WorkshopWorkspaceViewState
                                                 _authoredNodeIds,
                                             onPaletteNodeAdded:
                                                 _registerAuthoredNode,
+                                            onReporterAdded:
+                                                _registerAuthoredReporter,
                                             onSaveProject: () async {},
                                           ),
                                         ),
@@ -3607,7 +3616,7 @@ class _WorkshopWorkspaceViewState
         _activeCategory = _categoryForLearningNode(node.type);
         final existing = ref
             .read(workspaceProvider.notifier)
-            .findById(_authoredNodeIds[node.ref] ?? '');
+            .findAnyNodeById(_authoredNodeIds[node.ref] ?? '');
         _authoredNodeInserted = existing?.type == node.type;
       }
     });
@@ -3621,7 +3630,7 @@ class _WorkshopWorkspaceViewState
     if (node == null) return false;
     return ref
             .read(workspaceProvider.notifier)
-            .findById(_authoredNodeIds[node.ref] ?? '')
+            .findAnyNodeById(_authoredNodeIds[node.ref] ?? '')
             ?.type ==
         node.type;
   }
@@ -3675,7 +3684,10 @@ class _WorkshopWorkspaceViewState
     _registerAuthoredNode(node);
   }
 
-  void _registerAuthoredNode(BlockNode node) {
+  void _registerAuthoredNode(
+    BlockNode node, {
+    VoidCallback? onDefaultsApplied,
+  }) {
     final path = _authoredPath;
     if (path == null || _loadingAuthoredStep || _activeAuthoredNodeExists()) {
       return;
@@ -3683,6 +3695,7 @@ class _WorkshopWorkspaceViewState
     final active = _activeAuthoredNode(path.steps[_authoredStepIndex]);
     if (active == null || active.type != node.type) return;
     node.inputs.addAll(active.defaults);
+    onDefaultsApplied?.call();
     setState(() {
       _authoredNodeInserted = true;
       _authoredNodeIds = Map.unmodifiable(<String, String>{
@@ -3691,6 +3704,20 @@ class _WorkshopWorkspaceViewState
       });
     });
     _saveAuthoredProgress();
+  }
+
+  void _registerAuthoredReporter(
+    BlockNode owner,
+    String inputKey,
+    BlockNode reporter,
+    BlockNode rootReporter,
+  ) {
+    _registerAuthoredNode(
+      reporter,
+      onDefaultsApplied: () => ref
+          .read(workspaceProvider.notifier)
+          .refreshReporterInput(owner, inputKey, rootReporter),
+    );
   }
 
   void _continueAuthoredGuide({
@@ -3718,7 +3745,7 @@ class _WorkshopWorkspaceViewState
         _authoredNodeInserted =
             ref
                 .read(workspaceProvider.notifier)
-                .findById(_authoredNodeIds[next.ref] ?? '')
+                .findAnyNodeById(_authoredNodeIds[next.ref] ?? '')
                 ?.type ==
             next.type;
         _activeCategory = _categoryForLearningNode(step.nodes[nextIndex].type);
@@ -4987,6 +5014,9 @@ class _PaletteDragData {
   final Map<String, dynamic>? defaults;
 }
 
+bool _isReporterDragData(_PaletteDragData data) =>
+    isReporterType(data.type) || data.defaults?[pluginShapeInput] == 'value';
+
 class _CategoryRail extends StatelessWidget {
   const _CategoryRail({
     required this.active,
@@ -5204,6 +5234,7 @@ class _PaletteState extends State<_Palette> {
                     (block) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: _PaletteCard(
+                        paletteKey: block.key,
                         type: block.type,
                         label: block.label,
                         description: block.description,
@@ -5978,6 +6009,7 @@ class _PaletteState extends State<_Palette> {
 
 class _PaletteCard extends StatelessWidget {
   const _PaletteCard({
+    required this.paletteKey,
     required this.type,
     required this.label,
     required this.description,
@@ -5990,6 +6022,7 @@ class _PaletteCard extends StatelessWidget {
     required this.onHelp,
   });
 
+  final String paletteKey;
   final BlockType type;
   final String label;
   final String description;
@@ -6014,17 +6047,24 @@ class _PaletteCard extends StatelessWidget {
       height: blockHeight,
       label: label,
     );
+    final addsToWorkspace = !_isReporterDragData(
+      _PaletteDragData(type, node.inputs),
+    );
 
     return Draggable<_PaletteDragData>(
+      key: ValueKey<String>('palette-draggable-$paletteKey'),
       data: _PaletteDragData(type, node.inputs),
       feedback: Material(color: Colors.transparent, child: block),
       child: Semantics(
-        button: true,
+        button: addsToWorkspace,
         label: '$label. $description',
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onAdd,
+            // Expression/value nodes only make sense inside compatible input
+            // slots. A click used to create an orphaned reporter that could
+            // not snap into the slot afterwards; keep it drag-only instead.
+            onTap: addsToWorkspace ? onAdd : null,
             borderRadius: BorderRadius.circular(surfaceStyle.radiusMedium),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 240),
@@ -6536,6 +6576,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
     this.learningPathCallouts = const <LearningPathNodeCallout>[],
     this.learningPathNodeIds = const <String, String>{},
     this.onPaletteNodeAdded,
+    this.onReporterAdded,
   });
 
   final FocusNode focusNode;
@@ -6546,6 +6587,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
   final List<LearningPathNodeCallout> learningPathCallouts;
   final Map<String, String> learningPathNodeIds;
   final ValueChanged<BlockNode>? onPaletteNodeAdded;
+  final _ReporterAddedCallback? onReporterAdded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -6567,8 +6609,11 @@ class _WorkspaceCanvas extends ConsumerWidget {
     final blocks = controller.allBlocks();
 
     return DragTarget<_PaletteDragData>(
-      onWillAcceptWithDetails: (_) => true,
+      // A value/reporter belongs in an inline slot. Reject it here so the
+      // workspace-wide target cannot steal a drop intended for that slot.
+      onWillAcceptWithDetails: (details) => !_isReporterDragData(details.data),
       onAcceptWithDetails: (details) {
+        if (_isReporterDragData(details.data)) return;
         final rb = context.findRenderObject() as RenderBox;
         final local = rb.globalToLocal(details.offset);
         final node = controller.addTemplate(
@@ -6662,6 +6707,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
                                   ? ropeColors.target
                                   : null,
                               columnLinkEndpointHaloColor: ropeColors.halo,
+                              onReporterAdded: onReporterAdded,
                             ),
                           for (
                             var index = 0;
@@ -6773,12 +6819,14 @@ class _WorkspaceBlock extends ConsumerWidget {
     required this.diagnostic,
     required this.columnLinkEndpointColor,
     required this.columnLinkEndpointHaloColor,
+    this.onReporterAdded,
   });
 
   final BlockNode node;
   final _SimpleNodeDiagnostic? diagnostic;
   final Color? columnLinkEndpointColor;
   final Color columnLinkEndpointHaloColor;
+  final _ReporterAddedCallback? onReporterAdded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -6813,6 +6861,7 @@ class _WorkspaceBlock extends ConsumerWidget {
           selected: visual.selected,
           columnLinkEndpointColor: columnLinkEndpointColor,
           columnLinkEndpointHaloColor: columnLinkEndpointHaloColor,
+          onReporterAdded: onReporterAdded,
         ),
       ),
     );
@@ -7711,6 +7760,7 @@ class _NodeView extends ConsumerWidget {
     required this.selected,
     required this.columnLinkEndpointColor,
     required this.columnLinkEndpointHaloColor,
+    this.onReporterAdded,
   });
 
   final BlockNode node;
@@ -7721,6 +7771,7 @@ class _NodeView extends ConsumerWidget {
   final bool selected;
   final Color? columnLinkEndpointColor;
   final Color columnLinkEndpointHaloColor;
+  final _ReporterAddedCallback? onReporterAdded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -7887,28 +7938,34 @@ class _NodeView extends ConsumerWidget {
                       final nestedKey = reporter == null
                           ? null
                           : primaryReporterInputKey(reporter.type);
-                      if (slot.inputKey == 'aggregate') {
-                        engine.setReporterInput(
+                      final inserted = slot.inputKey == 'aggregate'
+                          ? engine.setReporterInput(
+                              node,
+                              slot.inputKey,
+                              details.data.type,
+                              defaults: details.data.defaults,
+                            )
+                          : reporter != null && nestedKey != null
+                          ? engine.setNestedReporterInput(
+                              node,
+                              slot.inputKey,
+                              reporter,
+                              nestedKey,
+                              details.data.type,
+                              defaults: details.data.defaults,
+                            )
+                          : engine.setReporterInput(
+                              node,
+                              slot.inputKey,
+                              details.data.type,
+                              defaults: details.data.defaults,
+                            );
+                      if (inserted != null) {
+                        onReporterAdded?.call(
                           node,
                           slot.inputKey,
-                          details.data.type,
-                          defaults: details.data.defaults,
-                        );
-                      } else if (reporter != null && nestedKey != null) {
-                        engine.setNestedReporterInput(
-                          node,
-                          slot.inputKey,
-                          reporter,
-                          nestedKey,
-                          details.data.type,
-                          defaults: details.data.defaults,
-                        );
-                      } else {
-                        engine.setReporterInput(
-                          node,
-                          slot.inputKey,
-                          details.data.type,
-                          defaults: details.data.defaults,
+                          inserted,
+                          reporter ?? inserted,
                         );
                       }
                     },
@@ -8040,12 +8097,15 @@ class _NodeView extends ConsumerWidget {
           details.data.type,
         ),
         onAcceptWithDetails: (details) {
-          engine.setReporterInput(
+          final inserted = engine.setReporterInput(
             node,
             'aggregate',
             details.data.type,
             defaults: details.data.defaults,
           );
+          if (inserted != null) {
+            onReporterAdded?.call(node, 'aggregate', inserted, inserted);
+          }
         },
         builder: (context, candidates, _) => AnimatedScale(
           scale: candidates.isEmpty ? 1 : 1.02,
@@ -8999,6 +9059,7 @@ class _NodeView extends ConsumerWidget {
     if (_isDropdownToken(rawToken, mappedKey)) {
       final picked = await _pickInlineOptionOverlay(
         context: context,
+        nodeId: node.id,
         options: options,
         anchorGlobal: anchorGlobal,
         localeCode: localeCode,
@@ -9884,6 +9945,7 @@ class _NodeView extends ConsumerWidget {
 
   Future<String?> _pickInlineOptionOverlay({
     required BuildContext context,
+    required String nodeId,
     required List<String> options,
     required Offset anchorGlobal,
     required String localeCode,
@@ -9913,9 +9975,28 @@ class _NodeView extends ConsumerWidget {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     final foreground = Theme.of(context).colorScheme.onSurface;
+    final openedRevision = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(workspaceProvider).revision;
     entry = OverlayEntry(
       builder: (ctx) => Stack(
         children: [
+          Consumer(
+            builder: (context, ref, _) {
+              final revision = ref.watch(
+                workspaceProvider.select((state) => state.revision),
+              );
+              if (revision != openedRevision ||
+                  ref
+                          .read(workspaceProvider.notifier)
+                          .findAnyNodeById(nodeId) ==
+                      null) {
+                WidgetsBinding.instance.addPostFrameCallback((_) => close());
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,

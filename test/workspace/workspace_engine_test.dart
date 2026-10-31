@@ -461,6 +461,35 @@ void main() {
     );
     expect(where.inputs['value'], isEmpty);
   });
+
+  test('creates value reporters directly inside filter slots', () {
+    final controller = WorkspaceController()..resetWithRoot();
+    final where = controller.addTemplate(
+      BlockType.sqlWhere,
+      const Offset(120, 240),
+    );
+
+    final reporter = controller.setReporterInput(
+      where,
+      'value',
+      BlockType.sqlText,
+      defaults: <String, dynamic>{'literal_type': 'text', 'text': 'Berlin'},
+    );
+
+    expect(reporter, isNotNull);
+    expect(reporter?.type, BlockType.sqlText);
+    expect(reporter?.inputs['text'], 'Berlin');
+    expect(reporterForInput(where, 'value')?.type, BlockType.sqlText);
+    expect(
+      controller.allBlocks().where((node) => node.type == BlockType.sqlText),
+      isEmpty,
+    );
+
+    reporter!.inputs['text'] = 'Hamburg';
+    controller.refreshReporterInput(where, 'value', reporter);
+    expect(reporterForInput(where, 'value')?.inputs['text'], 'Hamburg');
+    expect(controller.findAnyNodeById(reporter.id)?.type, BlockType.sqlText);
+  });
 }
 
 Offset _columnRopePoint(Offset start, Offset end, double t) {

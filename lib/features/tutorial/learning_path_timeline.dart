@@ -123,7 +123,16 @@ class LearningPathTimelinePanel extends StatelessWidget {
                                       Icons.check_circle_outline,
                                       size: 18,
                                     )
-                                  : CircleAvatar(child: Text('${index + 1}')),
+                                  : CircleAvatar(
+                                      radius: 10,
+                                      child: Text(
+                                        '${index + 1}',
+                                        textScaler: TextScaler.noScaling,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall,
+                                      ),
+                                    ),
                               label: Text(path.steps[index].title),
                               backgroundColor: index == stepIndex
                                   ? colorScheme.primaryContainer
