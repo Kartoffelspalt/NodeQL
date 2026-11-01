@@ -120,6 +120,10 @@ jobs:
     needs: [prepare, quality]
     if: needs.prepare.outputs.should-release == 'true'
     runs-on: ubuntu-latest
+    env:
+      LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+      LINUX_GPG_KEY_ID: ${{ vars.LINUX_GPG_KEY_ID }}
+      LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -170,12 +174,46 @@ jobs:
           Categories=Development;Education;
           EOF
           dpkg-deb --build --root-owner-group package "nodeql_${RELEASE_VERSION}_amd64.deb"
+      - name: Import Linux release signing key
+        if: >-
+          ${{
+            env.LINUX_GPG_PRIVATE_KEY != '' &&
+            env.LINUX_GPG_PASSPHRASE != '' &&
+            env.LINUX_GPG_KEY_ID != '' &&
+            env.LINUX_GPG_KEY_ID != '__SET_ME__'
+          }}
+        shell: bash
+        run: |
+          export GNUPGHOME="${RUNNER_TEMP}/nodeql-gpg"
+          install -d -m 700 "${GNUPGHOME}"
+          printf '%s' "${LINUX_GPG_PRIVATE_KEY}" | base64 --decode > "${RUNNER_TEMP}/nodeql-release-key.asc"
+          gpg --batch --import "${RUNNER_TEMP}/nodeql-release-key.asc"
+      - name: Sign Linux packages
+        if: >-
+          ${{
+            env.LINUX_GPG_PRIVATE_KEY != '' &&
+            env.LINUX_GPG_PASSPHRASE != '' &&
+            env.LINUX_GPG_KEY_ID != '' &&
+            env.LINUX_GPG_KEY_ID != '__SET_ME__'
+          }}
+        shell: bash
+        run: |
+          export GNUPGHOME="${RUNNER_TEMP}/nodeql-gpg"
+          for artifact in nodeql-linux-x64-*.tar.gz nodeql_*_amd64.deb; do
+            gpg --batch --yes --pinentry-mode loopback \
+              --passphrase "${LINUX_GPG_PASSPHRASE}" \
+              --local-user "${LINUX_GPG_KEY_ID}" \
+              --armor --detach-sign "${artifact}"
+            gpg --batch --verify "${artifact}.asc" "${artifact}"
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: nodeql-linux
           path: |
             nodeql-linux-x64-*.tar.gz
             nodeql_*_amd64.deb
+            nodeql-linux-x64-*.tar.gz.asc
+            nodeql_*_amd64.deb.asc
           if-no-files-found: error
 
   build-macos:
@@ -183,6 +221,13 @@ jobs:
     needs: [prepare, quality]
     if: needs.prepare.outputs.should-release == 'true'
     runs-on: macos-latest
+    env:
+      APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+      APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+      APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -191,6 +236,30 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Import Apple Developer ID certificate
+        if: >-
+          ${{
+            env.APPLE_CERTIFICATE_P12_BASE64 != '' &&
+            env.APPLE_CERTIFICATE_PASSWORD != '' &&
+            env.APPLE_SIGNING_IDENTITY != '' &&
+            env.APPLE_SIGNING_IDENTITY != '__SET_ME__'
+          }}
+        shell: bash
+        run: |
+          CERTIFICATE_PATH="${RUNNER_TEMP}/nodeql-developer-id.p12"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/nodeql-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          printf '%s' "${APPLE_CERTIFICATE_P12_BASE64}" | base64 -D > "${CERTIFICATE_PATH}"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERTIFICATE_PATH}" -k "${KEYCHAIN_PATH}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychain -d user -s "${KEYCHAIN_PATH}"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep -F "${APPLE_SIGNING_IDENTITY}" >/dev/null
+
       - name: Build macOS application
         run: >
           flutter build macos --release
@@ -199,18 +268,74 @@ jobs:
           --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
           --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
           --dart-define=NODEQL_TRANSLATION_CONTRIBUTION_URL=${{ env.TRANSLATION_CONTRIBUTION_URL }}
-      - name: Package macOS application
+      - name: Sign macOS application
+        if: >-
+          ${{
+            env.APPLE_CERTIFICATE_P12_BASE64 != '' &&
+            env.APPLE_CERTIFICATE_PASSWORD != '' &&
+            env.APPLE_SIGNING_IDENTITY != '' &&
+            env.APPLE_SIGNING_IDENTITY != '__SET_ME__'
+          }}
+        shell: bash
+        run: |
+          APP_PATH="build/macos/Build/Products/Release/NodeQL.app"
+
+          # Sign leaf Mach-O code, then its enclosing bundles, then the app.
+          # Signing a leaf after its framework would invalidate that framework.
+          while IFS= read -r -d '' binary; do
+            codesign --force --sign "${APPLE_SIGNING_IDENTITY}" --timestamp \
+              --options runtime "${binary}"
+          done < <(find "${APP_PATH}/Contents" -type f \
+            \( -name '*.dylib' -o -perm -111 \) -print0)
+          while IFS= read -r -d '' nested_bundle; do
+            codesign --force --sign "${APPLE_SIGNING_IDENTITY}" --timestamp \
+              --options runtime "${nested_bundle}"
+          done < <(find "${APP_PATH}/Contents" -depth -type d \
+            \( -name '*.framework' -o -name '*.xpc' -o -name '*.appex' \) -print0)
+          codesign --force --sign "${APPLE_SIGNING_IDENTITY}" --timestamp \
+            --options runtime --entitlements macos/Runner/Release.entitlements "${APP_PATH}"
+          codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+      - name: Package macOS installer DMG
         shell: bash
         run: |
           PUBSPEC_VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
           RELEASE_VERSION="${PUBSPEC_VERSION%%+*}"
-          ditto -c -k --sequesterRsrc --keepParent \
-            build/macos/Build/Products/Release/NodeQL.app \
-            "nodeql-macos-${RELEASE_VERSION}.zip"
+          APP_PATH="build/macos/Build/Products/Release/NodeQL.app"
+          DMG_ROOT="${RUNNER_TEMP}/nodeql-dmg"
+          mkdir -p "${DMG_ROOT}"
+          cp -R "${APP_PATH}" "${DMG_ROOT}/NodeQL.app"
+          ln -s /Applications "${DMG_ROOT}/Applications"
+          hdiutil create -volname "NodeQL" -srcfolder "${DMG_ROOT}" \
+            -ov -format UDZO "nodeql-macos-${RELEASE_VERSION}.dmg"
+      - name: Notarize and staple macOS installer
+        if: >-
+          ${{
+            env.APPLE_CERTIFICATE_P12_BASE64 != '' &&
+            env.APPLE_CERTIFICATE_PASSWORD != '' &&
+            env.APPLE_SIGNING_IDENTITY != '' &&
+            env.APPLE_SIGNING_IDENTITY != '__SET_ME__' &&
+            env.APPLE_NOTARY_KEY_BASE64 != '' &&
+            env.APPLE_NOTARY_KEY_ID != '' &&
+            env.APPLE_NOTARY_KEY_ID != '__SET_ME__' &&
+            env.APPLE_NOTARY_ISSUER_ID != '' &&
+            env.APPLE_NOTARY_ISSUER_ID != '__SET_ME__'
+          }}
+        shell: bash
+        run: |
+          NOTARY_KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          printf '%s' "${APPLE_NOTARY_KEY_BASE64}" | base64 -D > "${NOTARY_KEY_PATH}"
+          chmod 600 "${NOTARY_KEY_PATH}"
+          xcrun notarytool submit nodeql-macos-*.dmg --wait \
+            --key "${NOTARY_KEY_PATH}" \
+            --key-id "${APPLE_NOTARY_KEY_ID}" \
+            --issuer "${APPLE_NOTARY_ISSUER_ID}"
+          xcrun stapler staple nodeql-macos-*.dmg
+          xcrun stapler validate nodeql-macos-*.dmg
+          spctl --assess --type open --context context:primary-signature --verbose=4 nodeql-macos-*.dmg
       - uses: actions/upload-artifact@v7
         with:
           name: nodeql-macos
-          path: nodeql-macos-*.zip
+          path: nodeql-macos-*.dmg
           if-no-files-found: error
 
   build-windows:
@@ -218,6 +343,9 @@ jobs:
     needs: [prepare, quality]
     if: needs.prepare.outputs.should-release == 'true'
     runs-on: windows-latest
+    env:
+      WINDOWS_CERTIFICATE_P12_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_P12_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -234,16 +362,104 @@ jobs:
           --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
           --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
           --dart-define=NODEQL_TRANSLATION_CONTRIBUTION_URL=${{ env.TRANSLATION_CONTRIBUTION_URL }}
-      - name: Package Windows bundle
+      - name: Decode Windows code-signing certificate
+        if: ${{ env.WINDOWS_CERTIFICATE_P12_BASE64 != '' && env.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'nodeql-codesigning.pfx'
+          [System.IO.File]::WriteAllBytes(
+            $certificatePath,
+            [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_P12_BASE64))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.Directory.Name -eq 'x64' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if ([string]::IsNullOrWhiteSpace($signtool)) { throw 'signtool.exe was not found.' }
+          "WINDOWS_CERTIFICATE_PATH=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_SIGNTOOL_PATH=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Sign Windows application files
+        if: ${{ env.WINDOWS_CERTIFICATE_P12_BASE64 != '' && env.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          $releaseDir = (Resolve-Path 'build/windows/x64/runner/Release').Path
+          Get-ChildItem $releaseDir -File -Recurse |
+            Where-Object { $_.Extension -in '.exe', '.dll' } |
+            ForEach-Object {
+              & $env:WINDOWS_SIGNTOOL_PATH sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+                /f $env:WINDOWS_CERTIFICATE_PATH /p $env:WINDOWS_CERTIFICATE_PASSWORD $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Code signing failed: $($_.FullName)" }
+            }
+
+      - name: Package Windows installer
+        shell: pwsh
+        run: |
+          $releaseDir = (Resolve-Path 'build/windows/x64/runner/Release').Path
+          $pubspecVersion = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches.Groups[1].Value
+          $releaseVersion = $pubspecVersion.Split('+')[0]
+          $installerName = "nodeql-windows-x64-$releaseVersion-setup.exe"
+          $issPath = Join-Path $env:RUNNER_TEMP 'nodeql.iss'
+          @'
+          [Setup]
+          AppId={{4D52F3AB-88BB-4E7B-9761-25A7CDE6CE34}
+          AppName=NodeQL
+          AppVersion=__VERSION__
+          AppPublisher=NodeQL contributors
+          AppPublisherURL=https://github.com/__REPOSITORY__
+          DefaultDirName={autopf}\NodeQL
+          DefaultGroupName=NodeQL
+          UninstallDisplayIcon={app}\nodeql.exe
+          OutputDir=__OUTPUT_DIR__
+          OutputBaseFilename=__INSTALLER_NAME__
+          Compression=lzma2
+          SolidCompression=yes
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+          WizardStyle=modern
+
+          [Tasks]
+          Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"
+
+          [Files]
+          Source: "__APP_DIR__\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\NodeQL"; Filename: "{app}\nodeql.exe"
+          Name: "{autodesktop}\NodeQL"; Filename: "{app}\nodeql.exe"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\nodeql.exe"; Description: "Launch NodeQL"; Flags: nowait postinstall skipifsilent
+          '@.Replace('__VERSION__', $releaseVersion).
+            Replace('__REPOSITORY__', '${{ github.repository }}').
+            Replace('__OUTPUT_DIR__', $env:GITHUB_WORKSPACE).
+            Replace('__INSTALLER_NAME__', $installerName.Replace('.exe', '')).
+            Replace('__APP_DIR__', $releaseDir) |
+            Set-Content -Path $issPath -Encoding utf8
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          }
+          & $iscc $issPath
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
+      - name: Sign Windows installer
+        if: ${{ env.WINDOWS_CERTIFICATE_P12_BASE64 != '' && env.WINDOWS_CERTIFICATE_PASSWORD != '' }}
         shell: pwsh
         run: |
           $pubspecVersion = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches.Groups[1].Value
           $releaseVersion = $pubspecVersion.Split('+')[0]
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "nodeql-windows-x64-$releaseVersion.zip"
+          $installerPath = Join-Path $env:GITHUB_WORKSPACE "nodeql-windows-x64-$releaseVersion-setup.exe"
+          & $env:WINDOWS_SIGNTOOL_PATH sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            /f $env:WINDOWS_CERTIFICATE_PATH /p $env:WINDOWS_CERTIFICATE_PASSWORD $installerPath
+          if ($LASTEXITCODE -ne 0) { throw "Code signing failed: $installerPath" }
+          $installerSignature = Get-AuthenticodeSignature $installerPath
+          if ($installerSignature.Status -ne 'Valid') {
+            throw "Installer signature is not valid: $($installerSignature.Status)"
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: nodeql-windows
-          path: nodeql-windows-x64-*.zip
+          path: nodeql-windows-x64-*-setup.exe
           if-no-files-found: error
 
   publish:

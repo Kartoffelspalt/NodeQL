@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:nodeql/engine/stage/stage_state.dart';
 
 class StageState {

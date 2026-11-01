@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 

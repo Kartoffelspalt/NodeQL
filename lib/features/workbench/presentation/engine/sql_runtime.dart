@@ -3,7 +3,7 @@ import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:nodeql/engine/learning/sql_exercise_evaluator.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:path/path.dart' as p;
@@ -81,13 +81,11 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   final bool _readOnly;
 
   Future<void> pickDatabase() async {
-    final result = await FilePicker.platform.pickFiles(
+    final file = await FilePicker.pickFile(
       dialogTitle: 'Select SQLite database',
       type: FileType.custom,
       allowedExtensions: <String>['db', 'sqlite', 'sqlite3'],
-      withData: true,
     );
-    final file = result?.files.single;
     final sourcePath = file?.path;
     if (sourcePath == null) return;
 
@@ -98,10 +96,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
         });
       }
 
-      final localDbPath = await _copyIntoSandbox(
-        sourcePath: sourcePath,
-        bytes: file?.bytes,
-      );
+      final localDbPath = await _copyIntoSandbox(sourcePath: sourcePath);
       await attachDatabasePath(localDbPath);
     } catch (e) {
       state = state.copyWith(lastMessage: 'Failed to open database: $e');

@@ -1013,12 +1013,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _importOnboarding() async {
-    final selected = await FilePicker.platform.pickFiles(
+    final selected = await FilePicker.pickFile(
       dialogTitle: 'Onboarding-Walkthrough auswählen',
       type: FileType.custom,
       allowedExtensions: const <String>['json'],
     );
-    final path = selected?.files.single.path;
+    final path = selected?.path;
     if (path == null) return;
     try {
       final definition = OnboardingDefinition.fromJsonString(
@@ -1346,7 +1346,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       ),
     );
     if (yes == true) {
-      final selectedDirectory = await FilePicker.platform.getDirectoryPath(
+      final selectedDirectory = await FilePicker.getDirectoryPath(
         dialogTitle: catalog.text('project.new.directoryDialog'),
       );
       if (selectedDirectory == null) {
@@ -1409,12 +1409,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _saveProjectAs(BuildContext context) async {
     final catalog = ref.read(translationControllerProvider).catalog;
-    final path = await FilePicker.platform.saveFile(
+    final serializedProject = jsonEncode(_projectEnvelope());
+    final savedFile = await FilePicker.saveFile(
       dialogTitle: catalog.text('project.saveDialog'),
       fileName: 'project.nodeql',
-      type: FileType.custom,
-      allowedExtensions: <String>['nodeql'],
+      bytes: Uint8List.fromList(utf8.encode(serializedProject)),
     );
+    final path = savedFile?.toFilePath();
     if (path == null) return;
     setState(() {
       _activeProjectPath = path;
@@ -1422,7 +1423,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       _activeProjectName = _projectNameFromPath(path);
       _upsertRecentProject();
     });
-    await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+    await File(path).writeAsString(serializedProject, flush: true);
     await _rememberProjectBookmark(path);
     _upsertRecentProject();
     await _saveProjectRegistry();
@@ -1458,12 +1459,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<void> _openProject(BuildContext context) async {
     if (_projectLoadInProgress) return;
     final catalog = ref.read(translationControllerProvider).catalog;
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFile(
       dialogTitle: catalog.text('project.openDialog'),
       type: FileType.custom,
       allowedExtensions: <String>['nodeql', 'scratchql', 'sqlq', 'sqp'],
     );
-    final path = result?.files.single.path;
+    final path = result?.path;
     if (path == null) return;
     if (!context.mounted) return;
     final source = await _readProjectForOpening(context, path);
@@ -2057,13 +2058,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _installPluginManifest(BuildContext context) async {
     final catalog = ref.read(translationControllerProvider).catalog;
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFile(
       dialogTitle: catalog.text('plugins.selectDialog'),
       type: FileType.custom,
       allowedExtensions: const <String>['json'],
-      allowMultiple: false,
     );
-    final path = result?.files.single.path;
+    final path = result?.path;
     if (path == null) return;
     try {
       final manifest = await ref
@@ -12602,17 +12602,15 @@ class _OutputPreviewFloatingWindowState
   Future<void> _export(SqlResultExportFormat format) async {
     if (!_hasRows) return;
     final extension = sqlResultExportExtension(format);
-    final path = await FilePicker.platform.saveFile(
+    final content = encodeSqlResultRows(widget.runtime.lastRows, format);
+    final savedFile = await FilePicker.saveFile(
       dialogTitle: _actionText('export'),
       fileName: 'nodeql-result.$extension',
-      type: FileType.custom,
-      allowedExtensions: <String>[extension],
+      bytes: Uint8List.fromList(utf8.encode(content)),
     );
+    final path = savedFile?.toFilePath();
     if (path == null) return;
-    await File(path).writeAsString(
-      encodeSqlResultRows(widget.runtime.lastRows, format),
-      flush: true,
-    );
+    await File(path).writeAsString(content, flush: true);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${_actionText('exported')}: $path')),
