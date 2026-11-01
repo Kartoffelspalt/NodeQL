@@ -181,6 +181,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'forever'**
   String get blockForever;
+
+  /// No description provided for @desktopFeatureOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'This feature is only available in the desktop app.'**
+  String get desktopFeatureOnly;
 }
 
 class _AppLocalizationsDelegate

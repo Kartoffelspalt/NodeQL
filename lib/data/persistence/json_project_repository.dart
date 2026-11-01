@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:nodeql/data/project/default_project_factory.dart';
 import 'package:nodeql/domain/models/project_models.dart';
@@ -11,7 +11,7 @@ class JsonProjectRepository implements ProjectRepository {
 
   @override
   Future<ProjectModel> loadProject(String path) async {
-    final jsonContent = await File(path).readAsString();
+    final jsonContent = await fileAt(path).readAsString();
     return ProjectModel.fromJson(
       jsonDecode(jsonContent) as Map<String, Object?>,
     );
@@ -22,6 +22,6 @@ class JsonProjectRepository implements ProjectRepository {
     final encoded = const JsonEncoder.withIndent(
       '  ',
     ).convert(project.toJson());
-    await File(path).writeAsString(encoded);
+    await fileAt(path).writeAsString(encoded);
   }
 }

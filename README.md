@@ -13,6 +13,10 @@ remain on the user's device.
 > [Releasing](docs/RELEASING.md) before describing a build as generally
 > available.
 
+A browser preview can also be built from source. See
+[Web preview](docs/WEB_PREVIEW.md) for build instructions and session-storage
+limitations.
+
 > **Latest release:** [NodeQL v0.4.3](CHANGELOG.md) adds visual
 > SQLite functions, column aliases, fullscreen and exportable result tables,
 > a refined workspace, and fullscreen settings.

@@ -1,8 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:path_provider/path_provider.dart';
 
 class OnboardingLaunchState {
   const OnboardingLaunchState({
@@ -85,6 +84,6 @@ class OnboardingLaunchController extends StateNotifier<OnboardingLaunchState> {
 
   static Future<File> _defaultStorageFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/nodeql_onboarding_state.json');
+    return fileAt('${support.path}/nodeql_onboarding_state.json');
   }
 }

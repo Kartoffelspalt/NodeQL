@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// Fixed, space-filling arrangements for the two runtime panels.
 enum RuntimePanelLayoutMode { commandBottom, previewBottom, rightSplit }
@@ -168,6 +167,6 @@ class WorkbenchLayoutController extends StateNotifier<WorkbenchLayout> {
 
   static Future<File> _defaultStorageFile() async {
     final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}/nodeql_workbench_layout.json');
+    return fileAt('${directory.path}/nodeql_workbench_layout.json');
   }
 }

@@ -1,14 +1,14 @@
-import 'dart:io';
-import 'dart:isolate';
+import 'package:nodeql/core/platform/storage.dart';
+import 'package:nodeql/core/platform/sql_task.dart';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:nodeql/core/platform/picked_file.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:nodeql/engine/learning/sql_exercise_evaluator.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3/sqlite3.dart';
+import 'package:nodeql/core/platform/sqlite.dart';
 
 class TableSchema {
   const TableSchema({required this.name, required this.columns});
@@ -86,11 +86,11 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       type: FileType.custom,
       allowedExtensions: <String>['db', 'sqlite', 'sqlite3'],
     );
-    final sourcePath = file?.path;
+    final sourcePath = await pickedFilePath(file);
     if (sourcePath == null) return;
 
     try {
-      if (Platform.isMacOS) {
+      if (isMacOS) {
         await _securityChannel.invokeMethod<bool>('start', <String, dynamic>{
           'path': sourcePath,
         });
@@ -104,7 +104,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   }
 
   Future<void> attachDatabasePath(String dbPath) async {
-    if (!await File(dbPath).exists()) {
+    if (!await fileAt(dbPath).exists()) {
       state = state.copyWith(lastMessage: 'Database file not found: $dbPath');
       return;
     }
@@ -133,7 +133,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     String? preferredName,
     String? directoryPath,
   }) async {
-    final dbDir = Directory(
+    final dbDir = directoryAt(
       directoryPath ??
           p.join((await getApplicationSupportDirectory()).path, 'nodeql_db'),
     );
@@ -169,7 +169,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     // automatic workspace previews fail with "Invalid argument(s)".
     final readOnly = _readOnly;
     try {
-      changesDatabase = await Isolate.run(
+      changesDatabase = await runSqlTask(
         () => _containsWriteStatements(dbPath, sql),
       );
       if (!mounted) {
@@ -190,7 +190,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       if (changesDatabase) {
         snapshot = await _createSnapshot(dbPath);
       }
-      final result = await Isolate.run(
+      final result = await runSqlTask(
         () => _runQuery(dbPath, sql, _maxPreviewRows, readOnly: readOnly),
       );
       if (!mounted) {
@@ -256,7 +256,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       return const SqlExecutionResult(success: false, message: message);
     }
     try {
-      final result = await Isolate.run(
+      final result = await runSqlTask(
         () => _runReadOnlyPreview(dbPath, sql, _maxPreviewRows),
       );
       if (!mounted) {
@@ -373,8 +373,8 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   }
 
   Future<File> _createSnapshot(String dbPath) async {
-    final snapshot = File('$dbPath.snapshot');
-    await File(dbPath).copy(snapshot.path);
+    final snapshot = fileAt('$dbPath.snapshot');
+    await fileAt(dbPath).copy(snapshot.path);
     return snapshot;
   }
 
@@ -392,7 +392,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       path,
       mode: readOnly ? OpenMode.readOnly : OpenMode.readWriteCreate,
     );
-    var statements = <PreparedStatement>[];
+    var statements = <CommonPreparedStatement>[];
     try {
       // SQLite foreign-key enforcement is connection-local and disabled by
       // default. Every NodeQL execution uses a fresh worker connection, so it
@@ -412,7 +412,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
             if (!statement.isReadOnly) {
               return const _QueryResult(rows: [], truncated: false);
             }
-            return _readPreparedStatements(<PreparedStatement>[
+            return _readPreparedStatements(<CommonPreparedStatement>[
               statement,
             ], maxRows);
           } on Object {
@@ -437,7 +437,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     int maxRows,
   ) {
     final database = sqlite3.open(path, mode: OpenMode.readOnly);
-    var statements = <PreparedStatement>[];
+    var statements = <CommonPreparedStatement>[];
     try {
       statements = database.prepareMultiple(sql);
       if (statements.isEmpty ||
@@ -456,7 +456,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   }
 
   static _QueryResult _readPreparedStatements(
-    Iterable<PreparedStatement> statements,
+    Iterable<CommonPreparedStatement> statements,
     int maxRows,
   ) {
     var rows = const <Map<String, String>>[];
@@ -490,7 +490,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
 
   static bool _containsWriteStatements(String path, String sql) {
     final database = sqlite3.open(path);
-    var statements = <PreparedStatement>[];
+    var statements = <CommonPreparedStatement>[];
     try {
       statements = database.prepareMultiple(sql);
       return statements.any((statement) => !statement.isReadOnly);
@@ -612,7 +612,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     final baseName = p.basenameWithoutExtension(fileName);
     var candidate = p.join(directory, fileName);
     var suffix = 1;
-    while (await File(candidate).exists()) {
+    while (await fileAt(candidate).exists()) {
       candidate = p.join(directory, '$baseName-$suffix$extension');
       suffix += 1;
     }
@@ -624,7 +624,7 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
     Uint8List? bytes,
   }) async {
     final supportDir = await getApplicationSupportDirectory();
-    final dbDir = Directory(p.join(supportDir.path, 'nodeql_db'));
+    final dbDir = directoryAt(p.join(supportDir.path, 'nodeql_db'));
     if (!await dbDir.exists()) {
       await dbDir.create(recursive: true);
     }
@@ -635,13 +635,13 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
       dbDir.path,
       p.basename(sourcePath),
     );
-    final target = File(targetPath);
+    final target = fileAt(targetPath);
     if (bytes != null && bytes.isNotEmpty) {
       await target.writeAsBytes(bytes, flush: true);
       return targetPath;
     }
 
-    await File(sourcePath).copy(targetPath);
+    await fileAt(sourcePath).copy(targetPath);
     return targetPath;
   }
 }

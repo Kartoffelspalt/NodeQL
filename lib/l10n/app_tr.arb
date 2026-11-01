@@ -13,5 +13,6 @@
   "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
   "blockTurnDegrees": "{degrees} derece dön",
   "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
-  "blockForever": "sürekli"
+  "blockForever": "sürekli",
+  "desktopFeatureOnly": "Bu özellik yalnızca masaüstü uygulamasında kullanılabilir."
 }

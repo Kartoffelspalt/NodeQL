@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+import 'package:nodeql/core/platform/picked_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -32,6 +34,7 @@ import 'package:nodeql/features/workbench/presentation/workbench_layout_controll
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/database_browser_dialog.dart';
+import 'package:nodeql/features/workbench/presentation/widgets/desktop_feature_notice.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/sql_code_editor.dart';
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
@@ -46,7 +49,6 @@ import 'package:nodeql/features/onboarding/onboarding_flow.dart';
 import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
 import 'package:nodeql/core/theme/nodeql_brutal_pressable.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:nodeql/localization/translation_controller.dart';
@@ -55,10 +57,40 @@ import 'package:nodeql/localization/translation_repository.dart';
 import 'package:nodeql/localization/supported_languages.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 const int _maxVisibleColumnSelections = 3;
 const String _appIconAsset = 'assets/appicon/iconv4dark.png';
+
+/// Web buttons explain desktop-only features; native buttons keep their action.
+class _DesktopFeatureGate extends StatelessWidget {
+  const _DesktopFeatureGate({
+    required this.featureName,
+    required this.catalog,
+    required this.builder,
+    this.enabled = true,
+  });
+
+  final String featureName;
+  final TranslationCatalog catalog;
+  final Widget Function(VoidCallback? showNotice) builder;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb || !enabled) return builder(null);
+    return builder(() {
+      unawaited(
+        showDialog<void>(
+          context: context,
+          builder: (_) =>
+              DesktopFeatureNotice(featureName: featureName, catalog: catalog),
+        ),
+      );
+    });
+  }
+}
+
 typedef _ReporterAddedCallback =
     void Function(
       BlockNode owner,
@@ -443,9 +475,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
     _menuChannel.setMethodCallHandler(_handleNativeMenuAction);
-    Future<void>.microtask(
-      () => ref.read(pluginPaletteProvider.notifier).reload(),
-    );
+    if (!kIsWeb) {
+      Future<void>.microtask(
+        () => ref.read(pluginPaletteProvider.notifier).reload(),
+      );
+    }
     ref.listenManual<int>(
       workspaceProvider.select((state) => state.revision),
       (_, _) => _scheduleAutosave(),
@@ -526,7 +560,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
 
     final now = DateTime.now();
-    if (_advanceDatabaseBrowserKeys(event.logicalKey, now)) {
+    if (!kIsWeb && _advanceDatabaseBrowserKeys(event.logicalKey, now)) {
       unawaited(_openDatabaseBrowser());
       return true;
     }
@@ -599,7 +633,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _openDatabaseBrowser() async {
-    if (_databaseBrowserOpen || !mounted) return;
+    if (kIsWeb || _databaseBrowserOpen || !mounted) return;
     final databasePath = ref.read(sqlRuntimeProvider).dbPath;
     if (databasePath == null) return;
     _databaseBrowserOpen = true;
@@ -639,7 +673,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final columnLinkMode = ref.watch(
       workspaceProvider.select((state) => state.columnLinkMode),
     );
-    final pluginState = ref.watch(pluginPaletteProvider);
+    final pluginState = kIsWeb
+        ? const PluginPaletteState()
+        : ref.watch(pluginPaletteProvider);
     final executionRoots = ref
         .read(workspaceTabsProvider.notifier)
         .executionRoots();
@@ -1005,8 +1041,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   void _startDefaultOnboarding() {
     setState(() {
-      _activeOnboarding = defaultNodeQlOnboarding(
-        Localizations.localeOf(context),
+      _activeOnboarding = _availableOnboarding(
+        defaultNodeQlOnboarding(Localizations.localeOf(context)),
       );
       _onboardingStepIndex = 0;
     });
@@ -1018,15 +1054,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       type: FileType.custom,
       allowedExtensions: const <String>['json'],
     );
-    final path = selected?.path;
+    final path = await pickedFilePath(selected);
     if (path == null) return;
     try {
       final definition = OnboardingDefinition.fromJsonString(
-        await File(path).readAsString(),
+        await fileAt(path).readAsString(),
       );
       if (!mounted) return;
       setState(() {
-        _activeOnboarding = definition;
+        _activeOnboarding = _availableOnboarding(definition);
         _onboardingStepIndex = 0;
       });
     } on Object catch (error) {
@@ -1037,6 +1073,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         ),
       );
     }
+  }
+
+  OnboardingDefinition? _availableOnboarding(OnboardingDefinition definition) {
+    if (!kIsWeb) return definition;
+    final steps = definition.steps
+        .where((step) => step.target != OnboardingTarget.workshop)
+        .toList(growable: false);
+    return steps.isEmpty
+        ? null
+        : OnboardingDefinition(name: definition.name, steps: steps);
   }
 
   void _advanceOnboarding() {
@@ -1212,7 +1258,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     try {
       final support = await getApplicationSupportDirectory();
       if (_projectLoadInProgress || projectId != _activeProjectId) return;
-      final autosave = File(
+      final autosave = fileAt(
         p.join(support.path, 'nodeql_autosave_$projectId.nodeql'),
       );
       await autosave.writeAsString(payload, flush: true);
@@ -1232,10 +1278,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       _activeProjectBookmark = active.first['securityBookmark'] as String?;
       _activeProjectPath = await _restoreProjectPath(active.first);
       final activeProjectPath = _activeProjectPath;
-      if (activeProjectPath != null && await File(activeProjectPath).exists()) {
+      if (activeProjectPath != null &&
+          await fileAt(activeProjectPath).exists()) {
         try {
           final source = await _readBoundedProjectSource(
-            File(activeProjectPath),
+            fileAt(activeProjectPath),
           );
           if (source != null && source.trim().isNotEmpty) {
             await _loadProjectPayload(source, projectPath: activeProjectPath);
@@ -1245,16 +1292,16 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       }
     }
     final support = await getApplicationSupportDirectory();
-    final autosave = File(
+    final autosave = fileAt(
       p.join(support.path, 'nodeql_autosave_$_activeProjectId.nodeql'),
     );
-    final legacySqpAutosave = File(
+    final legacySqpAutosave = fileAt(
       p.join(support.path, 'nodeql_autosave_$_activeProjectId.sqp'),
     );
-    final legacyScratchQlAutosave = File(
+    final legacyScratchQlAutosave = fileAt(
       p.join(support.path, 'scratchql_autosave_$_activeProjectId.scratchql'),
     );
-    final legacyScratchQlSqpAutosave = File(
+    final legacyScratchQlSqpAutosave = fileAt(
       p.join(support.path, 'scratchql_autosave_$_activeProjectId.sqp'),
     );
     final sourceFile = await autosave.exists()
@@ -1346,16 +1393,18 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       ),
     );
     if (yes == true) {
-      final selectedDirectory = await FilePicker.getDirectoryPath(
-        dialogTitle: catalog.text('project.new.directoryDialog'),
-      );
+      final selectedDirectory = kIsWeb
+          ? (await getApplicationSupportDirectory()).path
+          : await FilePicker.getDirectoryPath(
+              dialogTitle: catalog.text('project.new.directoryDialog'),
+            );
       if (selectedDirectory == null) {
         dbName.dispose();
         projectName.dispose();
         createDb.dispose();
         return;
       }
-      final projectDirectory = Directory(selectedDirectory);
+      final projectDirectory = directoryAt(selectedDirectory);
       await projectDirectory.create(recursive: true);
       final rawProjectName = projectName.text.trim().isEmpty
           ? catalog.text('project.untitled')
@@ -1393,7 +1442,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         _autosaveEnabledForProject = autosaveProject.value;
         _upsertRecentProject();
       });
-      await File(
+      await fileAt(
         projectPath,
       ).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
       await _rememberProjectBookmark(projectPath);
@@ -1415,15 +1464,23 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       fileName: 'project.nodeql',
       bytes: Uint8List.fromList(utf8.encode(serializedProject)),
     );
-    final path = savedFile?.toFilePath();
-    if (path == null) return;
+    // The browser download API returns null even after a successful download.
+    if (savedFile == null && !kIsWeb) return;
+    final path = kIsWeb
+        ? (_activeProjectPath ??
+              p.join(
+                (await getApplicationSupportDirectory()).path,
+                'project.nodeql',
+              ))
+        : savedFile!.toFilePath();
+    if (!mounted) return;
     setState(() {
       _activeProjectPath = path;
       _activeProjectId = 'project_${DateTime.now().millisecondsSinceEpoch}';
       _activeProjectName = _projectNameFromPath(path);
       _upsertRecentProject();
     });
-    await File(path).writeAsString(serializedProject, flush: true);
+    await fileAt(path).writeAsString(serializedProject, flush: true);
     await _rememberProjectBookmark(path);
     _upsertRecentProject();
     await _saveProjectRegistry();
@@ -1445,12 +1502,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _performSaveProject(BuildContext context) async {
     final path = _activeProjectPath;
-    if (path == null) {
+    if (path == null || kIsWeb) {
       await _saveProjectAs(context);
       return;
     }
 
-    await File(path).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
+    await fileAt(
+      path,
+    ).writeAsString(jsonEncode(_projectEnvelope()), flush: true);
     _upsertRecentProject();
     await _saveProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
@@ -1464,7 +1523,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       type: FileType.custom,
       allowedExtensions: <String>['nodeql', 'scratchql', 'sqlq', 'sqp'],
     );
-    final path = result?.path;
+    final path = await pickedFilePath(result);
     if (path == null) return;
     if (!context.mounted) return;
     final source = await _readProjectForOpening(context, path);
@@ -1486,7 +1545,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     BuildContext context,
     String path,
   ) async {
-    final source = await _readBoundedProjectSource(File(path));
+    final source = await _readBoundedProjectSource(fileAt(path));
     if (source == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1552,9 +1611,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
     final backupPath = _projectBackupPath(path);
     try {
-      await File(path).copy(backupPath);
+      await fileAt(path).copy(backupPath);
       final upgraded = _projectUpgradeService.upgrade(source);
-      await File(path).writeAsString(upgraded, flush: true);
+      await fileAt(path).writeAsString(upgraded, flush: true);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1777,7 +1836,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   void _enterWorkshop() {
-    if (_workshopMode) return;
+    if (kIsWeb || _workshopMode) return;
     unawaited(ref.read(tutorialControllerProvider.notifier).initialize());
     _autosaveDebounce?.cancel();
     setState(() => _workshopMode = true);
@@ -1804,6 +1863,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _openPluginManager(BuildContext context) async {
+    if (kIsWeb) return;
     final catalog = ref.read(translationControllerProvider).catalog;
     unawaited(ref.read(pluginPaletteProvider.notifier).reload());
     if (!context.mounted) return;
@@ -2063,12 +2123,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       type: FileType.custom,
       allowedExtensions: const <String>['json'],
     );
-    final path = result?.path;
+    final path = await pickedFilePath(result);
     if (path == null) return;
     try {
       final manifest = await ref
           .read(pluginPaletteProvider.notifier)
-          .installManifest(File(path));
+          .installManifest(fileAt(path));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2222,14 +2282,14 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<File> _registryFile() async {
     final support = await getApplicationSupportDirectory();
-    return File(p.join(support.path, 'nodeql_projects.json'));
+    return fileAt(p.join(support.path, 'nodeql_projects.json'));
   }
 
   Future<String> _availableProjectPath(Directory directory, String name) async {
     final baseName = _projectFileStem(name);
     var candidate = p.join(directory.path, '$baseName.nodeql');
     var suffix = 2;
-    while (await File(candidate).exists()) {
+    while (await fileAt(candidate).exists()) {
       candidate = p.join(directory.path, '$baseName-$suffix.nodeql');
       suffix += 1;
     }
@@ -2261,7 +2321,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<String?> _createProjectBookmark(String path) async {
-    if (!Platform.isMacOS) return null;
+    if (!isMacOS) return null;
     try {
       return await const MethodChannel(
         'nodeql/security_scope',
@@ -2278,7 +2338,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<String?> _restoreProjectPath(Map<String, dynamic> project) async {
     final path = project['path'] as String?;
     final bookmark = project['securityBookmark'] as String?;
-    if (!Platform.isMacOS || bookmark == null || bookmark.isEmpty) {
+    if (!isMacOS || bookmark == null || bookmark.isEmpty) {
       return path;
     }
     try {
@@ -2309,7 +2369,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         .toList(growable: false);
     if (target.isEmpty) return;
     final path = await _restoreProjectPath(target.first);
-    if (path == null || !await File(path).exists()) return;
+    if (path == null || !await fileAt(path).exists()) return;
     if (!mounted) return;
     final source = await _readProjectForOpening(context, path);
     if (source == null) return;
@@ -2828,12 +2888,19 @@ class _AppleSettingsDialogState extends ConsumerState<_AppleSettingsDialog> {
         contentPadding: EdgeInsets.zero,
         leading: Icon(icon),
         title: Text(description),
-        trailing: FilledButton.tonal(
-          key: buttonKey,
-          clipBehavior: Clip.antiAlias,
-          onPressed: () => Navigator.of(context).pop(action),
-          style: _nodeQlFilledButtonCornerStyle(context),
-          child: Text(buttonLabel),
+        trailing: _DesktopFeatureGate(
+          featureName: title,
+          catalog: widget.catalog,
+          enabled:
+              action == _SettingsAction.plugins ||
+              action == _SettingsAction.tutorial,
+          builder: (showNotice) => FilledButton.tonal(
+            key: buttonKey,
+            clipBehavior: Clip.antiAlias,
+            onPressed: showNotice ?? () => Navigator.of(context).pop(action),
+            style: _nodeQlFilledButtonCornerStyle(context),
+            child: Text(buttonLabel),
+          ),
         ),
       ),
     ),
@@ -4584,27 +4651,33 @@ class _TopBar extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: NodeQlDesign.space2),
-                        Tooltip(
-                          message: catalog.text('toolbar.browseDatabase'),
-                          child: NodeQlBrutalPressable(
-                            child: OutlinedButton(
-                              key: const ValueKey<String>(
-                                'open-database-browser',
-                              ),
-                              onPressed: canBrowseDb ? onBrowseDb : null,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor:
-                                    workbenchColors.topBarForeground,
-                                fixedSize: const Size(44, 40),
-                                padding: EdgeInsets.zero,
-                                side: BorderSide(
-                                  color: workbenchColors.border,
-                                  width: surfaceStyle.borderWidth,
+                        _DesktopFeatureGate(
+                          featureName: catalog.text('toolbar.browseDatabase'),
+                          catalog: catalog,
+                          builder: (showNotice) => Tooltip(
+                            message: catalog.text('toolbar.browseDatabase'),
+                            child: NodeQlBrutalPressable(
+                              child: OutlinedButton(
+                                key: const ValueKey<String>(
+                                  'open-database-browser',
                                 ),
-                              ),
-                              child: const Icon(
-                                Icons.table_chart_outlined,
-                                size: 18,
+                                onPressed:
+                                    showNotice ??
+                                    (canBrowseDb ? onBrowseDb : null),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor:
+                                      workbenchColors.topBarForeground,
+                                  fixedSize: const Size(44, 40),
+                                  padding: EdgeInsets.zero,
+                                  side: BorderSide(
+                                    color: workbenchColors.border,
+                                    width: surfaceStyle.borderWidth,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.table_chart_outlined,
+                                  size: 18,
+                                ),
                               ),
                             ),
                           ),
@@ -4704,23 +4777,27 @@ class _TopBar extends StatelessWidget {
             icon: const Icon(Icons.settings),
           ),
           const SizedBox(width: NodeQlDesign.space2),
-          KeyedSubtree(
-            key: workshopKey,
-            child: NodeQlBrutalPressable(
-              radius: surfaceStyle.radiusMedium,
-              child: FilledButton.icon(
-                key: const ValueKey('open-workshop'),
-                onPressed: onWorkshop,
-                style: _nodeQlFilledButtonCornerStyle(context).copyWith(
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+          _DesktopFeatureGate(
+            featureName: catalog.text('toolbar.workshop'),
+            catalog: catalog,
+            builder: (showNotice) => KeyedSubtree(
+              key: workshopKey,
+              child: NodeQlBrutalPressable(
+                radius: surfaceStyle.radiusMedium,
+                child: FilledButton.icon(
+                  key: const ValueKey('open-workshop'),
+                  onPressed: showNotice ?? onWorkshop,
+                  style: _nodeQlFilledButtonCornerStyle(context).copyWith(
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    ),
+                    textStyle: const WidgetStatePropertyAll(
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
                   ),
-                  textStyle: const WidgetStatePropertyAll(
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
+                  icon: const Icon(Icons.school_rounded, size: 22),
+                  label: Text(catalog.text('toolbar.workshop')),
                 ),
-                icon: const Icon(Icons.school_rounded, size: 22),
-                label: Text(catalog.text('toolbar.workshop')),
               ),
             ),
           ),
@@ -7783,7 +7860,7 @@ class _NodeView extends ConsumerWidget {
     final catalog = translations.catalog;
     final pluginBlock = pluginBlockForNode(
       node,
-      ref.watch(pluginPaletteProvider),
+      kIsWeb ? const PluginPaletteState() : ref.watch(pluginPaletteProvider),
     );
     final color = pluginBlock == null
         ? _colorForNodeType(node.type)
@@ -12608,9 +12685,9 @@ class _OutputPreviewFloatingWindowState
       fileName: 'nodeql-result.$extension',
       bytes: Uint8List.fromList(utf8.encode(content)),
     );
-    final path = savedFile?.toFilePath();
-    if (path == null) return;
-    await File(path).writeAsString(content, flush: true);
+    if (savedFile == null && !kIsWeb) return;
+    final path = kIsWeb ? 'nodeql-result.$extension' : savedFile!.toFilePath();
+    if (!kIsWeb) await fileAt(path).writeAsString(content, flush: true);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${_actionText('exported')}: $path')),

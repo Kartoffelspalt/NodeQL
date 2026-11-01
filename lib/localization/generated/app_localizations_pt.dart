@@ -46,4 +46,8 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get blockForever => 'para sempre';
+
+  @override
+  String get desktopFeatureOnly =>
+      'Esta funcionalidade está disponível apenas na aplicação para computador.';
 }

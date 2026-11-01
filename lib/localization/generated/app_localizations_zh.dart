@@ -46,4 +46,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get blockForever => '重复执行';
+
+  @override
+  String get desktopFeatureOnly => '此功能仅在桌面应用中可用。';
 }

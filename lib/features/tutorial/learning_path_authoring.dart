@@ -1,11 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:nodeql/engine/block/block_node.dart';
-import 'package:path_provider/path_provider.dart';
 
 enum LearningPathCalloutSide { left, right }
 
@@ -370,7 +369,7 @@ class LearningPathLibraryController
 
   static Future<File> _defaultStorageFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/nodeql_learning_paths.json');
+    return fileAt('${support.path}/nodeql_learning_paths.json');
   }
 
   static Future<List<AuthoredLearningPath>> _defaultBundledPaths() async {

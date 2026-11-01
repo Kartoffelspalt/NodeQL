@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
-import 'package:path_provider/path_provider.dart';
 
 class TutorialState {
   const TutorialState({
@@ -157,6 +156,6 @@ class TutorialController extends StateNotifier<TutorialState> {
 
   static Future<File> _defaultStorageFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/nodeql_tutorial.json');
+    return fileAt('${support.path}/nodeql_tutorial.json');
   }
 }

@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:path_provider/path_provider.dart';
 
 enum NodeQlTheme { light, dark, midnight, matrix, neoBrutalism }
 
@@ -311,7 +310,7 @@ class NodeQlThemeController extends StateNotifier<NodeQlThemeSettings> {
 
   Future<File> _storageFile() async {
     final support = await getApplicationSupportDirectory();
-    return File('${support.path}/nodeql_theme.json');
+    return fileAt('${support.path}/nodeql_theme.json');
   }
 }
 

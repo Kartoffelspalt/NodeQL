@@ -46,4 +46,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get blockForever => 'إلى الأبد';
+
+  @override
+  String get desktopFeatureOnly => 'هذه الميزة متاحة فقط في تطبيق سطح المكتب.';
 }

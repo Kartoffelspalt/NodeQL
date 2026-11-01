@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -10,7 +10,6 @@ import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 class PluginPaletteEntry {
   const PluginPaletteEntry(this.block);
@@ -202,9 +201,9 @@ class PluginPaletteController extends StateNotifier<PluginPaletteState> {
         'Repository metadata does not match the plugin manifest.',
       );
     }
-    final temp = await Directory.systemTemp.createTemp('nodeql-plugin-');
+    final temp = await temporaryDirectory.createTemp('nodeql-plugin-');
     try {
-      final file = File(p.join(temp.path, 'plugin.json'));
+      final file = fileAt(p.join(temp.path, 'plugin.json'));
       await file.writeAsBytes(response.bodyBytes, flush: true);
       return await installManifest(file);
     } finally {
@@ -237,7 +236,7 @@ class PluginPaletteController extends StateNotifier<PluginPaletteState> {
 
     final pluginsDir = await _pluginsDirectory();
     await pluginsDir.create(recursive: true);
-    final destination = Directory(p.join(pluginsDir.path, manifest.id));
+    final destination = directoryAt(p.join(pluginsDir.path, manifest.id));
     await destination.create(recursive: true);
     final destinationPath = p.join(destination.path, 'plugin.json');
     if (!p.equals(p.absolute(source.path), p.absolute(destinationPath))) {
@@ -249,7 +248,7 @@ class PluginPaletteController extends StateNotifier<PluginPaletteState> {
 
   Future<void> uninstall(String pluginId) async {
     final pluginsDir = await _pluginsDirectory();
-    final destination = Directory(p.join(pluginsDir.path, pluginId));
+    final destination = directoryAt(p.join(pluginsDir.path, pluginId));
     if (await destination.exists()) {
       await destination.delete(recursive: true);
     }
@@ -257,12 +256,12 @@ class PluginPaletteController extends StateNotifier<PluginPaletteState> {
   }
 
   Future<Directory> _pluginsDirectory() async {
-    final override = Platform.environment['NODEQL_PLUGIN_DIR'];
+    final override = pluginDirectoryOverride;
     if (override != null && override.trim().isNotEmpty) {
-      return Directory(override.trim());
+      return directoryAt(override.trim());
     }
     final support = await getApplicationSupportDirectory();
-    return Directory(p.join(support.path, 'nodeql_plugins'));
+    return directoryAt(p.join(support.path, 'nodeql_plugins'));
   }
 
   Future<List<PluginRepositorySource>> _loadRepositories() async {
@@ -298,7 +297,7 @@ class PluginPaletteController extends StateNotifier<PluginPaletteState> {
 
   static Future<File> _defaultRepositoriesFile() async {
     final support = await getApplicationSupportDirectory();
-    return File(p.join(support.path, 'nodeql_plugin_repositories.json'));
+    return fileAt(p.join(support.path, 'nodeql_plugin_repositories.json'));
   }
 }
 

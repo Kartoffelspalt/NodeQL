@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:nodeql/core/platform/sqlite.dart';
 
 enum DatabaseObjectType { table, view }
 
@@ -242,7 +242,7 @@ class SqliteDatabaseBrowser {
   }
 
   static List<DatabaseForeignKeyInfo> _loadForeignKeys(
-    Database database,
+    CommonDatabase database,
     String quotedName,
   ) {
     return <DatabaseForeignKeyInfo>[
@@ -261,7 +261,7 @@ class SqliteDatabaseBrowser {
   }
 
   static List<DatabaseIndexInfo> _loadIndexes(
-    Database database,
+    CommonDatabase database,
     String resolvedName,
     String quotedName,
   ) {
@@ -294,7 +294,7 @@ class SqliteDatabaseBrowser {
     ];
   }
 
-  static int _pragmaInt(Database database, String name) =>
+  static int _pragmaInt(CommonDatabase database, String name) =>
       database.select('PRAGMA $name').single.columnAt(0) as int;
 
   static Object? _copyValue(Object? value) {

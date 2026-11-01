@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'translation_models.dart';
 
@@ -104,9 +103,9 @@ class FileTranslationRepository implements TranslationRepository {
       },
     );
     if (response.statusCode != 200) {
-      throw HttpException(
+      throw http.ClientException(
         'Translation manifest request failed (${response.statusCode}).',
-        uri: uri,
+        uri,
       );
     }
     return TranslationManifest.fromBytes(response.bodyBytes);
@@ -124,9 +123,9 @@ class FileTranslationRepository implements TranslationRepository {
       },
     );
     if (response.statusCode != 200) {
-      throw HttpException(
+      throw http.ClientException(
         'Translation download failed (${response.statusCode}).',
-        uri: language.downloadUrl,
+        language.downloadUrl,
       );
     }
     final bytes = response.bodyBytes;
@@ -155,8 +154,10 @@ class FileTranslationRepository implements TranslationRepository {
 
     final directory = await _packagesDirectory();
     await directory.create(recursive: true);
-    final destination = File(p.join(directory.path, '${package.locale}.json'));
-    final temporary = File('${destination.path}.tmp');
+    final destination = fileAt(
+      p.join(directory.path, '${package.locale}.json'),
+    );
+    final temporary = fileAt('${destination.path}.tmp');
     await temporary.writeAsBytes(bytes, flush: true);
     if (await destination.exists()) await destination.delete();
     await temporary.rename(destination.path);
@@ -166,7 +167,7 @@ class FileTranslationRepository implements TranslationRepository {
   @override
   Future<void> remove(String locale) async {
     final directory = await _packagesDirectory();
-    final file = File(
+    final file = fileAt(
       p.join(directory.path, '${normalizeLocaleTag(locale)}.json'),
     );
     if (await file.exists()) await file.delete();
@@ -174,7 +175,7 @@ class FileTranslationRepository implements TranslationRepository {
 
   Future<TranslationPackage?> _loadCachedPackage(String locale) async {
     final directory = await _packagesDirectory();
-    final file = File(p.join(directory.path, '$locale.json'));
+    final file = fileAt(p.join(directory.path, '$locale.json'));
     if (!await file.exists()) return null;
     final english = await loadEnglishMessages();
     return TranslationPackage.fromBytes(
@@ -186,7 +187,7 @@ class FileTranslationRepository implements TranslationRepository {
 
   Future<Directory> _packagesDirectory() async {
     final support = await _supportDirectory();
-    return Directory(p.join(support.path, 'nodeql_translations'));
+    return directoryAt(p.join(support.path, 'nodeql_translations'));
   }
 
   void _validateUri(Uri uri) {

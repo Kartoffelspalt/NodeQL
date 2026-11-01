@@ -41,6 +41,10 @@ jobs:
         working-directory: tools/onboarding_studio
         run: flutter analyze
       - run: flutter test
+      - name: Test browser preview
+        run: flutter test --platform chrome test/platform/web_preview_test.dart
+      - name: Build browser preview
+        run: flutter build web --release
       - name: Test Workshop Admin
         working-directory: tools/workshop_admin
         run: flutter test
