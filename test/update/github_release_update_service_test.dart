@@ -51,6 +51,21 @@ void main() {
       expect(asset?['name'], 'nodeql-windows-x64.exe');
     });
 
+    test('prefers the macOS installer over a portable disk image', () {
+      final asset = bestAssetForPlatform([
+        {
+          'name': 'nodeql-macos-1.2.0-portable.dmg',
+          'browser_download_url': 'https://example.com/nodeql-portable.dmg',
+        },
+        {
+          'name': 'nodeql-macos-1.2.0.dmg',
+          'browser_download_url': 'https://example.com/nodeql.dmg',
+        },
+      ], ReleasePlatform.macos);
+
+      expect(asset?['name'], 'nodeql-macos-1.2.0.dmg');
+    });
+
     test('ignores assets that cannot be installed on the platform', () {
       final asset = bestAssetForPlatform([
         {

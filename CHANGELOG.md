@@ -6,7 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-- No unreleased changes yet.
+- Fixed macOS update detection for Sparkle-enabled builds affected by the
+  build number reset in 0.4.6.
 
 ## [0.4.3+2] - 2026-10-08
 

@@ -220,7 +220,12 @@ int platformAssetScore(String name, ReleasePlatform platform) {
     return 0;
   }
 
-  return installerScore + archiveScore + (hasPlatformName ? 4 : 0);
+  final isPortableMacImage =
+      platform == ReleasePlatform.macos && normalized.endsWith('-portable.dmg');
+  return installerScore +
+      archiveScore +
+      (hasPlatformName ? 4 : 0) -
+      (isPortableMacImage ? 1 : 0);
 }
 
 bool _matchesAny(String value, List<String> suffixes) {
