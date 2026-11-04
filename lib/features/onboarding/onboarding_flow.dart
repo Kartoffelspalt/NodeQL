@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 /// Stable IDs shared by exported Onboarding Studio files and the NodeQL UI.
 enum OnboardingTarget {
@@ -126,8 +127,12 @@ OnboardingDefinition defaultNodeQlOnboarding(Locale locale) {
         target: OnboardingTarget.databaseTools,
         title: text('Datenbank-Tools verwenden', 'Use database tools'),
         message: text(
-          'Binde eine SQLite-Datei ein, prüfe Tabellen und führe deine generierte Abfrage aus.',
-          'Mount a SQLite file, inspect its tables, and run the generated query.',
+          kIsWeb
+              ? 'Binde eine SQLite-Datei ein und führe deine generierte Abfrage aus.'
+              : 'Binde eine SQLite-Datei ein, prüfe Tabellen und führe deine generierte Abfrage aus.',
+          kIsWeb
+              ? 'Mount a SQLite file and run the generated query.'
+              : 'Mount a SQLite file, inspect its tables, and run the generated query.',
         ),
         placement: OnboardingTooltipPlacement.bottom,
       ),

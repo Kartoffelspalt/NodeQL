@@ -46,4 +46,8 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get blockForever => 'fortlaufend';
+
+  @override
+  String get desktopFeatureOnly =>
+      'Dieses Feature ist nur in der Desktop App verfügbar.';
 }

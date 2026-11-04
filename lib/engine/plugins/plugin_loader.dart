@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/plugins/plugin_manifest.dart';
@@ -51,7 +51,7 @@ class NodeQlPluginLoader {
     final candidates = <File>[];
     await for (final entity in root.list(followLinks: false)) {
       if (entity is Directory) {
-        final manifest = File(p.join(entity.path, 'plugin.json'));
+        final manifest = fileAt(p.join(entity.path, 'plugin.json'));
         if (await manifest.exists()) candidates.add(manifest);
       } else if (entity is File && entity.path.endsWith('.json')) {
         candidates.add(entity);

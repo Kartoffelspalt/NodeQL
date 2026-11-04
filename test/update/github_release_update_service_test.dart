@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -62,6 +64,48 @@ void main() {
   });
 
   group('GitHubReleaseUpdateService', () {
+    test('only enables installation for verified repository assets', () async {
+      const name = 'nodeql-windows-x64-1.2.0-setup.exe';
+      const expectedUrl =
+          'https://github.com/Kartoffelspalt/NodeQL/releases/download/v1.2.0/$name';
+      final digest = 'sha256:${'a' * 64}';
+      for (final (url, assetDigest, expectedDigest) in [
+        (expectedUrl, digest, digest),
+        (expectedUrl, 'sha256:invalid', null),
+        ('https://example.com/$name', digest, null),
+      ]) {
+        final service = GitHubReleaseUpdateService(
+          platform: ReleasePlatform.windows,
+          packageInfoLoader: () async => PackageInfo(
+            appName: 'NodeQL',
+            packageName: 'nodeql',
+            version: '1.1.0',
+            buildNumber: '1',
+          ),
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'tag_name': 'v1.2.0',
+                'html_url':
+                    'https://github.com/Kartoffelspalt/NodeQL/releases/tag/v1.2.0',
+                'assets': [
+                  {
+                    'name': name,
+                    'browser_download_url': url,
+                    'digest': assetDigest,
+                  },
+                ],
+              }),
+              200,
+            ),
+          ),
+        );
+        final update = await service.findUpdate();
+        expect(update?.downloadUrl.toString(), url);
+        expect(update?.installDigest, expectedDigest);
+      }
+    });
+
     test('returns update when a newer release has a platform asset', () async {
       final service = GitHubReleaseUpdateService(
         platform: ReleasePlatform.macos,

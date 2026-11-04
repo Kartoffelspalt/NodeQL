@@ -1,7 +1,9 @@
 import Cocoa
 import FlutterMacOS
+import Sparkle
 
 class MainFlutterWindow: NSWindow {
+  private var updaterController: SPUStandardUpdaterController?
   private var scopedUrls: [URL] = []
   private var menuChannel: FlutterMethodChannel?
   private var recentProjects: [(id: String, name: String)] = []
@@ -108,8 +110,55 @@ class MainFlutterWindow: NSWindow {
     }
 
     installProjectMenu()
+    configureUpdater(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
+  }
+
+  private func configureUpdater(messenger: FlutterBinaryMessenger) {
+    if let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
+       let decodedKey = Data(base64Encoded: key), decodedKey.count == 32,
+       let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+       URL(string: feed)?.scheme == "https" {
+      let controller = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
+      )
+      updaterController = controller
+      if let appMenu = NSApp.mainMenu?.items.first?.submenu {
+        let item = NSMenuItem(
+          title: "Check for Updates…",
+          action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+          keyEquivalent: ""
+        )
+        item.target = controller
+        let index = min(1, appMenu.items.count)
+        appMenu.insertItem(item, at: index)
+
+        let automaticItem = NSMenuItem(
+          title: "Automatically Install Updates",
+          action: #selector(toggleAutomaticUpdates(_:)),
+          keyEquivalent: ""
+        )
+        automaticItem.target = self
+        automaticItem.state = controller.updater.automaticallyDownloadsUpdates ? .on : .off
+        appMenu.insertItem(automaticItem, at: index + 1)
+      }
+    }
+
+    let channel = FlutterMethodChannel(name: "nodeql/macos_updater", binaryMessenger: messenger)
+    channel.setMethodCallHandler { [weak self] call, result in
+      if call.method == "isEnabled" {
+        result(self?.updaterController != nil)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  @objc private func toggleAutomaticUpdates(_ item: NSMenuItem) {
+    guard let updater = updaterController?.updater else { return }
+    updater.automaticallyDownloadsUpdates.toggle()
+    item.state = updater.automaticallyDownloadsUpdates ? .on : .off
   }
 
   private func installProjectMenu() {

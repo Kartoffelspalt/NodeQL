@@ -13,5 +13,6 @@
   "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
   "blockTurnDegrees": "drehe dich um {degrees} Grad",
   "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
-  "blockForever": "fortlaufend"
+  "blockForever": "fortlaufend",
+  "desktopFeatureOnly": "Dieses Feature ist nur in der Desktop App verfügbar."
 }

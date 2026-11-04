@@ -46,4 +46,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get blockForever => 'ずっと';
+
+  @override
+  String get desktopFeatureOnly => 'この機能はデスクトップアプリでのみ利用できます。';
 }

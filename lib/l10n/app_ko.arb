@@ -13,5 +13,6 @@
   "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
   "blockTurnDegrees": "{degrees}도 회전",
   "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
-  "blockForever": "계속 반복"
+  "blockForever": "계속 반복",
+  "desktopFeatureOnly": "이 기능은 데스크톱 앱에서만 사용할 수 있습니다."
 }

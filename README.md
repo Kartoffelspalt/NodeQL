@@ -13,6 +13,10 @@ remain on the user's device.
 > [Releasing](docs/RELEASING.md) before describing a build as generally
 > available.
 
+A browser preview can also be built from source. See
+[Web preview](docs/WEB_PREVIEW.md) for build instructions and session-storage
+limitations.
+
 > **Latest release:** [NodeQL v0.4.3](CHANGELOG.md) adds visual
 > SQLite functions, column aliases, fullscreen and exportable result tables,
 > a refined workspace, and fullscreen settings.
@@ -134,6 +138,20 @@ Use `windows` or `linux` instead of `macos` on the corresponding platform.
 On Linux, file dialogs require `zenity`, `kdialog`, or `qarma` on `PATH`.
 The Debian package installs one of these as a dependency; install one
 separately when using the tarball.
+
+### Increment the build number before local runs
+
+From the repository root, run the following once per shell session:
+
+```bash
+source tool/flutter_with_build_number.sh
+```
+
+Afterwards, use `flutter run -d macos` as usual. The wrapper increases only
+the `+BUILD` part of `pubspec.yaml` before every `flutter run` invocation and
+then forwards all arguments to Flutter. It does not affect `flutter test`,
+`flutter build`, or other Flutter commands. The changed `pubspec.yaml` remains
+an intentional local modification; commit or revert it as appropriate.
 
 ## Project structure
 

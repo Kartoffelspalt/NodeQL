@@ -46,4 +46,8 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get blockForever => 'sürekli';
+
+  @override
+  String get desktopFeatureOnly =>
+      'Bu özellik yalnızca masaüstü uygulamasında kullanılabilir.';
 }

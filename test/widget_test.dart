@@ -466,6 +466,19 @@ void main() {
   testWidgets('renders localized workspace shell', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final directory = Directory.systemTemp.createTempSync('nodeql-shell-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      pathProvider,
+      (_) async => directory.path,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        pathProvider,
+        null,
+      ),
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

@@ -46,4 +46,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get blockForever => '계속 반복';
+
+  @override
+  String get desktopFeatureOnly => '이 기능은 데스크톱 앱에서만 사용할 수 있습니다.';
 }

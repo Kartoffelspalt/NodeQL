@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:isolate';
+import 'package:nodeql/core/platform/sql_task.dart';
 import 'dart:typed_data';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:nodeql/core/platform/sqlite.dart';
 
 enum SqlExerciseVerdict {
   correct,
@@ -57,7 +57,7 @@ class SqlExerciseEvaluator {
     bool orderSensitive = false,
     bool compareColumnNames = false,
   }) {
-    return Isolate.run(
+    return runSqlTask(
       () => _evaluateOnWorker(
         databasePath: databasePath,
         submissionSql: submissionSql,
@@ -151,7 +151,7 @@ class SqlExerciseEvaluator {
     int maximumRows,
   ) {
     final database = sqlite3.open(path, mode: OpenMode.readOnly);
-    List<PreparedStatement>? statements;
+    List<CommonPreparedStatement>? statements;
     try {
       statements = database.prepareMultiple(sql);
       if (statements.length != 1) {

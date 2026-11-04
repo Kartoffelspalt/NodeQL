@@ -13,5 +13,6 @@
   "@blockRepeatTimes": {"placeholders": {"times": {"type": "int"}}},
   "blockTurnDegrees": "استدر {degrees} درجة",
   "@blockTurnDegrees": {"placeholders": {"degrees": {"type": "int"}}},
-  "blockForever": "إلى الأبد"
+  "blockForever": "إلى الأبد",
+  "desktopFeatureOnly": "هذه الميزة متاحة فقط في تطبيق سطح المكتب."
 }

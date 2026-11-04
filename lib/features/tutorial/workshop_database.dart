@@ -1,8 +1,8 @@
-import 'dart:io';
+import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:path/path.dart' as p;
-import 'package:sqlite3/sqlite3.dart';
+import 'package:nodeql/core/platform/sqlite.dart';
 
 /// Disposable, self-contained data set used only by one workshop session.
 class WorkshopDatabase {
@@ -12,7 +12,7 @@ class WorkshopDatabase {
   final String path;
 
   static WorkshopDatabase create() {
-    final directory = Directory.systemTemp.createTempSync('nodeql_workshop_');
+    final directory = temporaryDirectory.createTempSync('nodeql_workshop_');
     final path = p.join(directory.path, 'practice.db');
     try {
       final database = sqlite3.open(path);

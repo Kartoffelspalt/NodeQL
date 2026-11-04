@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -51,26 +51,22 @@ class WorkshopAdminLauncher extends ConsumerWidget {
     WidgetRef ref,
     LearningPathLibraryController controller,
   ) async {
-    final picked = await FilePicker.platform.pickFiles(
+    final picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const <String>['json'],
     );
-    final path = picked?.files.single.path;
-    if (path == null) return ref.read(learningPathLibraryProvider).paths;
-    await controller.importBundle(await File(path).readAsString());
+    if (picked == null) return ref.read(learningPathLibraryProvider).paths;
+    final bundle = utf8.decode(await picked.readAsBytes());
+    await controller.importBundle(bundle);
     return ref.read(learningPathLibraryProvider).paths;
   }
 
   Future<void> _exportBundle(List<AuthoredLearningPath> paths) async {
-    final target = await FilePicker.platform.saveFile(
+    await FilePicker.saveFile(
       dialogTitle: 'Publish NodeQL workshop bundle',
       fileName: 'workshops.json',
-      type: FileType.custom,
-      allowedExtensions: const <String>['json'],
+      bytes: utf8.encode(encodeLearningPathBundle(paths)),
+      mimeType: 'application/json',
     );
-    if (target == null) return;
-    await File(
-      target,
-    ).writeAsString(encodeLearningPathBundle(paths), flush: true);
   }
 }
