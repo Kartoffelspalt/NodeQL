@@ -14,7 +14,9 @@ x64. Web, Android, and iOS are not release targets yet.
 ## Release procedure
 
 1. Update `CHANGELOG.md`.
-2. Set `version: X.Y.Z+BUILD` in `pubspec.yaml`.
+2. Set `version: X.Y.Z+BUILD` in `pubspec.yaml`. Choose a build number
+   higher than those in earlier Sparkle-enabled builds, including local
+   builds that use the production update feed.
 3. Run the full local verification commands from `CONTRIBUTING.md`.
 4. Increase both the release version and build number, then merge the change
    into `master`.
@@ -24,21 +26,24 @@ validates that the version has not already been published, builds and signs all
 three desktop targets, generates `SHA256SUMS.txt`, and creates the matching Git
 tag and GitHub release only after all quality and build jobs succeed.
 
-The release jobs run only when both parts of `pubspec.yaml`'s version change on
-`master` and the release tag does not already exist. Linux and Windows builds
-run only as part of this release workflow.
+The release jobs run when the release version changes on `master`, the build
+number increases, and the release tag does not already exist. Sparkle compares
+the build numbers to decide whether to offer an update. Keep increasing the
+build number across release versions. Linux and Windows builds run only as
+part of this release workflow.
 
 ## Signing
 
 The workflow always publishes usable desktop installers. Signing is optional:
-without the configuration below, it publishes an unsigned DMG, Windows setup
-program, Debian package, and Linux archive. Users may see the normal macOS
-Gatekeeper or Windows SmartScreen warning until signing is enabled.
+without the configuration below, it publishes unsigned macOS DMGs, a Windows
+setup program and portable ZIP, a Debian package, and a Linux archive. Users
+may see the normal macOS Gatekeeper or Windows SmartScreen warning until
+signing is enabled.
 
 | Platform | Published artifact when signing is configured | Optional GitHub Actions configuration |
 | --- | --- | --- |
-| macOS | Notarized `nodeql-macos-X.Y.Z.dmg` with `NodeQL.app` and an `Applications` link for drag-and-drop installation | Secrets: `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_NOTARY_KEY_BASE64`; Variables: `APPLE_SIGNING_IDENTITY`, `APPLE_NOTARY_KEY_ID`, `APPLE_NOTARY_ISSUER_ID` |
-| Windows x64 | Authenticode-signed `nodeql-windows-x64-X.Y.Z-setup.exe` | `WINDOWS_CERTIFICATE_P12_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD` |
+| macOS | Notarized `nodeql-macos-X.Y.Z.dmg` for drag-and-drop installation and `nodeql-macos-X.Y.Z-portable.dmg` for launching directly from the image | Secrets: `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_NOTARY_KEY_BASE64`; Variables: `APPLE_SIGNING_IDENTITY`, `APPLE_NOTARY_KEY_ID`, `APPLE_NOTARY_ISSUER_ID` |
+| Windows x64 | Authenticode-signed `nodeql-windows-x64-X.Y.Z-setup.exe` and `nodeql-windows-x64-X.Y.Z-portable.zip` containing the signed app | `WINDOWS_CERTIFICATE_P12_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD` |
 | Linux x64 | `nodeql_X.Y.Z_amd64.deb` and tarball, each with a detached GPG `.asc` signature | Secrets: `LINUX_GPG_PRIVATE_KEY`, `LINUX_GPG_PASSPHRASE`; Variable: `LINUX_GPG_KEY_ID` |
 
 All certificate and private-key secrets are base64-encoded file contents, not
@@ -65,13 +70,20 @@ Actions**; never commit certificate, PFX, P12, P8, or private-key files.
 For notarization, create an App Store Connect API key with access to the Apple
 Developer account. Store the base64-encoded `.p8` contents in
 `APPLE_NOTARY_KEY_BASE64`, its key ID in `APPLE_NOTARY_KEY_ID`, and the issuer
-UUID in `APPLE_NOTARY_ISSUER_ID`. The workflow submits the final DMG, waits for
-Apple's result, staples the ticket, and verifies Gatekeeper assessment.
+UUID in `APPLE_NOTARY_ISSUER_ID`. The workflow submits both macOS images,
+staples each notarization ticket, and verifies Gatekeeper assessment.
+
+To run NodeQL without installing it, mount the portable DMG and open
+`NodeQL.app` directly. Download a fresh portable image for each update.
+Sparkle uses the regular drag-and-drop DMG and needs an app installed on a
+writable volume, such as the copy in `/Applications`.
 
 The Windows certificate must be an Authenticode-capable PFX. The workflow signs
-the installed executable and DLLs, creates an Inno Setup installer with an
-application shortcut/uninstaller, signs that installer, and verifies its
-Authenticode status.
+the executable and DLLs before packaging the installer and the portable ZIP.
+It then signs the Inno Setup installer and verifies its Authenticode status.
+For portable use, extract the entire ZIP to a folder and run `nodeql.exe` from
+that folder. The ZIP includes the Flutter data and DLLs, plus the application-local
+Visual C++ runtime.
 
 Publish the Linux release public key alongside the project documentation. Users
 can verify a Linux asset with `gpg --verify <asset>.asc <asset>` after importing

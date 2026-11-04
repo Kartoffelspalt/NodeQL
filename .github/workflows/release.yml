@@ -47,11 +47,14 @@ jobs:
           PREVIOUS_VERSION="$(sed -n 's/^version: *//p' <<< "${PREVIOUS_PUBSPEC}")"
           PREVIOUS_RELEASE="${PREVIOUS_VERSION%%+*}"
           PREVIOUS_BUILD="${PREVIOUS_VERSION#*+}"
-          if [[ -n "${PREVIOUS_VERSION}" &&
-                ( "${RELEASE_VERSION}" == "${PREVIOUS_RELEASE}" ||
-                  "${BUILD_NUMBER}" == "${PREVIOUS_BUILD}" ) ]]; then
+          if [[ "${RELEASE_VERSION}" == "${PREVIOUS_RELEASE}" ]]; then
             echo "version-updated=false" >> "${GITHUB_OUTPUT}"
           else
+            if [[ "${PREVIOUS_VERSION}" == *+* && "${PREVIOUS_BUILD}" =~ ^[0-9]+$ ]] &&
+                (( 10#${BUILD_NUMBER} <= 10#${PREVIOUS_BUILD} )); then
+              echo "::error::Build number ${BUILD_NUMBER} must be greater than ${PREVIOUS_BUILD} for Sparkle updates."
+              exit 1
+            fi
             echo "version-updated=true" >> "${GITHUB_OUTPUT}"
           fi
       - name: Check whether release already exists
@@ -63,7 +66,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${VERSION_UPDATED}" != "true" ]]; then
-            echo "Release version and build number have not both changed; skipping."
+            echo "Release version has not changed; skipping."
             echo "should-release=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
@@ -332,19 +335,21 @@ jobs:
           fi
           codesign --force "${SIGN_ARGS[@]}" --entitlements "${ENTITLEMENTS}" "${APP_PATH}"
           codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
-      - name: Package macOS installer DMG
+      - name: Package macOS disk images
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          PUBSPEC_VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
-          RELEASE_VERSION="${PUBSPEC_VERSION%%+*}"
           APP_PATH="build/macos/Build/Products/Release/NodeQL.app"
-          DMG_ROOT="${RUNNER_TEMP}/nodeql-dmg"
-          mkdir -p "${DMG_ROOT}"
-          cp -R "${APP_PATH}" "${DMG_ROOT}/NodeQL.app"
+          DMG_ROOT="$(mktemp -d "${RUNNER_TEMP}/nodeql-dmg.XXXXXX")"
+          trap 'rm -rf "${DMG_ROOT}"' EXIT
+          ditto "${APP_PATH}" "${DMG_ROOT}/NodeQL.app"
+          hdiutil create -volname "NodeQL Portable" -srcfolder "${DMG_ROOT}" \
+            -ov -format UDZO "nodeql-macos-${RELEASE_VERSION}-portable.dmg"
           ln -s /Applications "${DMG_ROOT}/Applications"
           hdiutil create -volname "NodeQL" -srcfolder "${DMG_ROOT}" \
             -ov -format UDZO "nodeql-macos-${RELEASE_VERSION}.dmg"
-      - name: Notarize and staple macOS installer
+      - name: Notarize and staple macOS disk images
         if: >-
           ${{
             env.APPLE_CERTIFICATE_P12_BASE64 != '' &&
@@ -358,17 +363,21 @@ jobs:
             env.APPLE_NOTARY_ISSUER_ID != '__SET_ME__'
           }}
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           NOTARY_KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           printf '%s' "${APPLE_NOTARY_KEY_BASE64}" | base64 -D > "${NOTARY_KEY_PATH}"
           chmod 600 "${NOTARY_KEY_PATH}"
-          xcrun notarytool submit nodeql-macos-*.dmg --wait \
-            --key "${NOTARY_KEY_PATH}" \
-            --key-id "${APPLE_NOTARY_KEY_ID}" \
-            --issuer "${APPLE_NOTARY_ISSUER_ID}"
-          xcrun stapler staple nodeql-macos-*.dmg
-          xcrun stapler validate nodeql-macos-*.dmg
-          spctl --assess --type open --context context:primary-signature --verbose=4 nodeql-macos-*.dmg
+          for DMG in "nodeql-macos-${RELEASE_VERSION}.dmg" "nodeql-macos-${RELEASE_VERSION}-portable.dmg"; do
+            xcrun notarytool submit "${DMG}" --wait \
+              --key "${NOTARY_KEY_PATH}" \
+              --key-id "${APPLE_NOTARY_KEY_ID}" \
+              --issuer "${APPLE_NOTARY_ISSUER_ID}"
+            xcrun stapler staple "${DMG}"
+            xcrun stapler validate "${DMG}"
+            spctl --assess --type open --context context:primary-signature --verbose=4 "${DMG}"
+          done
       - name: Sign macOS update and appcast
         if: env.SPARKLE_PUBLIC_ED_KEY != ''
         shell: bash
@@ -530,10 +539,37 @@ jobs:
           if ($installerSignature.Status -ne 'Valid') {
             throw "Installer signature is not valid: $($installerSignature.Status)"
           }
+      - name: Package portable Windows bundle
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $releaseDir = (Resolve-Path 'build/windows/x64/runner/Release').Path
+          $portableDir = Join-Path $env:RUNNER_TEMP 'nodeql-windows-portable'
+          Copy-Item -LiteralPath $releaseDir -Destination $portableDir -Recurse
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $visualStudio) { throw 'Visual Studio C++ tools were not found.' }
+          $redistRoot = Join-Path $visualStudio 'VC\Redist\MSVC'
+          $crtDir = Get-ChildItem -LiteralPath $redistRoot -Directory |
+            Where-Object { $_.Name -as [version] } |
+            Sort-Object { [version]$_.Name } -Descending |
+            ForEach-Object { Get-Item (Join-Path $_.FullName 'x64\Microsoft.VC*.CRT') -ErrorAction SilentlyContinue } |
+            Select-Object -First 1
+          if (-not $crtDir) { throw 'Visual C++ x64 redistributable files were not found.' }
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item -LiteralPath (Join-Path $crtDir.FullName $dll) -Destination $portableDir
+          }
+
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "nodeql-windows-x64-$env:RELEASE_VERSION-portable.zip"
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($portableDir, $zipPath)
       - uses: actions/upload-artifact@v7
         with:
           name: nodeql-windows
-          path: nodeql-windows-x64-*-setup.exe
+          path: |
+            nodeql-windows-x64-*-setup.exe
+            nodeql-windows-x64-*-portable.zip
           if-no-files-found: error
 
   publish:
