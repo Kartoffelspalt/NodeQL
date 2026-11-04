@@ -61,13 +61,6 @@ import 'package:nodeql/core/platform/storage.dart';
 
 const int _maxVisibleColumnSelections = 3;
 const String _appIconAsset = 'assets/appicon/iconv4dark.png';
-typedef _ReporterAddedCallback =
-    void Function(
-      BlockNode owner,
-      String inputKey,
-      BlockNode reporter,
-      BlockNode rootReporter,
-    );
 
 /// Web buttons explain desktop-only features; native buttons keep their action.
 class _DesktopFeatureGate extends StatelessWidget {
