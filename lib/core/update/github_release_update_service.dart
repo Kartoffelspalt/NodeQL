@@ -23,6 +23,7 @@ class AppUpdate {
     required this.releaseUrl,
     required this.downloadUrl,
     required this.assetName,
+    this.installDigest,
   });
 
   final String currentVersion;
@@ -31,6 +32,7 @@ class AppUpdate {
   final Uri releaseUrl;
   final Uri downloadUrl;
   final String assetName;
+  final String? installDigest;
 }
 
 class GitHubReleaseUpdateService {
@@ -108,15 +110,35 @@ class GitHubReleaseUpdateService {
     }
 
     final releaseName = payload['name'] as String?;
+    final digest = asset['digest'];
+    final expectedDownloadUrl = Uri(
+      scheme: 'https',
+      host: 'github.com',
+      pathSegments: [
+        owner,
+        repository,
+        'releases',
+        'download',
+        tagName!,
+        assetName,
+      ],
+    );
+    final installDigest =
+        downloadUrl == expectedDownloadUrl &&
+            digest is String &&
+            RegExp(r'^sha256:[a-f0-9]{64}$').hasMatch(digest)
+        ? digest
+        : null;
     return AppUpdate(
       currentVersion: packageInfo.version,
       latestVersion: latestVersion.label,
       releaseName: (releaseName == null || releaseName.trim().isEmpty)
-          ? tagName ?? latestVersion.label
+          ? tagName
           : releaseName,
       releaseUrl: releaseUrl,
       downloadUrl: downloadUrl,
       assetName: assetName,
+      installDigest: installDigest,
     );
   }
 }
@@ -215,7 +237,7 @@ class VersionNumber implements Comparable<VersionNumber> {
 
   static VersionNumber? parse(String raw) {
     final match = RegExp(
-      r'v?(\d+(?:\.\d+)*)(?:[-_]([0-9A-Za-z.-]+))?(?:\+\S+)?$',
+      r'^v?(\d+(?:\.\d+)*)(?:[-_]([0-9A-Za-z.-]+))?(?:\+\S+)?$',
       caseSensitive: false,
     ).firstMatch(raw.trim());
     if (match == null) {

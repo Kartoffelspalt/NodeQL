@@ -222,6 +222,7 @@ jobs:
     if: needs.prepare.outputs.should-release == 'true'
     runs-on: macos-latest
     env:
+      SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
       APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
@@ -230,6 +231,30 @@ jobs:
       APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v7
+      - name: Validate Sparkle secrets
+        shell: bash
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PUBLIC_ED_KEY}" && -z "${SPARKLE_PRIVATE_ED_KEY}" ]]; then
+            exit 0
+          fi
+          if [[ -z "${SPARKLE_PUBLIC_ED_KEY}" || -z "${SPARKLE_PRIVATE_ED_KEY}" ]]; then
+            echo "::error::Configure both Sparkle repository secrets."
+            exit 1
+          fi
+          # Check the pair before publishing a release that existing installs would reject.
+          printf '%s\n' "${SPARKLE_PRIVATE_ED_KEY}" | swift -e '
+            import CryptoKit
+            import Foundation
+            guard let encoded = readLine(), let seed = Data(base64Encoded: encoded),
+                  let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: seed),
+                  key.publicKey.rawRepresentation.base64EncodedString() == CommandLine.arguments[1]
+            else {
+              fputs("Sparkle signing keys do not match or the private key is not a 32-byte seed\n", stderr)
+              exit(1)
+            }
+          ' "${SPARKLE_PUBLIC_ED_KEY}"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -268,32 +293,44 @@ jobs:
           --dart-define=NODEQL_RELEASE_REPOSITORY=${{ github.event.repository.name }}
           --dart-define=NODEQL_TRANSLATION_MANIFEST_URL=${{ env.TRANSLATION_MANIFEST_URL }}
           --dart-define=NODEQL_TRANSLATION_CONTRIBUTION_URL=${{ env.TRANSLATION_CONTRIBUTION_URL }}
+      - name: Configure macOS updates
+        if: env.SPARKLE_PUBLIC_ED_KEY != ''
+        shell: bash
+        run: >-
+          bash tool/configure_macos_sparkle.sh
+          build/macos/Build/Products/Release/NodeQL.app
+          "$GITHUB_REPOSITORY"
       - name: Sign macOS application
-        if: >-
-          ${{
-            env.APPLE_CERTIFICATE_P12_BASE64 != '' &&
-            env.APPLE_CERTIFICATE_PASSWORD != '' &&
-            env.APPLE_SIGNING_IDENTITY != '' &&
-            env.APPLE_SIGNING_IDENTITY != '__SET_ME__'
-          }}
         shell: bash
         run: |
           APP_PATH="build/macos/Build/Products/Release/NodeQL.app"
+          ENTITLEMENTS="$(mktemp)"
+          trap 'rm -f "${ENTITLEMENTS}"' EXIT
+          codesign -d --entitlements :- "${APP_PATH}" > "${ENTITLEMENTS}"
+          if plutil -extract 'com\.apple\.security\.get-task-allow' raw "${ENTITLEMENTS}" >/dev/null 2>&1; then
+            plutil -remove 'com\.apple\.security\.get-task-allow' "${ENTITLEMENTS}"
+          fi
 
-          # Sign leaf Mach-O code, then its enclosing bundles, then the app.
-          # Signing a leaf after its framework would invalidate that framework.
-          while IFS= read -r -d '' binary; do
-            codesign --force --sign "${APPLE_SIGNING_IDENTITY}" --timestamp \
-              --options runtime "${binary}"
-          done < <(find "${APP_PATH}/Contents" -type f \
-            \( -name '*.dylib' -o -perm -111 \) -print0)
-          while IFS= read -r -d '' nested_bundle; do
-            codesign --force --sign "${APPLE_SIGNING_IDENTITY}" --timestamp \
-              --options runtime "${nested_bundle}"
-          done < <(find "${APP_PATH}/Contents" -depth -type d \
-            \( -name '*.framework' -o -name '*.xpc' -o -name '*.appex' \) -print0)
-          codesign --force --sign "${APPLE_SIGNING_IDENTITY}" --timestamp \
-            --options runtime --entitlements macos/Runner/Release.entitlements "${APP_PATH}"
+          if [[ -n "${APPLE_CERTIFICATE_P12_BASE64}" &&
+                -n "${APPLE_CERTIFICATE_PASSWORD}" &&
+                -n "${APPLE_SIGNING_IDENTITY}" &&
+                "${APPLE_SIGNING_IDENTITY}" != '__SET_ME__' ]]; then
+            SIGN_ARGS=(--sign "${APPLE_SIGNING_IDENTITY}" --timestamp --options runtime)
+            # Sign nested code before its enclosing bundles.
+            while IFS= read -r -d '' binary; do
+              [[ "${binary}" != "${APP_PATH}/Contents/MacOS/NodeQL" ]] || continue
+              [[ "$(file -b "${binary}")" == *Mach-O* ]] || continue
+              codesign --force "${SIGN_ARGS[@]}" --preserve-metadata=entitlements "${binary}"
+            done < <(find "${APP_PATH}/Contents" -type f \
+              \( -name '*.dylib' -o -perm -111 \) -print0)
+            while IFS= read -r -d '' nested_bundle; do
+              codesign --force "${SIGN_ARGS[@]}" --preserve-metadata=entitlements "${nested_bundle}"
+            done < <(find "${APP_PATH}/Contents" -depth -type d \
+              \( -name '*.framework' -o -name '*.xpc' -o -name '*.appex' -o -name '*.app' \) -print0)
+          else
+            SIGN_ARGS=(--sign -)
+          fi
+          codesign --force "${SIGN_ARGS[@]}" --entitlements "${ENTITLEMENTS}" "${APP_PATH}"
           codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
       - name: Package macOS installer DMG
         shell: bash
@@ -332,10 +369,47 @@ jobs:
           xcrun stapler staple nodeql-macos-*.dmg
           xcrun stapler validate nodeql-macos-*.dmg
           spctl --assess --type open --context context:primary-signature --verbose=4 nodeql-macos-*.dmg
+      - name: Sign macOS update and appcast
+        if: env.SPARKLE_PUBLIC_ED_KEY != ''
+        shell: bash
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          SIGN_UPDATE="build/macos/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+          test -x "${SIGN_UPDATE}"
+          APP_INFO="build/macos/Build/Products/Release/NodeQL.app/Contents/Info.plist"
+          VERSION="$(plutil -extract CFBundleShortVersionString raw "${APP_INFO}")"
+          BUILD="$(plutil -extract CFBundleVersion raw "${APP_INFO}")"
+          DMG="nodeql-macos-${VERSION}.dmg"
+          SIGNATURE="$(printf '%s\n' "${SPARKLE_PRIVATE_ED_KEY}" | "${SIGN_UPDATE}" --ed-key-file - -p "${DMG}")"
+          LENGTH="$(stat -f %z "${DMG}")"
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases"
+          cat > nodeql-macos-appcast.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>NodeQL Updates</title>
+              <item>
+                <title>NodeQL ${VERSION}</title>
+                <link>${RELEASE_URL}/tag/v${VERSION}</link>
+                <sparkle:version>${BUILD}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>12.0.0</sparkle:minimumSystemVersion>
+                <enclosure url="${RELEASE_URL}/download/v${VERSION}/${DMG}"
+                           sparkle:edSignature="${SIGNATURE}" length="${LENGTH}"
+                           type="application/octet-stream"/>
+              </item>
+            </channel>
+          </rss>
+          EOF
+          printf '%s\n' "${SPARKLE_PRIVATE_ED_KEY}" | "${SIGN_UPDATE}" --ed-key-file - nodeql-macos-appcast.xml
+          xmllint --noout nodeql-macos-appcast.xml
       - uses: actions/upload-artifact@v7
         with:
           name: nodeql-macos
-          path: nodeql-macos-*.dmg
+          path: |
+            nodeql-macos-*.dmg
+            nodeql-macos-appcast.xml
           if-no-files-found: error
 
   build-windows:
