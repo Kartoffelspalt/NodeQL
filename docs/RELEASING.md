@@ -10,6 +10,10 @@ x64. Web, Android, and iOS are not release targets yet.
 3. Enable private vulnerability reporting under **Settings > Security**.
 4. Enable branch protection for `master` or `main` and require the CI job.
 5. Configure GitHub Pages before enabling online language downloads.
+6. Configure your Gemini API key as the `GEMINI_API_KEY` Actions secret.
+   Optionally set `NODEQL_TRANSLATION_MODEL` (default: `gemini-3.8-flash`)
+   and `NODEQL_TRANSLATION_LOCALES`; see the
+   [AI translation setup](localization/README.md#ai-translations-during-github-releases).
 
 ## Release procedure
 
@@ -22,9 +26,18 @@ x64. Web, Android, and iOS are not release targets yet.
    into `master`.
 
 The merged `pubspec.yaml` change starts the `Desktop Release` workflow. It
-validates that the version has not already been published, builds and signs all
-three desktop targets, generates `SHA256SUMS.txt`, and creates the matching Git
+validates that the version has not already been published, generates and
+validates AI language packs, builds and signs all three desktop targets with
+those packages included, generates `SHA256SUMS.txt`, and creates the matching Git
 tag and GitHub release only after all quality and build jobs succeed.
+
+Language packages are generated once and shared across the desktop build jobs.
+Reviewed translations override generated messages; source hashes and Actions
+caching avoid translating unchanged strings again. API or translation validation
+failures stop the release. The release also contains
+`nodeql-translations-X.Y.Z.tar.gz`. After publication, the same catalog is deployed
+to GitHub Pages for language downloads. A Pages failure can be retried without
+rebuilding or republishing the installers.
 
 The release jobs run when the release version changes on `master`, the build
 number increases, and the release tag does not already exist. Sparkle compares

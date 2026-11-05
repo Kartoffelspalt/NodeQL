@@ -35,6 +35,76 @@ void main() {
     if (await support.exists()) await support.delete(recursive: true);
   });
 
+  test(
+    'loads bundled release languages offline before a cache exists',
+    () async {
+      final assets = bundledAssets(englishAsset, {'de': packageBytes});
+      final repository = FileTranslationRepository(
+        client: MockClient((_) async => throw StateError('Must work offline')),
+        supportDirectory: () async => support,
+        assetLoader: (key) async => assets[key]!,
+      );
+      final packages = await repository.loadCachedPackages();
+      expect(packages.single.locale, 'de');
+      expect(packages.single.messages['welcome'], 'Hallo {name}');
+      expect(packages.single.isBundled, isTrue);
+    },
+  );
+
+  test(
+    'newer bundles replace stale cached translations, newer downloads win',
+    () async {
+      final assets = bundledAssets(englishAsset, {'de': packageBytes});
+      final cache = File('${support.path}/nodeql_translations/de.json');
+      await cache.parent.create(recursive: true);
+      Future<void> cachedRevision(int revision) => cache.writeAsString(
+        jsonEncode({
+          'schemaVersion': 1,
+          'locale': 'de',
+          'revision': revision,
+          'messages': {'plain': 'Cached'},
+        }),
+      );
+      final repository = FileTranslationRepository(
+        supportDirectory: () async => support,
+        assetLoader: (key) async => assets[key]!,
+      );
+      await cachedRevision(1);
+      expect(
+        (await repository.loadCachedPackages()).single.messages['plain'],
+        'Hallo',
+      );
+      await cachedRevision(3);
+      final newer = (await repository.loadCachedPackages()).single;
+      expect(newer.messages['plain'], 'Cached');
+      expect(newer.isBundled, isTrue);
+    },
+  );
+
+  test(
+    'one missing bundled package does not hide the remaining packages',
+    () async {
+      final french = utf8.encode(
+        jsonEncode({
+          'schemaVersion': 1,
+          'locale': 'fr',
+          'revision': 2,
+          'messages': {'plain': 'Bonjour'},
+        }),
+      );
+      final assets = bundledAssets(englishAsset, {
+        'de': packageBytes,
+        'fr': french,
+      });
+      assets.remove('assets/translations/de.json');
+      final repository = FileTranslationRepository(
+        supportDirectory: () async => support,
+        assetLoader: (key) async => assets[key]!,
+      );
+      expect((await repository.loadCachedPackages()).single.locale, 'fr');
+    },
+  );
+
   test('downloads, verifies, caches, and reloads a language package', () async {
     final hash = sha256.convert(packageBytes).toString();
     final client = MockClient((request) async {
@@ -129,3 +199,31 @@ void main() {
     expect(() => repository.install(language), throwsFormatException);
   });
 }
+
+Map<String, String> bundledAssets(
+  String english,
+  Map<String, List<int>> packages,
+) => {
+  'assets/translations/en.json': english,
+  for (final entry in packages.entries)
+    'assets/translations/${entry.key}.json': utf8.decode(entry.value),
+  'assets/translations/translation-manifest.json': jsonEncode({
+    'schemaVersion': 1,
+    'generatedAt': '2026-11-05T12:00:00Z',
+    'minimumAppVersion': '0.1.0',
+    'languages': [
+      for (final entry in packages.entries)
+        {
+          'locale': entry.key,
+          'nativeName': entry.key,
+          'direction': 'ltr',
+          'revision': 2,
+          'completion': 100,
+          'downloadUrl':
+              'https://kartoffelspalt.github.io/NodeQL/translations/${entry.key}.json',
+          'sha256': sha256.convert(entry.value).toString(),
+          'size': entry.value.length,
+        },
+    ],
+  }),
+};

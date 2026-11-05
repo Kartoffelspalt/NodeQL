@@ -143,11 +143,14 @@ class TranslationPackage {
     required this.locale,
     required this.revision,
     required this.messages,
+    this.isBundled = false,
   });
 
   final String locale;
   final int revision;
   final Map<String, String> messages;
+  // Runtime origin only; the downloadable package schema stays unchanged.
+  final bool isBundled;
 
   factory TranslationPackage.fromBytes(
     List<int> bytes, {

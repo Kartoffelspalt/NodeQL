@@ -67,25 +67,71 @@ class FileTranslationRepository implements TranslationRepository {
 
   @override
   Future<List<TranslationPackage>> loadCachedPackages() async {
-    final directory = await _packagesDirectory();
-    if (!await directory.exists()) return const [];
     final english = await loadEnglishMessages();
-    final packages = <TranslationPackage>[];
+    final packages = <String, TranslationPackage>{};
+    // Release builds include the exact same packages as the download catalog.
+    // Development builds may have only the English source asset.
+    try {
+      final manifest = TranslationManifest.fromBytes(
+        utf8.encode(
+          await _assetLoader('assets/translations/translation-manifest.json'),
+        ),
+      );
+      for (final language in manifest.languages) {
+        try {
+          final bytes = utf8.encode(
+            await _assetLoader('assets/translations/${language.locale}.json'),
+          );
+          if (bytes.length != language.size ||
+              sha256.convert(bytes).toString() != language.sha256) {
+            continue;
+          }
+          final package = TranslationPackage.fromBytes(
+            bytes,
+            knownKeys: english.keys.toSet(),
+            englishMessages: english,
+          );
+          if (package.locale == language.locale &&
+              package.revision == language.revision) {
+            packages[package.locale] = TranslationPackage(
+              locale: package.locale,
+              revision: package.revision,
+              messages: package.messages,
+              isBundled: true,
+            );
+          }
+        } on Object {
+          // Ignore one broken bundled package without hiding other languages.
+        }
+      }
+    } on Object {
+      // Missing/invalid bundled catalogs must not prevent English or cached use.
+    }
+    final directory = await _packagesDirectory();
+    if (!await directory.exists()) {
+      return packages.values.toList(growable: false);
+    }
     await for (final entity in directory.list()) {
       if (entity is! File || !entity.path.endsWith('.json')) continue;
       try {
-        packages.add(
-          TranslationPackage.fromBytes(
-            await entity.readAsBytes(),
-            knownKeys: english.keys.toSet(),
-            englishMessages: english,
-          ),
+        final package = TranslationPackage.fromBytes(
+          await entity.readAsBytes(),
+          knownKeys: english.keys.toSet(),
+          englishMessages: english,
         );
+        if (package.revision >= (packages[package.locale]?.revision ?? 0)) {
+          packages[package.locale] = TranslationPackage(
+            locale: package.locale,
+            revision: package.revision,
+            messages: package.messages,
+            isBundled: packages[package.locale]?.isBundled ?? false,
+          );
+        }
       } catch (_) {
         // A broken package is ignored without affecting other cached locales.
       }
     }
-    return packages;
+    return packages.values.toList(growable: false);
   }
 
   @override
@@ -161,7 +207,12 @@ class FileTranslationRepository implements TranslationRepository {
     await temporary.writeAsBytes(bytes, flush: true);
     if (await destination.exists()) await destination.delete();
     await temporary.rename(destination.path);
-    return package;
+    return TranslationPackage(
+      locale: package.locale,
+      revision: package.revision,
+      messages: package.messages,
+      isBundled: installed?.isBundled ?? false,
+    );
   }
 
   @override
@@ -174,15 +225,10 @@ class FileTranslationRepository implements TranslationRepository {
   }
 
   Future<TranslationPackage?> _loadCachedPackage(String locale) async {
-    final directory = await _packagesDirectory();
-    final file = fileAt(p.join(directory.path, '$locale.json'));
-    if (!await file.exists()) return null;
-    final english = await loadEnglishMessages();
-    return TranslationPackage.fromBytes(
-      await file.readAsBytes(),
-      knownKeys: english.keys.toSet(),
-      englishMessages: english,
-    );
+    for (final package in await loadCachedPackages()) {
+      if (package.locale == locale) return package;
+    }
+    return null;
   }
 
   Future<Directory> _packagesDirectory() async {
