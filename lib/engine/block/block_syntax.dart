@@ -130,7 +130,7 @@ double baseHeightForBlock(BlockNode node) {
   return switch (blockVisualKind(node)) {
     BlockVisualKind.trigger => 50,
     BlockVisualKind.statement => 56,
-    BlockVisualKind.join => joinUsesCondition(node) ? 86 : 66,
+    BlockVisualKind.join => 88,
     BlockVisualKind.setOperator => 54,
     BlockVisualKind.expression => 44,
     BlockVisualKind.terminal => 48,
@@ -144,13 +144,20 @@ double baseHeightForBlock(BlockNode node) {
 bool isJoinType(BlockType type) =>
     blockVisualKindForType(type) == BlockVisualKind.join;
 
+String joinTypeForNode(BlockNode node) => switch (node.type) {
+  BlockType.sqlLeftJoin => 'LEFT',
+  BlockType.sqlRightJoin => 'RIGHT',
+  BlockType.sqlFullJoin => 'FULL',
+  BlockType.sqlCrossJoin => 'CROSS',
+  BlockType.sqlNaturalJoin => 'NATURAL',
+  BlockType.sqlSelfJoin => 'SELF',
+  BlockType.sqlJoin =>
+    '${node.inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase(),
+  _ => 'INNER',
+};
+
 bool joinUsesCondition(BlockNode node) {
-  if (node.type == BlockType.sqlCrossJoin ||
-      node.type == BlockType.sqlNaturalJoin) {
-    return false;
-  }
-  if (node.type != BlockType.sqlJoin) return true;
-  final type = '${node.inputs['join_type'] ?? 'INNER'}'.trim().toUpperCase();
+  final type = joinTypeForNode(node);
   return type != 'CROSS' && type != 'NATURAL';
 }
 

@@ -18,6 +18,7 @@ import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
 import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
@@ -1043,6 +1044,85 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+    'JOIN bridge edits scoped columns, changes outcome and undoes it',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final container = ProviderContainer(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _ReadyTranslationController(),
+          ),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
+          sqlRuntimeProvider.overrideWith(
+            (_) => SqlRuntimeController(
+              initialState: const SqlRuntimeState(
+                schemas: [
+                  TableSchema(name: 'customers', columns: ['id', 'name']),
+                  TableSchema(name: 'orders', columns: ['id', 'customer_id']),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final workspace = container.read(workspaceProvider.notifier)
+        ..resetWithRoot();
+      final select = workspace.addTemplate(
+        BlockType.sqlSelect,
+        const Offset(120, 178),
+      );
+      workspace.updateInput(select, 'table', 'customers');
+      workspace.updateInput(select, 'table_alias', 'c');
+      final join = workspace.addTemplate(
+        BlockType.sqlJoin,
+        const Offset(120, 234),
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const NodeQlApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      Future<void> choose(String key, String option) async {
+        await tester.tap(find.byKey(ValueKey('inline-slot-${join.id}-$key')));
+        await tester.pumpAndSettle();
+        final overlay = find.byKey(const ValueKey('inline-option-overlay'));
+        expect(overlay, findsOneWidget);
+        await tester.tap(
+          find.descendant(of: overlay, matching: find.text(option)),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await choose('table', 'orders');
+      await choose('left_column', 'c.id');
+      await choose('right_column', 'orders.customer_id');
+      await tester.tap(find.byKey(ValueKey('join-outcome-${join.id}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('join-kind-LEFT')));
+      await tester.pumpAndSettle();
+      expect(join.inputs['join_type'], 'LEFT');
+      expect(
+        const SqlCompiler().compileWorkspace(workspace.state.roots).sql,
+        contains('LEFT JOIN orders ON c.id = orders.customer_id'),
+      );
+      workspace.undo();
+      await tester.pumpAndSettle();
+      expect(workspace.findAnyNodeById(join.id)!.inputs['join_type'], 'INNER');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('closes schema options after workspace mutations', (
     tester,

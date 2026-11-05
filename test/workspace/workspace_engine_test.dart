@@ -88,8 +88,14 @@ void main() {
     final controller = WorkspaceController()..resetWithRoot();
     controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
     controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
-    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 284));
-    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 360));
+    final first = controller.addTemplate(
+      BlockType.sqlInnerJoin,
+      const Offset(120, 284),
+    );
+    controller.addTemplate(
+      BlockType.sqlInnerJoin,
+      first.position + Offset(0, controller.blockHeight(first)),
+    );
 
     final event = controller.state.roots.single;
     expect(event.next?.type, BlockType.sqlSelect);
@@ -131,12 +137,88 @@ void main() {
     expect(controller.contextTableBeforeNode(join.id), 'customers');
   });
 
+  test(
+    'JOIN scope includes preceding joins and aliases and stops at a new query',
+    () {
+      final controller = WorkspaceController()..resetWithRoot();
+      final select = controller.addTemplate(
+        BlockType.sqlSelect,
+        const Offset(120, 178),
+      );
+      final first = controller.addTemplate(
+        BlockType.sqlJoin,
+        const Offset(120, 234),
+      );
+      final second = controller.addTemplate(
+        BlockType.sqlJoin,
+        first.position + Offset(0, controller.blockHeight(first)),
+      );
+      select.next = first;
+      first.next = second;
+      controller.updateInput(select, 'table', 'customers');
+      controller.updateInput(select, 'table_alias', 'c');
+      controller.updateInput(first, 'table', 'orders');
+      controller.updateInput(first, 'table_alias', 'o');
+      expect(controller.sourceTablesBeforeNode(first.id), ['customers AS c']);
+      expect(controller.sourceTablesBeforeNode(second.id), [
+        'customers AS c',
+        'orders AS o',
+      ]);
+
+      final nextQuery = OperatorBlock(
+        id: 'new-query',
+        position: Offset.zero,
+        operatorType: BlockType.sqlSelect,
+        inputs: {'table': 'payments'},
+      );
+      final last = OperatorBlock(
+        id: 'last-join',
+        position: Offset.zero,
+        operatorType: BlockType.sqlJoin,
+      );
+      second.next = nextQuery;
+      nextQuery.next = last;
+      expect(controller.sourceTablesBeforeNode(last.id), ['payments']);
+    },
+  );
+
+  test(
+    'restored JOINs discard the previous large height when laying out their chain',
+    () {
+      final controller = WorkspaceController()..resetWithRoot();
+      final select = controller.addTemplate(
+        BlockType.sqlSelect,
+        const Offset(120, 178),
+      );
+      final join = controller.addTemplate(
+        BlockType.sqlJoin,
+        select.position + Offset(0, controller.blockHeight(select)),
+      );
+      join.inputs['__height'] = 224;
+      final where = controller.addTemplate(
+        BlockType.sqlWhere,
+        join.position + Offset(0, controller.blockHeight(join)),
+      );
+      controller.loadFromJsonString(controller.toJsonString());
+      final restored = controller.findAnyNodeById(join.id)!;
+      final following = controller.findAnyNodeById(where.id)!;
+      expect(controller.blockHeight(restored), 88);
+      expect(following.position.dy, restored.position.dy + 88);
+    },
+  );
+
   test('changing a JOIN table does not overwrite later SORT BY context', () {
     final controller = WorkspaceController()..resetWithRoot();
     controller.addTemplate(BlockType.sqlSelect, const Offset(120, 178));
     controller.addTemplate(BlockType.sqlFrom, const Offset(120, 234));
-    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 284));
-    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 360));
+    final joined = controller.addTemplate(
+      BlockType.sqlInnerJoin,
+      const Offset(120, 284),
+    );
+    controller.addTemplate(
+      BlockType.sqlOrderBy,
+      joined.position + Offset(0, controller.blockHeight(joined)),
+    );
 
     final select = controller.state.roots.first.next!;
     final from = select.next!;
@@ -160,7 +242,10 @@ void main() {
     final join = select.next!;
     controller.updateInput(select, 'table', 'customers');
     controller.updateInput(join, 'table', 'orders');
-    controller.addTemplate(BlockType.sqlOrderBy, const Offset(120, 310));
+    controller.addTemplate(
+      BlockType.sqlOrderBy,
+      join.position + Offset(0, controller.blockHeight(join)),
+    );
     final order = join.next!;
 
     expect(order.type, BlockType.sqlOrderBy);
@@ -287,8 +372,11 @@ void main() {
 
   test('inserts two INNER JOIN blocks into the starter query chain', () {
     final controller = WorkspaceController();
-    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 352));
-    controller.addTemplate(BlockType.sqlInnerJoin, const Offset(120, 428));
+    final where = controller.allBlocks().firstWhere(
+      (node) => node.type == BlockType.sqlWhere,
+    );
+    controller.addTemplate(BlockType.sqlInnerJoin, where.position);
+    controller.addTemplate(BlockType.sqlInnerJoin, where.position);
 
     final event = controller.state.roots.single;
     expect(event.next?.type, BlockType.sqlSelect);

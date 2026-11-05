@@ -187,6 +187,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This feature is only available in the desktop app.'**
   String get desktopFeatureOnly;
+
+  /// No description provided for @joinConnectTables.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect tables'**
+  String get joinConnectTables;
+
+  /// No description provided for @joinExistingData.
+  ///
+  /// In en, this message translates to:
+  /// **'Existing data'**
+  String get joinExistingData;
+
+  /// No description provided for @joinNewTable.
+  ///
+  /// In en, this message translates to:
+  /// **'New table'**
+  String get joinNewTable;
+
+  /// No description provided for @joinConnectSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect SELECT or FROM'**
+  String get joinConnectSource;
+
+  /// No description provided for @joinChooseTable.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose table'**
+  String get joinChooseTable;
+
+  /// No description provided for @joinChooseColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose column'**
+  String get joinChooseColumn;
+
+  /// No description provided for @joinResult.
+  ///
+  /// In en, this message translates to:
+  /// **'Rows in the result'**
+  String get joinResult;
+
+  /// No description provided for @joinMatchesOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Matching rows only'**
+  String get joinMatchesOnly;
+
+  /// No description provided for @joinKeepExisting.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep all existing rows'**
+  String get joinKeepExisting;
+
+  /// No description provided for @joinKeepNew.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep all new rows'**
+  String get joinKeepNew;
+
+  /// No description provided for @joinKeepAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep all rows from both'**
+  String get joinKeepAll;
+
+  /// No description provided for @joinEveryPair.
+  ///
+  /// In en, this message translates to:
+  /// **'Every possible pair'**
+  String get joinEveryPair;
+
+  /// No description provided for @joinSameNames.
+  ///
+  /// In en, this message translates to:
+  /// **'Match column names'**
+  String get joinSameNames;
+
+  /// No description provided for @joinSameTable.
+  ///
+  /// In en, this message translates to:
+  /// **'Same table, two roles'**
+  String get joinSameTable;
+
+  /// No description provided for @joinInnerDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Only pairs whose selected column values match.'**
+  String get joinInnerDescription;
+
+  /// No description provided for @joinLeftDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep every existing row, even without a matching new row.'**
+  String get joinLeftDescription;
+
+  /// No description provided for @joinRightDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep every new row, even without a matching existing row.'**
+  String get joinRightDescription;
+
+  /// No description provided for @joinFullDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep matches and unmatched rows from either side.'**
+  String get joinFullDescription;
+
+  /// No description provided for @joinCrossDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair every existing row with every new row. No matching condition.'**
+  String get joinCrossDescription;
+
+  /// No description provided for @joinNaturalDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Use all shared column names. With none, produce every possible pair.'**
+  String get joinNaturalDescription;
+
+  /// No description provided for @joinSelfDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the same table again with a different alias to compare two roles.'**
+  String get joinSelfDescription;
+
+  /// No description provided for @joinChooseResult.
+  ///
+  /// In en, this message translates to:
+  /// **'Which rows should stay?'**
+  String get joinChooseResult;
+
+  /// No description provided for @joinExampleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Example: existing values 1, 2; new values 1, 3. Match equal values. Each pair of cells is one result row.'**
+  String get joinExampleHint;
+
+  /// No description provided for @joinNullHint.
+  ///
+  /// In en, this message translates to:
+  /// **'NULL means that no partner was found. Several matches produce several result rows.'**
+  String get joinNullHint;
+
+  /// No description provided for @joinSpecialCases.
+  ///
+  /// In en, this message translates to:
+  /// **'Special cases'**
+  String get joinSpecialCases;
+
+  /// No description provided for @joinClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get joinClose;
+
+  /// No description provided for @joinPaletteDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a table, connect matching columns, then decide which rows to keep.'**
+  String get joinPaletteDescription;
 }
 
 class _AppLocalizationsDelegate
