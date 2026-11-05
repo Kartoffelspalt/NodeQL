@@ -916,6 +916,61 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     return null;
   }
 
+  /// Sources already in scope for a JOIN, including earlier JOINs and aliases.
+  List<String> sourceTablesBeforeNode(String nodeId) {
+    String? sourceFor(BlockNode node) {
+      final table = _tableFromNode(node);
+      if (table == null) return null;
+      final alias = '${node.inputs['table_alias'] ?? ''}'.trim();
+      if (alias.isNotEmpty && !RegExp(r'\s').hasMatch(table)) {
+        return '$table AS $alias';
+      }
+      if (joinTypeForNode(node) == 'SELF' && !RegExp(r'\s').hasMatch(table)) {
+        return '$table AS t2';
+      }
+      return table;
+    }
+
+    List<String>? find(
+      BlockNode root,
+      List<String> inherited,
+      Set<String> seen,
+    ) {
+      var sources = List<String>.of(inherited);
+      BlockNode? cursor = root;
+      while (cursor != null && seen.add(cursor.id)) {
+        if (cursor.id == nodeId) return sources;
+        final source = sourceFor(cursor);
+        if (startsSqlStatement(cursor.type)) sources = [];
+        if (source != null) {
+          if (isJoinType(cursor.type)) {
+            sources.add(source);
+          } else if (cursor.type == BlockType.sqlFrom ||
+              startsSqlStatement(cursor.type)) {
+            sources = [source];
+          }
+        }
+        for (final child in cursor.children) {
+          final found = find(child, sources, seen);
+          if (found != null) return found;
+        }
+        cursor = cursor.next;
+      }
+      return null;
+    }
+
+    final linked = columnSourceForNode(nodeId);
+    if (linked != null) {
+      final source = sourceFor(linked);
+      if (source != null) return [source];
+    }
+    for (final root in state.roots) {
+      final found = find(root, const [], <String>{});
+      if (found != null) return found;
+    }
+    return const [];
+  }
+
   List<BlockNode> allBlocks() =>
       state.roots.expand((root) => _walk(root)).toList(growable: false);
 
@@ -923,6 +978,10 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     if (node is ControlBlock) {
       final innerHeight = max(cInnerMin, _childrenChainHeight(node));
       return cUpperBar + innerHeight + cLowerBar;
+    }
+    // Older projects can contain the previous, larger cached JOIN height.
+    if (blockVisualKind(node) == BlockVisualKind.join) {
+      return baseHeightForBlock(node);
     }
     final raw = node.inputs['__height'];
     final renderedHeight = raw is num ? raw.toDouble() : null;

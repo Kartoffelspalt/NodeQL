@@ -33,6 +33,7 @@ import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dar
 import 'package:nodeql/features/workbench/presentation/workbench_layout_controller.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
+import 'package:nodeql/features/workbench/presentation/widgets/join_node_content.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/database_browser_dialog.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/desktop_feature_notice.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/sql_code_editor.dart';
@@ -5578,9 +5579,7 @@ class _PaletteState extends State<_Palette> {
             ? 'Begrenzt die Ergebniszahl und kann vorherige Zeilen überspringen.'
             : 'Limits the result count and can skip preceding rows.';
       case BlockType.sqlJoin:
-        return de
-            ? 'Verknüpft Tabellen über passende Werte, damit zusammengehörige Daten in einer Abfrage erscheinen.'
-            : 'Combines tables through matching values so related data appears in one query.';
+        return joinStrings(widget.localeCode).joinPaletteDescription;
       case BlockType.sqlInnerJoin:
         return de
             ? 'Gibt nur Zeilen zurück, bei denen beide Tabellen passende Werte haben.'
@@ -6115,15 +6114,73 @@ class _PaletteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
-    final blockHeight = baseHeightForBlock(node);
+    final isJoin = isJoinType(node.type);
+    final blockHeight = isJoin ? 64.0 : baseHeightForBlock(node);
     final previewWidth = _palettePreviewWidth(label, width);
-    final block = BlockShape(
-      node: node,
-      color: color,
-      width: previewWidth,
-      height: blockHeight,
-      label: label,
-    );
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final strings = joinStrings(languageCode);
+    final Widget block = isJoin
+        ? IgnorePointer(
+            child: SizedBox(
+              width: JoinNodeContent.width,
+              height: JoinNodeContent.height,
+              child: Stack(
+                children: [
+                  BlockShape(
+                    node: node,
+                    color: color,
+                    width: JoinNodeContent.width,
+                    height: JoinNodeContent.height,
+                    label: '',
+                    showLabel: false,
+                  ),
+                  Positioned.fill(
+                    child: JoinNodeContent(
+                      node: node,
+                      sourceTable: '…',
+                      languageCode: languageCode,
+                      slotBuilder: (key, width) => Container(
+                        width: width,
+                        height: key == 'table' ? 26 : 30,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .22),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .55),
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          key == 'table'
+                              ? strings.joinChooseTable
+                              : key == 'operator'
+                              ? '='
+                              : strings.joinChooseColumn,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : BlockShape(
+            node: node,
+            color: color,
+            width: previewWidth,
+            height: blockHeight,
+            label: label,
+          );
     final addsToWorkspace = !_isReporterDragData(
       _PaletteDragData(type, node.inputs),
     );
@@ -7873,6 +7930,16 @@ class _NodeView extends ConsumerWidget {
     final effectiveDiagnostic =
         diagnostic ??
         (rejected ? _dragRejectedDiagnostic(catalog, mode) : null);
+    if (pluginBlock == null && isJoinType(node.type)) {
+      return _buildJoinBlock(
+        context: context,
+        engine: engine,
+        runtime: runtime,
+        localeCode: localeCode,
+        mode: mode,
+        diagnostic: effectiveDiagnostic,
+      );
+    }
     final measuredWidth =
         _computeBlockWidth(
           node: node,
@@ -7990,160 +8057,24 @@ class _NodeView extends ConsumerWidget {
                     ),
                   ),
                 ),
-              ...inlineLayout.slots.map((slot) {
-                final acceptsReporter = slotAcceptsReporter(
-                  slot.rawKey,
-                  slot.inputKey,
-                );
-                return Positioned(
+              ...inlineLayout.slots.map(
+                (slot) => Positioned(
                   left: contentLeft + slot.rect.left,
                   top:
                       9 +
                       inlineCenterOffset +
                       slot.rect.top +
                       _lineOffsetForNode(visualKind, slot.rect.top),
-                  child: DragTarget<_PaletteDragData>(
-                    onWillAcceptWithDetails: (details) =>
-                        acceptsReporter &&
-                        slotAcceptsReporterType(
-                          slot.rawKey,
-                          slot.inputKey,
-                          details.data.type,
-                        ),
-                    onAcceptWithDetails: (details) {
-                      final reporter = slot.reporter;
-                      final nestedKey = reporter == null
-                          ? null
-                          : primaryReporterInputKey(reporter.type);
-                      final inserted = slot.inputKey == 'aggregate'
-                          ? engine.setReporterInput(
-                              node,
-                              slot.inputKey,
-                              details.data.type,
-                              defaults: details.data.defaults,
-                            )
-                          : reporter != null && nestedKey != null
-                          ? engine.setNestedReporterInput(
-                              node,
-                              slot.inputKey,
-                              reporter,
-                              nestedKey,
-                              details.data.type,
-                              defaults: details.data.defaults,
-                            )
-                          : engine.setReporterInput(
-                              node,
-                              slot.inputKey,
-                              details.data.type,
-                              defaults: details.data.defaults,
-                            );
-                      if (inserted != null) {
-                        onReporterAdded?.call(
-                          node,
-                          slot.inputKey,
-                          inserted,
-                          reporter ?? inserted,
-                        );
-                      }
-                    },
-                    builder: (context, candidates, _) {
-                      final highlighted = candidates.isNotEmpty;
-                      final requiresReporter =
-                          slot.reporter == null &&
-                          _requiresReporterInput(node.type, slot.inputKey);
-                      return GestureDetector(
-                        key: ValueKey<String>(
-                          'inline-slot-${node.id}-${slot.inputKey}',
-                        ),
-                        onTap: requiresReporter
-                            ? null
-                            : () async {
-                                if (slot.reporter != null) {
-                                  await _editReporterSlot(
-                                    context: context,
-                                    node: node,
-                                    slot: slot,
-                                    engine: engine,
-                                    runtime: runtime,
-                                    localeCode: localeCode,
-                                  );
-                                  return;
-                                }
-                                final rb =
-                                    context.findRenderObject() as RenderBox;
-                                final anchor = rb.localToGlobal(
-                                  Offset(slot.rect.width / 2, slot.rect.height),
-                                );
-                                await _editSlot(
-                                  context: context,
-                                  slotKey: slot.inputKey,
-                                  rawToken: slot.rawKey,
-                                  anchorGlobal: anchor,
-                                  node: node,
-                                  engine: engine,
-                                  runtime: runtime,
-                                  localeCode: localeCode,
-                                );
-                              },
-                        onLongPress: slot.reporter == null
-                            ? null
-                            : () => engine.removeReporterInput(
-                                node,
-                                slot.inputKey,
-                              ),
-                        child: slot.reporter == null
-                            ? Container(
-                                width: slot.rect.width,
-                                height: slot.rect.height,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: highlighted
-                                      ? const Color(0xFF38BDF8)
-                                      : Colors.white.withValues(alpha: 0.22),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: highlighted
-                                        ? Colors.white
-                                        : Colors.white.withValues(alpha: 0.55),
-                                    width: highlighted ? 2 : 1,
-                                  ),
-                                ),
-                                child: Text(
-                                  slot.display,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              )
-                            : AnimatedScale(
-                                scale: highlighted ? 1.05 : 1,
-                                duration: const Duration(milliseconds: 100),
-                                child: BlockShape(
-                                  node: slot.reporter!,
-                                  color: _colorForNodeType(slot.reporter!.type),
-                                  width: slot.rect.width,
-                                  height: slot.rect.height,
-                                  label: _reporterLabelForSlot(
-                                    slot.reporter!,
-                                    localeCode,
-                                    mode,
-                                    slot.inputKey,
-                                  ),
-                                  isHighlighted: highlighted,
-                                ),
-                              ),
-                      );
-                    },
+                  child: _buildInlineSlot(
+                    context: context,
+                    slot: slot,
+                    engine: engine,
+                    runtime: runtime,
+                    localeCode: localeCode,
+                    mode: mode,
                   ),
-                );
-              }),
+                ),
+              ),
             ],
           ),
         ),
@@ -8193,6 +8124,276 @@ class _NodeView extends ConsumerWidget {
     }
 
     return animatedBlockContent;
+  }
+
+  Widget _buildJoinBlock({
+    required BuildContext context,
+    required WorkspaceController engine,
+    required SqlRuntimeState runtime,
+    required String localeCode,
+    required SqlAbstractionMode mode,
+    required _SimpleNodeDiagnostic? diagnostic,
+  }) {
+    engine.setRenderMetrics(
+      node,
+      width: JoinNodeContent.width,
+      height: JoinNodeContent.height,
+    );
+    final sourceTables = engine.sourceTablesBeforeNode(node.id);
+    Widget slot(String key, double width) {
+      final reporter = reporterForInput(node, key);
+      var display = reporter == null
+          ? '${node.inputs[key] ?? ''}'
+          : _reporterLabelForSlot(reporter, localeCode, mode, key);
+      if (key == 'table' && display.isNotEmpty && display != 'table_name') {
+        display = _selectSourceWithAlias(node, display);
+        if (joinTypeForNode(node) == 'SELF' && !display.contains(' ')) {
+          display = '$display AS t2';
+        }
+      }
+      final strings = joinStrings(localeCode);
+      final isPlaceholder = display.isEmpty || display == 'table_name';
+      return Tooltip(
+        message: isPlaceholder
+            ? (key == 'table'
+                  ? strings.joinChooseTable
+                  : strings.joinChooseColumn)
+            : display,
+        child: _buildInlineSlot(
+          context: context,
+          slot: _InlineSlotRect(
+            rawKey: key,
+            inputKey: key,
+            display: isPlaceholder
+                ? (key == 'table'
+                      ? strings.joinChooseTable
+                      : strings.joinChooseColumn)
+                : display,
+            reporter: reporter,
+            rect: Rect.fromLTWH(0, 0, width, key == 'table' ? 26 : 30),
+          ),
+          engine: engine,
+          runtime: runtime,
+          localeCode: localeCode,
+          mode: mode,
+        ),
+      );
+    }
+
+    return AnimatedScale(
+      scale:
+          highlighted || rejected || selected || columnLinkEndpointColor != null
+          ? 1.012
+          : 1,
+      duration: const Duration(milliseconds: 90),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          SizedBox(
+            width: JoinNodeContent.width,
+            height: JoinNodeContent.height,
+            child: Stack(
+              children: [
+                BlockShape(
+                  node: node,
+                  color: ScratchPalette.sqlJoin,
+                  width: JoinNodeContent.width,
+                  height: JoinNodeContent.height,
+                  label: '',
+                  showLabel: false,
+                  isHighlighted: highlighted,
+                  isErrorHighlighted: diagnostic != null,
+                  isSelected: selected || columnLinkEndpointColor != null,
+                  selectedOutlineColor: columnLinkEndpointColor,
+                  selectedOutlineHaloColor: columnLinkEndpointColor == null
+                      ? null
+                      : columnLinkEndpointHaloColor,
+                  showInnerHighlight: innerHighlighted,
+                ),
+                Positioned.fill(
+                  child: JoinNodeContent(
+                    node: node,
+                    sourceTable: sourceTables.isEmpty
+                        ? null
+                        : sourceTables.join(' + '),
+                    languageCode: localeCode,
+                    slotBuilder: slot,
+                    onChooseKind: node.type == BlockType.sqlJoin
+                        ? () async {
+                            final picked = await showDialog<String>(
+                              context: context,
+                              builder: (_) => JoinKindDialog(
+                                selected: joinTypeForNode(node),
+                                languageCode: localeCode,
+                              ),
+                            );
+                            if (picked != null &&
+                                picked != joinTypeForNode(node) &&
+                                engine.findAnyNodeById(node.id) == node) {
+                              engine.updateInput(node, 'join_type', picked);
+                            }
+                          }
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (diagnostic != null)
+            Positioned(
+              left: JoinNodeContent.width + 10,
+              top: 4,
+              width: 280,
+              child: _NodeDiagnosticBadge(diagnostic: diagnostic),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineSlot({
+    required BuildContext context,
+    required _InlineSlotRect slot,
+    required WorkspaceController engine,
+    required SqlRuntimeState runtime,
+    required String localeCode,
+    required SqlAbstractionMode mode,
+  }) {
+    final acceptsReporter = slotAcceptsReporter(slot.rawKey, slot.inputKey);
+    return DragTarget<_PaletteDragData>(
+      onWillAcceptWithDetails: (details) =>
+          acceptsReporter &&
+          slotAcceptsReporterType(
+            slot.rawKey,
+            slot.inputKey,
+            details.data.type,
+          ),
+      onAcceptWithDetails: (details) {
+        final reporter = slot.reporter;
+        final nestedKey = reporter == null
+            ? null
+            : primaryReporterInputKey(reporter.type);
+        final inserted = slot.inputKey == 'aggregate'
+            ? engine.setReporterInput(
+                node,
+                slot.inputKey,
+                details.data.type,
+                defaults: details.data.defaults,
+              )
+            : reporter != null && nestedKey != null
+            ? engine.setNestedReporterInput(
+                node,
+                slot.inputKey,
+                reporter,
+                nestedKey,
+                details.data.type,
+                defaults: details.data.defaults,
+              )
+            : engine.setReporterInput(
+                node,
+                slot.inputKey,
+                details.data.type,
+                defaults: details.data.defaults,
+              );
+        if (inserted != null) {
+          onReporterAdded?.call(
+            node,
+            slot.inputKey,
+            inserted,
+            reporter ?? inserted,
+          );
+        }
+      },
+      builder: (context, candidates, _) {
+        final highlighted = candidates.isNotEmpty;
+        final requiresReporter =
+            slot.reporter == null &&
+            _requiresReporterInput(node.type, slot.inputKey);
+        return GestureDetector(
+          key: ValueKey<String>('inline-slot-${node.id}-${slot.inputKey}'),
+          onTap: requiresReporter
+              ? null
+              : () async {
+                  if (slot.reporter != null) {
+                    await _editReporterSlot(
+                      context: context,
+                      node: node,
+                      slot: slot,
+                      engine: engine,
+                      runtime: runtime,
+                      localeCode: localeCode,
+                    );
+                    return;
+                  }
+                  final rb = context.findRenderObject() as RenderBox;
+                  final anchor = rb.localToGlobal(
+                    Offset(slot.rect.width / 2, slot.rect.height),
+                  );
+                  await _editSlot(
+                    context: context,
+                    slotKey: slot.inputKey,
+                    rawToken: slot.rawKey,
+                    anchorGlobal: anchor,
+                    node: node,
+                    engine: engine,
+                    runtime: runtime,
+                    localeCode: localeCode,
+                  );
+                },
+          onLongPress: slot.reporter == null
+              ? null
+              : () => engine.removeReporterInput(node, slot.inputKey),
+          child: slot.reporter == null
+              ? Container(
+                  width: slot.rect.width,
+                  height: slot.rect.height,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: highlighted
+                        ? const Color(0xFF38BDF8)
+                        : Colors.white.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: highlighted
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.55),
+                      width: highlighted ? 2 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    slot.display,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              : AnimatedScale(
+                  scale: highlighted ? 1.05 : 1,
+                  duration: const Duration(milliseconds: 100),
+                  child: BlockShape(
+                    node: slot.reporter!,
+                    color: _colorForNodeType(slot.reporter!.type),
+                    width: slot.rect.width,
+                    height: slot.rect.height,
+                    label: _reporterLabelForSlot(
+                      slot.reporter!,
+                      localeCode,
+                      mode,
+                      slot.inputKey,
+                    ),
+                    isHighlighted: highlighted,
+                  ),
+                ),
+        );
+      },
+    );
   }
 
   String _templateForNode(
@@ -9173,6 +9374,7 @@ class _NodeView extends ConsumerWidget {
       text: '${node.inputs[mappedKey] ?? ''}',
     );
     final multiline =
+        mappedKey == 'on' ||
         mappedKey == 'definition' ||
         mappedKey == 'values' ||
         mappedKey == 'sql' ||
@@ -9528,7 +9730,11 @@ class _NodeView extends ConsumerWidget {
       // modal overlay in front of all following slots with no matching choice.
       final current = '${node.inputs[mappedKey] ?? ''}'.trim();
       final options = <String>[if (current.isNotEmpty) current, '*', ...cols];
-      return _distinctInlineOptions(options);
+      return _distinctInlineOptions(
+        isJoinType(node.type)
+            ? options.where((value) => value != '*')
+            : options,
+      );
     }
 
     if (mappedKey == 'join_type') {
@@ -9548,6 +9754,9 @@ class _NodeView extends ConsumerWidget {
     }
 
     if (mappedKey == 'operator') {
+      if (isJoinType(node.type)) {
+        return const ['=', '!=', '<>', '>', '>=', '<', '<='];
+      }
       return const <String>[
         '=',
         '!=',
@@ -9687,18 +9896,14 @@ class _NodeView extends ConsumerWidget {
     required WorkspaceController engine,
     required String localeCode,
   }) {
-    final de = _normalizedLocaleCode(localeCode) == 'de';
+    final strings = joinStrings(localeCode);
     if (mappedKey == 'left_column') {
-      final table = engine.contextTableBeforeNode(node.id);
-      return de
-          ? 'Spalte aus Tabelle 1: ${table ?? 'bisherige Tabelle'}'
-          : 'Column from table 1: ${table ?? 'previous table'}';
+      final table = engine.sourceTablesBeforeNode(node.id).join(' + ');
+      return '${strings.joinExistingData}: $table';
     }
     if (mappedKey == 'right_column') {
       final table = '${node.inputs['table'] ?? ''}'.trim();
-      return de
-          ? 'Spalte aus Tabelle 2: ${table.isEmpty ? 'Join-Tabelle' : table}'
-          : 'Column from table 2: ${table.isEmpty ? 'join table' : table}';
+      return '${strings.joinNewTable}: $table';
     }
     return null;
   }
@@ -9770,12 +9975,23 @@ class _NodeView extends ConsumerWidget {
       if (linkedColumns.isNotEmpty) return linkedColumns;
     }
     if (mappedKey == 'left_column') {
-      final table = engine.contextTableBeforeNode(node.id);
-      return _qualifiedColumnsForTable(runtime, table);
+      final tables = engine.sourceTablesBeforeNode(node.id);
+      if (tables.isEmpty) return const [];
+      return tables
+          .expand((table) => _qualifiedColumnsForTable(runtime, table))
+          .toList(growable: false);
     }
     if (mappedKey == 'right_column') {
       final table = '${node.inputs['table'] ?? ''}'.trim();
-      return _qualifiedColumnsForTable(runtime, table);
+      final source = _selectSourceWithAlias(node, table);
+      return _qualifiedColumnsForTable(
+        runtime,
+        joinTypeForNode(node) == 'SELF' &&
+                source == table &&
+                !table.contains(' ')
+            ? '$table AS t2'
+            : source,
+      );
     }
     return _availableColumns(node, runtime, engine);
   }

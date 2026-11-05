@@ -74,7 +74,7 @@ void main() {
       operatorType: BlockType.sqlCount,
     );
 
-    expect(baseHeightForBlock(join), 86);
+    expect(baseHeightForBlock(join), 88);
     expect(baseHeightForBlock(expression), 44);
   });
 
@@ -99,9 +99,9 @@ void main() {
     expect(joinUsesCondition(genericCross), isFalse);
     expect(joinUsesCondition(cross), isFalse);
     expect(joinUsesCondition(natural), isFalse);
-    expect(baseHeightForBlock(genericCross), 66);
-    expect(baseHeightForBlock(cross), 66);
-    expect(baseHeightForBlock(natural), 66);
+    expect(baseHeightForBlock(genericCross), 88);
+    expect(baseHeightForBlock(cross), 88);
+    expect(baseHeightForBlock(natural), 88);
   });
 
   test('JOIN labels only include ON for condition-based join types', () {
