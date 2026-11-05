@@ -90,7 +90,8 @@ Additional screenshots and contribution guidance are available in
   SHA-256-verified community repositories, validation, and compatibility checks.
 - English fallback with installable, validated community language packages.
 - Offline use after installation; no account, analytics, or cloud dependency.
-- GitHub-based update checks and community translation contributions.
+- GitHub-based update checks, community translation contributions, and
+  AI-generated language packs created during desktop releases.
 
 ## Privacy and security
 

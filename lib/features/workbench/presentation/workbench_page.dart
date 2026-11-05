@@ -53,6 +53,7 @@ import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:nodeql/localization/translation_controller.dart';
+import 'package:nodeql/localization/translation_language_metadata.dart';
 import 'package:nodeql/localization/translation_models.dart';
 import 'package:nodeql/localization/translation_repository.dart';
 import 'package:nodeql/localization/supported_languages.dart';
@@ -759,9 +760,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           if (!supportedLanguages.any(
                             (language) => language.code == package.locale,
                           ))
-                            SupportedLanguage(package.locale, package.locale),
+                            SupportedLanguage(
+                              package.locale,
+                              translationNativeName(package.locale),
+                            ),
                       ],
-                      localeCode: locale.languageCode,
+                      localeCode: locale.toLanguageTag(),
                       onLocale: (code) => ref
                           .read(translationControllerProvider.notifier)
                           .setLocaleTag(code),
@@ -2054,7 +2058,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     ),
                   Expanded(
                     child: RadioGroup<String>(
-                      groupValue: translations.locale.languageCode,
+                      groupValue: translations.locale.toLanguageTag(),
                       onChanged: (value) {
                         if (value != null) controller.setLocaleTag(value);
                       },
@@ -2069,6 +2073,34 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                               subtitle: Text(catalog.text('languages.builtIn')),
                               trailing: Radio<String>(value: language.code),
                             ),
+                          for (final package in translations.installed.values)
+                            if (!supportedLanguages.any(
+                                  (item) => item.code == package.locale,
+                                ) &&
+                                !available.any(
+                                  (item) => item.locale == package.locale,
+                                ))
+                              ListTile(
+                                onTap: () =>
+                                    controller.setLocaleTag(package.locale),
+                                leading: const Icon(Icons.translate),
+                                title: Text(
+                                  translationNativeName(package.locale),
+                                ),
+                                subtitle: Text(
+                                  catalog.text('languages.installed', {
+                                    'revision': package.revision,
+                                  }),
+                                ),
+                                trailing:
+                                    translations.catalog.locale ==
+                                        package.locale
+                                    ? const Icon(
+                                        Icons.check_circle,
+                                        color: Colors.green,
+                                      )
+                                    : null,
+                              ),
                           for (final language in available)
                             if (!supportedLanguages.any(
                               (builtIn) => builtIn.code == language.locale,
@@ -3105,9 +3137,12 @@ class _WorkshopWorkspaceViewState
                   if (!supportedLanguages.any(
                     (language) => language.code == package.locale,
                   ))
-                    SupportedLanguage(package.locale, package.locale),
+                    SupportedLanguage(
+                      package.locale,
+                      translationNativeName(package.locale),
+                    ),
               ],
-              localeCode: localeCode,
+              localeCode: translationState.locale.toLanguageTag(),
               onLocale: (code) => ref
                   .read(translationControllerProvider.notifier)
                   .setLocaleTag(code),
@@ -4862,7 +4897,7 @@ class _LanguagePackTile extends StatelessWidget {
                 ),
               ),
             ),
-          if (installed != null)
+          if (installed != null && !installed!.isBundled)
             IconButton(
               onPressed: onRemove,
               tooltip: catalog.text('languages.remove'),

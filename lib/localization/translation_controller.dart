@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'supported_languages.dart';
 import 'translation_catalog.dart';
+import 'translation_language_metadata.dart';
 import 'translation_models.dart';
 import 'translation_repository.dart';
 
@@ -105,7 +106,7 @@ class TranslationController extends StateNotifier<TranslationState> {
       final installed = {
         for (final package in packages) package.locale: package,
       };
-      final locale = await _loadSelectedLocale();
+      final locale = _availableLocale(await _loadSelectedLocale(), installed);
       state = state.copyWith(
         installed: installed,
         locale: locale,
@@ -128,13 +129,16 @@ class TranslationController extends StateNotifier<TranslationState> {
 
   Future<void> setLocaleTag(String localeTag) async {
     final normalized = normalizeLocaleTag(localeTag);
-    final locale = _localeFromTag(normalized);
+    final locale = _availableLocale(
+      _localeFromTag(normalized),
+      state.installed,
+    );
     state = state.copyWith(
       locale: locale,
       catalog: _catalogFor(locale, state.installed),
       clearError: true,
     );
-    await _persistSelectedLocale(normalized);
+    await _persistSelectedLocale(_localeTag(locale));
   }
 
   Future<void> refreshManifest() async {
@@ -175,6 +179,7 @@ class TranslationController extends StateNotifier<TranslationState> {
   }
 
   Future<void> remove(String locale) async {
+    if (state.installed[normalizeLocaleTag(locale)]?.isBundled ?? false) return;
     await _repository.remove(locale);
     final installed = {...state.installed}..remove(normalizeLocaleTag(locale));
     var nextLocale = state.locale;
@@ -209,17 +214,32 @@ class TranslationController extends StateNotifier<TranslationState> {
       messages: messages,
       englishMessages: _english,
       direction: package == null
-          ? (locale.languageCode == 'ar'
+          ? (isRtlTranslation(locale.languageCode)
                 ? TranslationDirection.rtl
                 : TranslationDirection.ltr)
           : state.available
                     .where((item) => item.locale == package.locale)
                     .firstOrNull
                     ?.direction ??
-                (locale.languageCode == 'ar'
+                (isRtlTranslation(locale.languageCode)
                     ? TranslationDirection.rtl
                     : TranslationDirection.ltr),
     );
+  }
+
+  Locale _availableLocale(
+    Locale requested,
+    Map<String, TranslationPackage> installed,
+  ) {
+    final tags = {
+      ...supportedLanguages.map((language) => language.code),
+      ...installed.keys,
+    };
+    if (tags.contains(_localeTag(requested))) return requested;
+    if (tags.contains(requested.languageCode)) {
+      return Locale(requested.languageCode);
+    }
+    return fallbackLocale;
   }
 
   Future<Locale> _loadSelectedLocale() async {

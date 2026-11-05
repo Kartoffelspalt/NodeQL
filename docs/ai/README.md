@@ -19,6 +19,11 @@ Important product boundaries:
 - According to `README.md`, the project is a **public preview**. Do not make a
   stronger release claim without checking `README.md` and `docs/RELEASING.md`.
 
+Desktop release builds use Google Gemini in GitHub Actions before
+packaging. This receives only English UI catalog strings. The generated language
+packs are bundled as local assets; the running app does not contact an AI API.
+See `docs/localization/README.md` and `tool/generate_translations.dart`.
+
 ## 2. Entry point and data flow
 
 ```text

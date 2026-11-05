@@ -1,0 +1,3 @@
+/target/
+*.nodeql-rust.json
+!examples/*.nodeql-rust.json

@@ -6,12 +6,20 @@ on:
       - 'assets/translations/**'
       - 'translations/**'
       - 'tool/validate_translations.dart'
+      - 'tool/generate_translations.dart'
+      - 'tool/src/ai_translation_generator.dart'
+      - 'tool/build_translation_site.dart'
+      - 'lib/localization/**'
   push:
     branches: [master, main]
     paths:
       - 'assets/translations/**'
       - 'translations/**'
       - 'tool/validate_translations.dart'
+      - 'tool/generate_translations.dart'
+      - 'tool/src/ai_translation_generator.dart'
+      - 'tool/build_translation_site.dart'
+      - 'lib/localization/**'
 
 permissions:
   contents: read
@@ -27,3 +35,4 @@ jobs:
           channel: stable
       - run: flutter pub get
       - run: dart run tool/validate_translations.dart
+      - run: flutter test test/localization test/tool/ai_translation_generator_test.dart test/tool/build_translation_site_test.dart

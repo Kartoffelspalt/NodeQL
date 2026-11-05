@@ -1,23 +1,28 @@
 name: Publish translations
 
 on:
-  push:
-    branches: [master, main]
-    paths:
-      - 'assets/translations/**'
-      - 'translations/**'
-      - 'tool/build_translation_site.dart'
-      - 'tool/validate_translations.dart'
+  workflow_call:
+    inputs:
+      release-run-id:
+        type: string
+        required: false
+        default: ''
   workflow_dispatch:
+    inputs:
+      release-run-id:
+        description: Successful Desktop Release run ID containing translation-packages
+        type: string
+        required: true
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
 concurrency:
   group: translations-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -26,15 +31,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
+      - uses: actions/download-artifact@v8
         with:
-          flutter-version: '3.44.1'
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: dart run tool/validate_translations.dart
-      - run: dart run tool/build_translation_site.dart
+          name: translation-packages
+          path: build/translation-site/translations
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.release-run-id || github.run_id }}
+      - name: Add catalog landing page
+        run: printf '<h1>NodeQL release language packages</h1>\n' > build/translation-site/index.html
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

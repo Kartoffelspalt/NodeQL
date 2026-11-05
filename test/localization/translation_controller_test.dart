@@ -64,6 +64,35 @@ void main() {
     expect(controller.state.error, contains('offline'));
   });
 
+  test(
+    'selects an offline bundled RTL language and keeps it installed',
+    () async {
+      final repository = _FakeTranslationRepository(
+        cached: const [
+          TranslationPackage(
+            locale: 'he',
+            revision: 2,
+            messages: {'plain': 'שלום'},
+            isBundled: true,
+          ),
+        ],
+      );
+      final controller = TranslationController(
+        repository,
+        settingsFile: () async => File('${temp.path}/locale.json'),
+        appVersion: () async => '1.0.0',
+      );
+      addTearDown(controller.dispose);
+      await _waitUntilReady(controller);
+      await controller.setLocaleTag('he');
+      expect(controller.state.catalog.text('plain'), 'שלום');
+      expect(controller.state.catalog.direction, TranslationDirection.rtl);
+      await controller.remove('he');
+      expect(controller.state.installed['he'], isNotNull);
+      expect(controller.state.locale.languageCode, 'he');
+    },
+  );
+
   test('rejects a manifest requiring a newer app', () async {
     final repository = _FakeTranslationRepository(
       manifest: TranslationManifest(
@@ -84,6 +113,25 @@ void main() {
     expect(controller.state.available, isEmpty);
     expect(controller.state.error, contains('2.0.0'));
   });
+
+  test(
+    'falls back when a selected bundled language is absent in a later release',
+    () async {
+      final settings = File('${temp.path}/locale.json');
+      await settings.writeAsString('{"locale":"fr"}');
+      final controller = TranslationController(
+        _FakeTranslationRepository(),
+        settingsFile: () async => settings,
+        appVersion: () async => '1.0.0',
+      );
+      addTearDown(controller.dispose);
+      await _waitUntilReady(controller);
+      expect(controller.state.locale.languageCode, 'en');
+      await controller.setLocaleTag('de-AT');
+      expect(controller.state.locale.toLanguageTag(), 'de');
+      expect(await settings.readAsString(), contains('"locale":"de"'));
+    },
+  );
 }
 
 Future<void> _waitUntilReady(TranslationController controller) async {
