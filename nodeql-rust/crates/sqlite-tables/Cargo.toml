@@ -1,0 +1,14 @@
+[package]
+name = "nodeql-sqlite-tables"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+description = "Read-only SQLite table and schema access for NodeQL"
+
+[dependencies]
+nodeql-sqlite-file = { path = "../sqlite-file" }
+rusqlite = { version = "0.41.1", features = ["backup", "bundled", "hooks"] }
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"
+thiserror = "2"

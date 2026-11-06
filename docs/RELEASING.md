@@ -26,10 +26,11 @@ x64. Web, Android, and iOS are not release targets yet.
    into `master`.
 
 The merged `pubspec.yaml` change starts the `Desktop Release` workflow. It
-validates that the version has not already been published, generates and
-validates AI language packs, builds and signs all three desktop targets with
-those packages included, generates `SHA256SUMS.txt`, and creates the matching Git
-tag and GitHub release only after all quality and build jobs succeed.
+validates that the version is newer and has not already been published,
+generates and validates AI language packs, builds and signs all three desktop
+targets with those packages included, generates `SHA256SUMS.txt`, and creates
+the matching Git tag and GitHub release only after all quality and build jobs
+succeed.
 
 Language packages are generated once and shared across the desktop build jobs.
 Reviewed translations override generated messages; source hashes and Actions
@@ -39,11 +40,51 @@ failures stop the release. The release also contains
 to GitHub Pages for language downloads. A Pages failure can be retried without
 rebuilding or republishing the installers.
 
-The release jobs run when the release version changes on `master`, the build
-number increases, and the release tag does not already exist. Sparkle compares
-the build numbers to decide whether to offer an update. Keep increasing the
-build number across release versions. Linux and Windows builds run only as
-part of this release workflow.
+The release jobs run when the release version increases on `master`, the build
+number increases, and the release tag does not already exist. The workflow
+compares versions using SemVer precedence: `0.10.0` is newer than `0.9.0`,
+numeric prerelease identifiers are ordered numerically, and a stable version
+is newer than its prereleases. A lower release version fails validation even
+if its build number is higher. Changing only the build number skips publication.
+
+Sparkle separately compares `CFBundleVersion` (our build number) with
+`sparkle:version` in the appcast to decide whether to offer an update;
+`CFBundleShortVersionString` / `sparkle:shortVersionString` holds the displayed
+release version. Keep increasing the build number across release versions so
+existing installations can detect updates. A newer release version with a
+reset or unchanged build number still fails validation. See
+[Sparkle's internal build numbers documentation](https://sparkle-project.org/documentation/publishing/#internal-build-numbers).
+
+## Synchronizing dev after a merge
+
+Once **Dev Branch Cleanup** is on `master`, merging a PR from this
+repository's `dev` into `master` moves `dev` to the same commit as
+`master`. The job skips the update if `dev` has moved since the merge.
+The push also checks the expected `dev` commit on the server.
+
+A squash or rebase merge can require a force push. The repository's
+`branch deletion protection` ruleset currently blocks non-fast-forward
+updates on all branches. To enable the cleanup while keeping that protection
+for collaborators:
+
+1. Install a dedicated GitHub App on this repository with **Contents: Read and
+   write**.
+2. Keep the deletion rule on all branches. Place the non-fast-forward rule for
+   `dev` in a separate ruleset targeting only `dev`, with the app on its
+   bypass list set to **Always**. Retain the existing non-fast-forward rule for
+   other branches in a ruleset that excludes `dev` and preserve existing
+   bypass entries.
+3. Set the app ID as the `DEV_SYNC_APP_ID` Actions variable and
+   `DEV_SYNC_APP_PRIVATE_KEY` as an Actions secret. Use the full PEM contents
+   for the secret.
+
+With no app configured, the workflow uses `GITHUB_TOKEN` and the existing
+repository rules apply.
+
+## Workshop Admin
+
+The [Workshop Admin workflow](admin-workshop-build.md#builds-und-release-in-github-actions)
+builds the standalone authoring app and can prepare a separate release draft.
 
 ## Signing
 

@@ -1,0 +1,691 @@
+[
+  {
+    "name": "abs",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "changes",
+    "category": "core",
+    "min": 0,
+    "max": null,
+    "arguments": [],
+    "version_dependent": false
+  },
+  {
+    "name": "char",
+    "category": "core",
+    "min": 1,
+    "max": null,
+    "arguments": [
+      "65"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "coalesce",
+    "category": "core",
+    "min": 2,
+    "max": null,
+    "arguments": [
+      "first_value",
+      "fallback"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "concat",
+    "category": "core",
+    "min": 1,
+    "max": null,
+    "arguments": [
+      "'Hello'",
+      "' world'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "concat_ws",
+    "category": "core",
+    "min": 2,
+    "max": null,
+    "arguments": [
+      "', '",
+      "first_value",
+      "second_value"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "format",
+    "category": "core",
+    "min": 1,
+    "max": null,
+    "arguments": [
+      "'%s'",
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "glob",
+    "category": "core",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "'*.txt'",
+      "name"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "hex",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "if",
+    "category": "core",
+    "min": 2,
+    "max": null,
+    "arguments": [
+      "condition",
+      "true_value",
+      "false_value"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "ifnull",
+    "category": "core",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "value",
+      "fallback"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "iif",
+    "category": "core",
+    "min": 2,
+    "max": null,
+    "arguments": [
+      "condition",
+      "true_value",
+      "false_value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "instr",
+    "category": "core",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "text",
+      "'find me'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "last_insert_rowid",
+    "category": "core",
+    "min": 0,
+    "max": null,
+    "arguments": [],
+    "version_dependent": false
+  },
+  {
+    "name": "length",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "like",
+    "category": "core",
+    "min": 2,
+    "max": 3,
+    "arguments": [
+      "'%text%'",
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "likelihood",
+    "category": "core",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "condition",
+      "0.5"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "likely",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "condition"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "lower",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "text"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "ltrim",
+    "category": "core",
+    "min": 1,
+    "max": 2,
+    "arguments": [
+      "text"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "nullif",
+    "category": "core",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "value",
+      "compare"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "octet_length",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "printf",
+    "category": "core",
+    "min": 1,
+    "max": null,
+    "arguments": [
+      "'%s'",
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "quote",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "random",
+    "category": "core",
+    "min": 0,
+    "max": null,
+    "arguments": [],
+    "version_dependent": false
+  },
+  {
+    "name": "randomblob",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "16"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "replace",
+    "category": "core",
+    "min": 3,
+    "max": 3,
+    "arguments": [
+      "text",
+      "'old'",
+      "'new'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "round",
+    "category": "core",
+    "min": 1,
+    "max": 2,
+    "arguments": [
+      "value",
+      "2"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "rtrim",
+    "category": "core",
+    "min": 1,
+    "max": 2,
+    "arguments": [
+      "text"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "sign",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "soundex",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "name"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "sqlite_compileoption_get",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "0"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "sqlite_compileoption_used",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "'ENABLE_FTS5'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "sqlite_offset",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "column"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "sqlite_source_id",
+    "category": "core",
+    "min": 0,
+    "max": null,
+    "arguments": [],
+    "version_dependent": false
+  },
+  {
+    "name": "sqlite_version",
+    "category": "core",
+    "min": 0,
+    "max": null,
+    "arguments": [],
+    "version_dependent": false
+  },
+  {
+    "name": "substr",
+    "category": "core",
+    "min": 2,
+    "max": 3,
+    "arguments": [
+      "text",
+      "1",
+      "3"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "substring",
+    "category": "core",
+    "min": 2,
+    "max": 3,
+    "arguments": [
+      "text",
+      "1",
+      "3"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "total_changes",
+    "category": "core",
+    "min": 0,
+    "max": null,
+    "arguments": [],
+    "version_dependent": false
+  },
+  {
+    "name": "trim",
+    "category": "core",
+    "min": 1,
+    "max": 2,
+    "arguments": [
+      "text"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "typeof",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "unhex",
+    "category": "core",
+    "min": 1,
+    "max": 2,
+    "arguments": [
+      "hex_text"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "unicode",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "text"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "unistr",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "'\\u0041'"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "unistr_quote",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "unlikely",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "condition"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "upper",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "text"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "zeroblob",
+    "category": "core",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "16"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "date",
+    "category": "dateTime",
+    "min": 0,
+    "max": null,
+    "arguments": [
+      "'now'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "time",
+    "category": "dateTime",
+    "min": 0,
+    "max": null,
+    "arguments": [
+      "'now'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "datetime",
+    "category": "dateTime",
+    "min": 0,
+    "max": null,
+    "arguments": [
+      "unix_timestamp",
+      "'unixepoch'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "julianday",
+    "category": "dateTime",
+    "min": 0,
+    "max": null,
+    "arguments": [
+      "'now'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "unixepoch",
+    "category": "dateTime",
+    "min": 0,
+    "max": null,
+    "arguments": [
+      "'now'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "strftime",
+    "category": "dateTime",
+    "min": 1,
+    "max": null,
+    "arguments": [
+      "'%F %T'",
+      "'now'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "timediff",
+    "category": "dateTime",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "'now'",
+      "'2020-01-01'"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "avg",
+    "category": "aggregate",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "count",
+    "category": "aggregate",
+    "min": 0,
+    "max": 1,
+    "arguments": [
+      "*"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "group_concat",
+    "category": "aggregate",
+    "min": 1,
+    "max": 2,
+    "arguments": [
+      "value",
+      "', '"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "max",
+    "category": "aggregate",
+    "min": 1,
+    "max": null,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "median",
+    "category": "aggregate",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "min",
+    "category": "aggregate",
+    "min": 1,
+    "max": null,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "percentile",
+    "category": "aggregate",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "value",
+      "50"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "percentile_cont",
+    "category": "aggregate",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "value",
+      "0.5"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "percentile_disc",
+    "category": "aggregate",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "value",
+      "0.5"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "string_agg",
+    "category": "aggregate",
+    "min": 2,
+    "max": 2,
+    "arguments": [
+      "value",
+      "', '"
+    ],
+    "version_dependent": true
+  },
+  {
+    "name": "sum",
+    "category": "aggregate",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  },
+  {
+    "name": "total",
+    "category": "aggregate",
+    "min": 1,
+    "max": 1,
+    "arguments": [
+      "value"
+    ],
+    "version_dependent": false
+  }
+]

@@ -1,0 +1,560 @@
+[
+  {
+    "key": "eventGreenFlag",
+    "category": "queryLanguage",
+    "advanced": "EXECUTE QUERY",
+    "german": "QUERY AUSFUEHREN",
+    "english": "RUN QUERY",
+    "description_de": "Startet die SQLite-Abfragekette im Workspace.",
+    "description_en": "Starts the SQLite query chain in the workspace."
+  },
+  {
+    "key": "sqlSelect",
+    "category": "queryLanguage",
+    "advanced": "SELECT [columns] FROM [table_name]",
+    "german": "Zeige [Spalten] aus Tabelle [table_name]",
+    "english": "Show [columns] from table [table_name]",
+    "description_de": "Ruft Daten aus einer Datenbank ab. Du wählst Spalten und eine Tabelle aus.",
+    "description_en": "Retrieves data from a database. Choose columns and a source table."
+  },
+  {
+    "key": "sqlFrom",
+    "category": "queryLanguage",
+    "advanced": "FROM [table_name]",
+    "german": "aus Tabelle [table_name]",
+    "english": "from table [table_name]",
+    "description_de": "Legt fest, aus welcher Tabelle gelesen wird.",
+    "description_en": "Defines which table to read from."
+  },
+  {
+    "key": "sqlWhere",
+    "category": "queryLanguage",
+    "advanced": "WHERE [column] [operator] [value]",
+    "german": "filtere Zeilen\n[Spalte] [operator] [value]",
+    "english": "filter rows\n[column] [operator] [value]",
+    "description_de": "Filtert Zeilen anhand einer Bedingung, z. B. nur Kunden mit Alter > 30.",
+    "description_en": "Filters rows by a condition, for example customers with age > 30."
+  },
+  {
+    "key": "sqlAnd",
+    "category": "queryLanguage",
+    "advanced": "AND [column] [operator] [value]",
+    "german": "und zusätzlich\n[Spalte] [operator] [value]",
+    "english": "and also\n[column] [operator] [value]",
+    "description_de": "Verknüpft einen weiteren Filter mit UND.",
+    "description_en": "Adds another filter joined with AND."
+  },
+  {
+    "key": "sqlOr",
+    "category": "queryLanguage",
+    "advanced": "OR [column] [operator] [value]",
+    "german": "oder alternativ\n[Spalte] [operator] [value]",
+    "english": "or alternatively\n[column] [operator] [value]",
+    "description_de": "Verknüpft einen alternativen Filter mit ODER.",
+    "description_en": "Adds an alternative filter joined with OR."
+  },
+  {
+    "key": "sqlJoin",
+    "category": "queryLanguage",
+    "advanced": "[JOIN_TYPE] JOIN [table]\nON [left_column] [operator] [right_column]",
+    "german": "verbinde [JOIN_TYPE] mit [table]\nüber [linke_Spalte] [operator] [rechte_Spalte]",
+    "english": "join [JOIN_TYPE] with [table]\non [left_column] [operator] [right_column]",
+    "description_de": "Tabelle wählen, passende Spalten verbinden und entscheiden, welche Zeilen bleiben.",
+    "description_en": "Choose a table, link matching columns and decide which rows to keep."
+  },
+  {
+    "key": "sqlGroupBy",
+    "category": "queryLanguage",
+    "advanced": "GROUP BY [column]",
+    "german": "bilde Gruppen nach [Spalte]",
+    "english": "make groups by [column]",
+    "description_de": "Gruppiert Zeilen nach Spaltenwerten und wird oft mit COUNT, SUM oder AVG genutzt.",
+    "description_en": "Groups rows by column values and is often used with COUNT, SUM, or AVG."
+  },
+  {
+    "key": "sqlHaving",
+    "category": "queryLanguage",
+    "advanced": "HAVING [aggregate]([column]) [operator] [value]",
+    "german": "filtere Gruppen\n[aggregate] von [Spalte] [operator] [value]",
+    "english": "filter groups\n[aggregate] of [column] [operator] [value]",
+    "description_de": "Filtert gruppierte Ergebnisse nach einer Bedingung, also nach GROUP BY.",
+    "description_en": "Filters grouped results by a condition after GROUP BY."
+  },
+  {
+    "key": "sqlOrderBy",
+    "category": "queryLanguage",
+    "advanced": "ORDER BY [column] [ASC|DESC]",
+    "german": "sortiere nach\n[Spalte] [aufsteigend|absteigend]",
+    "english": "sort by\n[column] [ascending|descending]",
+    "description_de": "Sortiert die Ergebnisliste nach einer Spalte auf- oder absteigend.",
+    "description_en": "Sorts the result set by a column in ascending or descending order."
+  },
+  {
+    "key": "sqlLimit",
+    "category": "queryLanguage",
+    "advanced": "LIMIT [count] OFFSET [offset]",
+    "german": "zeige höchstens [count]\nüberspringe [offset]",
+    "english": "show at most [count]\nskip [offset]",
+    "description_de": "Begrenzt die Ergebniszahl und kann vorherige Zeilen überspringen.",
+    "description_en": "Limits the result count and can skip preceding rows."
+  },
+  {
+    "key": "sqlCount",
+    "category": "queryLanguage",
+    "advanced": "COUNT([column])",
+    "german": "zaehle [Spalte]",
+    "english": "count [column]",
+    "description_de": "Zählt Zeilen oder nicht-leere Werte.",
+    "description_en": "Counts rows or non-null values."
+  },
+  {
+    "key": "sqlSum",
+    "category": "queryLanguage",
+    "advanced": "SUM([column])",
+    "german": "summiere [Spalte]",
+    "english": "sum [column]",
+    "description_de": "Bildet die Summe numerischer Werte.",
+    "description_en": "Calculates the sum of numeric values."
+  },
+  {
+    "key": "sqlAvg",
+    "category": "queryLanguage",
+    "advanced": "AVG([column])",
+    "german": "berechne Durchschnitt von [Spalte]",
+    "english": "average of [column]",
+    "description_de": "Berechnet den Durchschnitt numerischer Werte.",
+    "description_en": "Calculates the average of numeric values."
+  },
+  {
+    "key": "sqlMin",
+    "category": "queryLanguage",
+    "advanced": "MIN([column])",
+    "german": "kleinster Wert von [Spalte]",
+    "english": "smallest value of [column]",
+    "description_de": "Gibt den kleinsten Wert zurück.",
+    "description_en": "Returns the smallest value."
+  },
+  {
+    "key": "sqlMax",
+    "category": "queryLanguage",
+    "advanced": "MAX([column])",
+    "german": "groesster Wert von [Spalte]",
+    "english": "largest value of [column]",
+    "description_de": "Gibt den größten Wert zurück.",
+    "description_en": "Returns the largest value."
+  },
+  {
+    "key": "sqlCase",
+    "category": "queryLanguage",
+    "advanced": "CASE WHEN [condition_column] [operator] [condition_value] THEN {result} ELSE {default} END",
+    "german": "falls [condition_column] [operator] [condition_value]\ndann {result}, sonst {default}",
+    "english": "if [condition_column] [operator] [condition_value]\nthen {result} else {default}",
+    "description_de": "Mehrfach-Bedingung: wenn/dann/sonst.",
+    "description_en": "Multi-branch condition: when/then/else."
+  },
+  {
+    "key": "sqlSubqueryIn",
+    "category": "queryLanguage",
+    "advanced": "[column] IN ([sql])",
+    "german": "[Spalte] ist in ([sql])",
+    "english": "[column] is in ([sql])",
+    "description_de": "Prüft, ob ein Wert in den Ergebnissen einer Unterabfrage vorkommt.",
+    "description_en": "Checks whether a value matches any value returned by a subquery."
+  },
+  {
+    "key": "sqlUnion",
+    "category": "queryLanguage",
+    "advanced": "UNION [set_mode] [sql]",
+    "german": "vereine [set_mode] mit [sql]",
+    "english": "combine [set_mode] with [sql]",
+    "description_de": "Vereint Ergebnisse aus zwei Abfragen (Duplikate entfernt).",
+    "description_en": "Combines results of two queries (deduplicated)."
+  },
+  {
+    "key": "sqlIntersect",
+    "category": "queryLanguage",
+    "advanced": "INTERSECT [sql]",
+    "german": "schneide mit [sql]",
+    "english": "keep overlap with [sql]",
+    "description_de": "Behält nur Treffer, die in beiden Abfragen vorkommen.",
+    "description_en": "Keeps only rows present in both queries."
+  },
+  {
+    "key": "sqlExcept",
+    "category": "queryLanguage",
+    "advanced": "EXCEPT [sql]",
+    "german": "entferne Treffer aus [sql]",
+    "english": "remove matches from [sql]",
+    "description_de": "Entfernt Treffer der zweiten Abfrage aus der ersten.",
+    "description_en": "Removes rows of the second query from the first."
+  },
+  {
+    "key": "sqlWith",
+    "category": "queryLanguage",
+    "advanced": "WITH [recursive] [name] ([columns]) AS ([sql])",
+    "german": "definiere [recursive] Zwischenergebnis [name] als ([sql])",
+    "english": "define [recursive] temporary result [name] as ([sql])",
+    "description_de": "Definiert ein temporäres oder rekursives Zwischenergebnis für die folgende Abfrage.",
+    "description_en": "Defines a temporary or recursive result for the following query."
+  },
+  {
+    "key": "sqlValues",
+    "category": "queryLanguage",
+    "advanced": "VALUES [values]",
+    "german": "erzeuge Werte [values]",
+    "english": "create values [values]",
+    "description_de": "Erzeugt eine eigenständige Tabelle aus angegebenen Wertzeilen.",
+    "description_en": "Creates a standalone table from the supplied value rows."
+  },
+  {
+    "key": "sqlExplain",
+    "category": "queryLanguage",
+    "advanced": "[explain_mode]",
+    "german": "zeige Abfrageplan [explain_mode]",
+    "english": "show query plan [explain_mode]",
+    "description_de": "Zeigt Bytecode oder den verständlicheren Ausführungsplan einer verbundenen Abfrage.",
+    "description_en": "Shows bytecode or the more readable query plan for a connected query."
+  },
+  {
+    "key": "sqlInsert",
+    "category": "dml",
+    "advanced": "INSERT INTO [table] ([columns]) VALUES ([values])",
+    "german": "fuege ein in [table]\n[Spalten] = [values]",
+    "english": "add to [table]\n[columns] = [values]",
+    "description_de": "Fügt neue Datensätze in eine Tabelle ein.",
+    "description_en": "Adds new records to a table."
+  },
+  {
+    "key": "sqlInsertOrReplace",
+    "category": "dml",
+    "advanced": "INSERT OR REPLACE INTO [table] ([columns]) VALUES ([values])",
+    "german": "fuege ein oder ersetze in [table]\n[Spalten] = [values]",
+    "english": "insert or replace in [table]\n[columns] = [values]",
+    "description_de": "Fügt Datensätze ein und ersetzt bei einem Schlüsselkonflikt den bestehenden Datensatz.",
+    "description_en": "Inserts records and replaces an existing record on a key conflict."
+  },
+  {
+    "key": "sqlUpsert",
+    "category": "dml",
+    "advanced": "INSERT INTO [table] ([columns]) VALUES ([values])\nON CONFLICT ([conflict_columns]) [action] SET [assignments]",
+    "german": "fuege [Spalten] = [values] in [table] ein\nbei Konflikt in [conflict_columns] [action]: [assignments]",
+    "english": "insert [columns] = [values] into [table]\non conflict in [conflict_columns] [action]: [assignments]",
+    "description_de": "Fügt Datensätze ein oder aktualisiert gezielt Spalten bei einem Konflikt.",
+    "description_en": "Inserts records or updates selected columns on a conflict."
+  },
+  {
+    "key": "sqlUpdate",
+    "category": "dml",
+    "advanced": "UPDATE [table] SET [column] = [value] WHERE [where_column] [operator] [where_value]",
+    "german": "aendere [table]: [Spalte] = [value]\nwenn [Filter_Spalte] [operator] [where_value]",
+    "english": "change [table]: [column] = [value]\nwhen [where_column] [operator] [where_value]",
+    "description_de": "Ändert bestehende Datensätze in einer Tabelle.",
+    "description_en": "Modifies existing records in a table."
+  },
+  {
+    "key": "sqlDelete",
+    "category": "dml",
+    "advanced": "DELETE FROM [table] WHERE [where_column] [operator] [where_value]",
+    "german": "loesche aus [table]\nwenn [Filter_Spalte] [operator] [where_value]",
+    "english": "delete from [table]\nwhen [where_column] [operator] [where_value]",
+    "description_de": "Entfernt Datensätze aus einer Tabelle, optional per Bedingung.",
+    "description_en": "Removes records from a table, optionally with a condition."
+  },
+  {
+    "key": "sqlCreateTable",
+    "category": "ddl",
+    "advanced": "CREATE TABLE [if_not_exists] [table_name]\n([column_definitions])",
+    "german": "erstelle Tabelle [if_not_exists] [table_name]\nmit Spalten [Spaltendefinitionen]",
+    "english": "create table [if_not_exists] [table_name]\nwith columns [column_definitions]",
+    "description_de": "Erstellt eine Tabelle mit Spalten-, CHECK- und Fremdschlüsseldefinitionen.",
+    "description_en": "Creates a table with column, CHECK, and foreign-key definitions."
+  },
+  {
+    "key": "sqlCreateIndex",
+    "category": "ddl",
+    "advanced": "CREATE [unique] INDEX [if_not_exists] [name]\nON [table] ([columns])",
+    "german": "erstelle [unique] Index [if_not_exists] [name]\nauf [table] für [Spalten]",
+    "english": "create [unique] index [if_not_exists] [name]\non [table] for [columns]",
+    "description_de": "Erstellt einen optional eindeutigen Index über eine oder mehrere Spalten.",
+    "description_en": "Creates an optionally unique index over one or more columns."
+  },
+  {
+    "key": "sqlDropIndex",
+    "category": "ddl",
+    "advanced": "DROP INDEX [if_exists] [name]",
+    "german": "loesche Index [if_exists] [name]",
+    "english": "drop index [if_exists] [name]",
+    "description_de": "Entfernt einen bestehenden Datenbankindex.",
+    "description_en": "Drops an existing database index."
+  },
+  {
+    "key": "sqlCreateView",
+    "category": "ddl",
+    "advanced": "CREATE [temporary] VIEW [if_not_exists] [name]\nAS [sql]",
+    "german": "erstelle Sicht [if_not_exists] [name]\naus [sql]",
+    "english": "create view [if_not_exists] [name]\nfrom [sql]",
+    "description_de": "Erstellt eine gespeicherte Sicht auf das Ergebnis einer SELECT-Abfrage.",
+    "description_en": "Creates a stored view over the result of a SELECT query."
+  },
+  {
+    "key": "sqlDropView",
+    "category": "ddl",
+    "advanced": "DROP VIEW [if_exists] [name]",
+    "german": "loesche Sicht [if_exists] [name]",
+    "english": "drop view [if_exists] [name]",
+    "description_de": "Entfernt eine bestehende Datenbanksicht.",
+    "description_en": "Drops an existing database view."
+  },
+  {
+    "key": "sqlCreateTrigger",
+    "category": "ddl",
+    "advanced": "CREATE [temporary] TRIGGER [if_not_exists] [name]\n[timing] [event] ON [table] WHEN [when] DO [body]",
+    "german": "erstelle Automatik [name]\n[timing] [event] auf [table]: [body]",
+    "english": "create automation [name]\n[timing] [event] on [table]: [body]",
+    "description_de": "Führt bei INSERT, UPDATE oder DELETE automatisch SQLite-Anweisungen aus.",
+    "description_en": "Automatically runs SQLite statements on INSERT, UPDATE, or DELETE."
+  },
+  {
+    "key": "sqlDropTrigger",
+    "category": "ddl",
+    "advanced": "DROP TRIGGER [if_exists] [name]",
+    "german": "loesche Automatik [if_exists] [name]",
+    "english": "drop automation [if_exists] [name]",
+    "description_de": "Entfernt eine bestehende Datenbank-Automatik.",
+    "description_en": "Drops an existing database trigger."
+  },
+  {
+    "key": "sqlCreateVirtualTable",
+    "category": "ddl",
+    "advanced": "CREATE VIRTUAL TABLE [if_not_exists] [table]\nUSING [module] ([arguments])",
+    "german": "erstelle Spezialtabelle [table]\nmit [module] fuer [arguments]",
+    "english": "create special table [table]\nusing [module] for [arguments]",
+    "description_de": "Erstellt eine virtuelle FTS5- oder R*Tree-Tabelle.",
+    "description_en": "Creates a virtual FTS5 or R*Tree table."
+  },
+  {
+    "key": "sqlAlterTable",
+    "category": "ddl",
+    "advanced": "ALTER TABLE [table_name] [alter_action] [alter_value]",
+    "german": "aendere Tabelle [table_name]\n[alter_action] [alter_value]",
+    "english": "change table [table_name]\n[alter_action] [alter_value]",
+    "description_de": "Fügt Spalten hinzu, löscht sie oder ändert Spalten in einer bestehenden Tabelle.",
+    "description_en": "Adds, deletes, or modifies columns in an existing table."
+  },
+  {
+    "key": "sqlTruncate",
+    "category": "ddl",
+    "advanced": "TRUNCATE TABLE [table_name]",
+    "german": "leere Tabelle [table_name] komplett",
+    "english": "clear table [table_name] completely",
+    "description_de": "Löscht alle Daten in einer Tabelle, behält aber die Tabelle selbst.",
+    "description_en": "Deletes all data inside a table while keeping the table itself."
+  },
+  {
+    "key": "sqlDropTable",
+    "category": "ddl",
+    "advanced": "DROP TABLE [if_exists] [table_name]",
+    "german": "loesche Tabelle [if_exists] [table_name] permanent",
+    "english": "delete table [if_exists] [table_name] permanently",
+    "description_de": "Löscht eine bestehende Tabelle dauerhaft aus der Datenbank.",
+    "description_en": "Drops an existing table from the database."
+  },
+  {
+    "key": "sqlBeginTransaction",
+    "category": "txn",
+    "advanced": "BEGIN [behavior] TRANSACTION",
+    "german": "starte Snapshot [behavior]",
+    "english": "start snapshot [behavior]",
+    "description_de": "Startet einen geschützten Snapshot für die folgenden Änderungsschritte.",
+    "description_en": "Starts a protected snapshot for the following mutation steps."
+  },
+  {
+    "key": "sqlSavepoint",
+    "category": "txn",
+    "advanced": "SAVEPOINT [name]",
+    "german": "setze Sicherungspunkt [name]",
+    "english": "set savepoint [name]",
+    "description_de": "Setzt einen Zwischenstand innerhalb einer Transaktion.",
+    "description_en": "Creates a checkpoint inside a transaction."
+  },
+  {
+    "key": "sqlRollbackToSavepoint",
+    "category": "txn",
+    "advanced": "ROLLBACK TO SAVEPOINT [name]",
+    "german": "springe zurueck zu Sicherungspunkt [name]",
+    "english": "go back to savepoint [name]",
+    "description_de": "Springt auf einen gesetzten Zwischenstand zurück.",
+    "description_en": "Rolls back to a defined transaction checkpoint."
+  },
+  {
+    "key": "sqlReleaseSavepoint",
+    "category": "txn",
+    "advanced": "RELEASE SAVEPOINT [name]",
+    "german": "gib Sicherungspunkt [name] frei",
+    "english": "release savepoint [name]",
+    "description_de": "Gibt einen Wiederherstellungspunkt frei, ohne seine Änderungen zu verwerfen.",
+    "description_en": "Releases a restore point without discarding its changes."
+  },
+  {
+    "key": "sqlCommit",
+    "category": "txn",
+    "advanced": "COMMIT",
+    "german": "uebernehme Snapshot dauerhaft",
+    "english": "keep snapshot changes",
+    "description_de": "Übernimmt alle Änderungen des aktuellen Snapshots dauerhaft.",
+    "description_en": "Permanently keeps all changes in the current snapshot."
+  },
+  {
+    "key": "sqlEndTransaction",
+    "category": "txn",
+    "advanced": "END TRANSACTION",
+    "german": "beende und uebernehme Snapshot",
+    "english": "finish and keep snapshot changes",
+    "description_de": "Beendet den Snapshot und übernimmt seine Änderungen wie COMMIT.",
+    "description_en": "Ends the snapshot and keeps its changes like COMMIT."
+  },
+  {
+    "key": "sqlRollback",
+    "category": "txn",
+    "advanced": "ROLLBACK",
+    "german": "stelle Zustand vor Snapshot wieder her",
+    "english": "restore state before snapshot",
+    "description_de": "Verwirft den Snapshot und stellt den vorherigen Zustand wieder her.",
+    "description_en": "Discards the snapshot and restores the previous state."
+  },
+  {
+    "key": "sqlPragma",
+    "category": "database",
+    "advanced": "PRAGMA [pragma] = [pragma_value]",
+    "german": "konfiguriere SQLite: [pragma] [pragma_value]",
+    "english": "configure SQLite: [pragma] [pragma_value]",
+    "description_de": "Konfiguriert SQLite oder liest Engine- und Tabelleninformationen aus.",
+    "description_en": "Configures SQLite or reads engine and table information."
+  },
+  {
+    "key": "sqlAttachDatabase",
+    "category": "database",
+    "advanced": "ATTACH DATABASE [path] AS [schema]",
+    "german": "binde Datenbank [path] als [schema] ein",
+    "english": "attach database [path] as [schema]",
+    "description_de": "Bindet eine weitere SQLite-Datei unter einem Schemanamen ein.",
+    "description_en": "Attaches another SQLite file under a schema name."
+  },
+  {
+    "key": "sqlDetachDatabase",
+    "category": "database",
+    "advanced": "DETACH DATABASE [schema]",
+    "german": "trenne Datenbank [schema]",
+    "english": "detach database [schema]",
+    "description_de": "Trennt eine zuvor eingebundene SQLite-Datenbank.",
+    "description_en": "Detaches a previously attached SQLite database."
+  },
+  {
+    "key": "sqlVacuum",
+    "category": "database",
+    "advanced": "VACUUM [schema]",
+    "german": "raeume Datenbank [schema] auf",
+    "english": "clean up database [schema]",
+    "description_de": "Defragmentiert die Datenbankdatei und gibt freien Speicherplatz zurück.",
+    "description_en": "Defragments the database file and reclaims unused space."
+  },
+  {
+    "key": "sqlReindex",
+    "category": "database",
+    "advanced": "REINDEX [target]",
+    "german": "baue Indizes [target] neu",
+    "english": "rebuild indexes [target]",
+    "description_de": "Baut alle oder ausgewählte SQLite-Indizes neu auf.",
+    "description_en": "Rebuilds all or selected SQLite indexes."
+  },
+  {
+    "key": "sqlAnalyze",
+    "category": "database",
+    "advanced": "ANALYZE [target]",
+    "german": "aktualisiere Statistiken fuer [target]",
+    "english": "refresh statistics for [target]",
+    "description_de": "Aktualisiert Statistiken für die SQLite-Abfrageplanung.",
+    "description_en": "Refreshes statistics used by SQLite query planning."
+  },
+  {
+    "key": "null",
+    "category": "dataTypes",
+    "advanced": "NULL",
+    "german": "NULL",
+    "english": "NULL",
+    "description_de": "Der SQLite-NULL-Wert: kein Wert beziehungsweise unbekannt.",
+    "description_en": "The SQLite NULL value: no value or an unknown value."
+  },
+  {
+    "key": "integer",
+    "category": "dataTypes",
+    "advanced": "INT {text}",
+    "german": "INT {text}",
+    "english": "INT {text}",
+    "description_de": "Eine ganze Zahl ohne Nachkommastellen.",
+    "description_en": "A whole number without decimal places."
+  },
+  {
+    "key": "real",
+    "category": "dataTypes",
+    "advanced": "REAL {text}",
+    "german": "REAL {text}",
+    "english": "REAL {text}",
+    "description_de": "Eine Fließkommazahl mit Nachkommastellen.",
+    "description_en": "A floating-point number with decimal places."
+  },
+  {
+    "key": "text",
+    "category": "dataTypes",
+    "advanced": "TEXT {text}",
+    "german": "TEXT {text}",
+    "english": "TEXT {text}",
+    "description_de": "Eine SQLite-Zeichenkette.",
+    "description_en": "A SQLite string."
+  },
+  {
+    "key": "blob",
+    "category": "dataTypes",
+    "advanced": "BLOB {text}",
+    "german": "BLOB {text}",
+    "english": "BLOB {text}",
+    "description_de": "Binärdaten als gerade Folge hexadezimaler Zeichen.",
+    "description_en": "Binary data as an even-length sequence of hexadecimal characters."
+  },
+  {
+    "key": "sqlColumn",
+    "category": "queryLanguage",
+    "advanced": "[column]",
+    "german": "Spalte",
+    "english": "Column",
+    "description_de": "Spalte in einen Ausdruck ziehen.",
+    "description_en": "Drag column into an expression slot."
+  },
+  {
+    "key": "sqlAlias",
+    "category": "queryLanguage",
+    "advanced": "{value} AS [alias]",
+    "german": "Spaltenalias",
+    "english": "Column alias",
+    "description_de": "Spaltenalias in einen Ausdruck ziehen.",
+    "description_en": "Drag column alias into an expression slot."
+  },
+  {
+    "key": "sqlFunction",
+    "category": "queryLanguage",
+    "advanced": "[function]({arguments})",
+    "german": "SQLite-Funktion",
+    "english": "SQLite function",
+    "description_de": "SQLite-Funktion in einen Ausdruck ziehen.",
+    "description_en": "Drag sqlite function into an expression slot."
+  },
+  {
+    "key": "sqlUpper",
+    "category": "queryLanguage",
+    "advanced": "UPPER({text})",
+    "german": "Großbuchstaben",
+    "english": "Uppercase",
+    "description_de": "Großbuchstaben in einen Ausdruck ziehen.",
+    "description_en": "Drag uppercase into an expression slot."
+  }
+]

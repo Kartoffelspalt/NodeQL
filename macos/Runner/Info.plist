@@ -26,6 +26,8 @@
 	<string>Copyright © 2026 NodeQL contributors. MIT License.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>NodeQL connects to your teacher’s device when you enter a classroom workshop code.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

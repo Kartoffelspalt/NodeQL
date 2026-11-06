@@ -38,6 +38,7 @@ class NodeQlWorkshopProgress {
     this.workspaceJson,
     this.nodeIds = const <String, String>{},
     this.abstractionMode = 'simple',
+    this.interactions = const <String>{},
   });
 
   final String currentStepId;
@@ -48,6 +49,7 @@ class NodeQlWorkshopProgress {
   final String? workspaceJson;
   final Map<String, String> nodeIds;
   final String abstractionMode;
+  final Set<String> interactions;
 
   bool get started => currentStepId.isNotEmpty;
 
@@ -66,6 +68,7 @@ class NodeQlWorkshopProgress {
     'workspaceJson': workspaceJson,
     'nodeIds': nodeIds,
     'abstractionMode': abstractionMode,
+    if (interactions.isNotEmpty) 'interactions': interactions.toList()..sort(),
   };
 
   factory NodeQlWorkshopProgress.fromJson(Object? value) {
@@ -94,6 +97,9 @@ class NodeQlWorkshopProgress {
       abstractionMode: value['abstractionMode'] == 'advanced'
           ? 'advanced'
           : 'simple',
+      interactions: value['interactions'] is List
+          ? (value['interactions'] as List).whereType<String>().toSet()
+          : const <String>{},
     );
   }
 }

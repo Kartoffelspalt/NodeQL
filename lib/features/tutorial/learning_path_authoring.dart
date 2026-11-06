@@ -14,6 +14,63 @@ enum LearningPathCalloutSide { left, right }
 /// field was introduced remain fully compatible.
 enum LearningPathMode { simple, advanced }
 
+enum LearningPathAction {
+  selectNode,
+  enterInput,
+  connectNodes,
+  attachReporter,
+  linkColumns,
+  runQuery;
+
+  bool get needsNode => this != runQuery;
+  bool get needsInput => this == enterInput || this == attachReporter;
+  bool get needsOtherNode =>
+      this == connectNodes || this == attachReporter || this == linkColumns;
+}
+
+/// A condition over the learner's workspace. Values are compared as text.
+class LearningPathRequirement {
+  const LearningPathRequirement({
+    required this.action,
+    this.nodeRef,
+    this.otherRef,
+    this.input,
+    this.value,
+  });
+
+  final LearningPathAction action;
+  final String? nodeRef;
+  final String? otherRef;
+  final String? input;
+  final String? value;
+
+  Iterable<String> get refs => [?nodeRef, ?otherRef];
+
+  Map<String, dynamic> toJson() => {
+    'action': action.name,
+    if (nodeRef != null) 'nodeRef': nodeRef,
+    if (otherRef != null) 'otherRef': otherRef,
+    if (input != null) 'input': input,
+    if (value != null) 'value': value,
+  };
+
+  factory LearningPathRequirement.fromJson(Map<String, dynamic> json) {
+    final action = LearningPathAction.values
+        .where((action) => action.name == json['action'])
+        .firstOrNull;
+    if (action == null) {
+      throw const FormatException('Unknown workshop action.');
+    }
+    return LearningPathRequirement(
+      action: action,
+      nodeRef: json['nodeRef'] as String?,
+      otherRef: json['otherRef'] as String?,
+      input: json['input'] as String?,
+      value: json['value'] as String?,
+    );
+  }
+}
+
 class LearningPathNodeTemplate {
   const LearningPathNodeTemplate({
     required this.ref,
@@ -91,6 +148,8 @@ class LearningPathStep {
     this.mode = LearningPathMode.simple,
     this.nodes = const <LearningPathNodeTemplate>[],
     this.callouts = const <LearningPathNodeCallout>[],
+    this.highlights = const <String>[],
+    this.requirements = const <LearningPathRequirement>[],
   });
 
   final String id;
@@ -100,6 +159,8 @@ class LearningPathStep {
   final LearningPathMode mode;
   final List<LearningPathNodeTemplate> nodes;
   final List<LearningPathNodeCallout> callouts;
+  final List<String> highlights;
+  final List<LearningPathRequirement> requirements;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
@@ -109,6 +170,9 @@ class LearningPathStep {
     'mode': mode.name,
     'nodes': nodes.map((node) => node.toJson()).toList(),
     'callouts': callouts.map((callout) => callout.toJson()).toList(),
+    if (highlights.isNotEmpty) 'highlights': highlights,
+    if (requirements.isNotEmpty)
+      'requirements': requirements.map((rule) => rule.toJson()).toList(),
   };
 
   factory LearningPathStep.fromJson(Map<String, dynamic> json) {
@@ -137,6 +201,13 @@ class LearningPathStep {
             ),
           )
           .toList(growable: false),
+      highlights: List<String>.from(json['highlights'] as List? ?? const []),
+      requirements: [
+        for (final rule in json['requirements'] as List? ?? const [])
+          LearningPathRequirement.fromJson(
+            Map<String, dynamic>.from(rule as Map),
+          ),
+      ],
     );
   }
 }
@@ -283,6 +354,8 @@ class LearningPathLibraryController
   List<AuthoredLearningPath> _bundledPaths = const <AuthoredLearningPath>[];
   List<AuthoredLearningPath> _localPaths = const <AuthoredLearningPath>[];
 
+  Iterable<AuthoredLearningPath> get drafts => _localPaths.reversed;
+
   Future<void> initialize() => _initialization ??= _initialize();
 
   Future<void> _initialize() async {
@@ -312,23 +385,24 @@ class LearningPathLibraryController
     if (!_isValidPath(path)) {
       throw ArgumentError('A learning path needs an id, title and one step.');
     }
-    _localPaths = <AuthoredLearningPath>[
-      for (final existing in _localPaths)
-        if (existing.id != path.id) existing,
-      path,
-    ];
-    state = LearningPathLibraryState(loading: false, paths: _mergedPaths());
-    await _persist();
+    await _persist(
+      () => [
+        for (final existing in _localPaths)
+          if (existing.id != path.id) existing,
+        path,
+      ],
+    );
   }
 
   Future<void> delete(String id) async {
     _ensureLocalDraftsEnabled();
     if (state.loading) await initialize();
-    _localPaths = _localPaths
-        .where((path) => path.id != id)
-        .toList(growable: false);
-    state = LearningPathLibraryState(loading: false, paths: _mergedPaths());
-    await _persist();
+    await _persist(
+      () => [
+        for (final path in _localPaths)
+          if (path.id != id) path,
+      ],
+    );
   }
 
   Future<void> importBundle(String source) async {
@@ -342,18 +416,34 @@ class LearningPathLibraryController
 
   String exportBundle() => encodeLearningPathBundle(state.paths);
 
-  Future<void> _persist() {
+  Future<void> _persist(List<AuthoredLearningPath> Function() update) {
     final storageFile = _storageFile;
     if (storageFile == null) {
       throw StateError('Published workshop libraries are read-only.');
     }
-    final payload = encodeLearningPathBundle(_localPaths);
-    _pendingWrite = _pendingWrite.then((_) async {
+    final write = _pendingWrite.then((_) async {
+      final paths = update();
       final file = await storageFile();
       await file.parent.create(recursive: true);
-      await file.writeAsString(payload, flush: true);
+      final staging = await file.parent.createTemp('.nodeql-workshops-');
+      try {
+        final draft = fileAt('${staging.path}/paths.json');
+        await draft.writeAsString(encodeLearningPathBundle(paths), flush: true);
+        await draft.rename(file.path);
+      } finally {
+        try {
+          await staging.delete(recursive: true);
+        } on Exception {
+          // Cleanup is separate from committing the saved drafts.
+        }
+      }
+      _localPaths = paths;
+      if (mounted) {
+        state = LearningPathLibraryState(loading: false, paths: _mergedPaths());
+      }
     });
-    return _pendingWrite;
+    _pendingWrite = write.then<void>((_) {}, onError: (Object _) {});
+    return write;
   }
 
   static bool _isValidPath(AuthoredLearningPath path) =>
@@ -392,11 +482,18 @@ class LearningPathLibraryController
   }
 }
 
-String encodeLearningPathBundle(Iterable<AuthoredLearningPath> paths) =>
-    const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
-      'schemaVersion': 1,
-      'paths': paths.map((path) => path.toJson()).toList(),
-    });
+String encodeLearningPathBundle(Iterable<AuthoredLearningPath> paths) {
+  final workshops = paths.toList(growable: false);
+  final hasInteractions = workshops.any(
+    (path) => path.steps.any(
+      (step) => step.highlights.isNotEmpty || step.requirements.isNotEmpty,
+    ),
+  );
+  return const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
+    'schemaVersion': hasInteractions ? 2 : 1,
+    'paths': workshops.map((path) => path.toJson()).toList(),
+  });
+}
 
 List<AuthoredLearningPath> decodeLearningPathBundle(Object? decoded) {
   final rawPaths = decoded is Map ? decoded['paths'] : null;

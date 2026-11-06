@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nodeql/features/tutorial/workshop_icons.dart';
 import 'package:nodeql/core/theme/theme_controller.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
+import 'package:nodeql/features/tutorial/remote_workshop.dart';
+import 'package:nodeql/features/tutorial/remote_workshop_dialog.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
 import 'package:nodeql/features/tutorial/tutorial_practice.dart';
 import 'package:nodeql/features/workbench/presentation/scratch_style.dart';
@@ -274,6 +278,7 @@ class TutorialDialog extends StatefulWidget {
     this.authoredPaths = const <AuthoredLearningPath>[],
     this.workshopProgress = const <String, NodeQlWorkshopProgress>{},
     this.onStartAuthoredPath,
+    this.downloads,
     this.startOnOverview = true,
     super.key,
   });
@@ -290,6 +295,7 @@ class TutorialDialog extends StatefulWidget {
   final List<AuthoredLearningPath> authoredPaths;
   final Map<String, NodeQlWorkshopProgress> workshopProgress;
   final Future<void> Function(AuthoredLearningPath path)? onStartAuthoredPath;
+  final RemoteWorkshopRepository? downloads;
   final bool startOnOverview;
 
   @override
@@ -303,6 +309,9 @@ class _TutorialDialogState extends State<TutorialDialog> {
   late bool _showOverview;
   late Map<TutorialKnowledgeMode, TutorialLessonProgress> _progress;
   final Map<TutorialKnowledgeMode, Map<int, int>> _answers = {};
+  List<AuthoredLearningPath> _downloadedPaths = [];
+  String? _downloadError;
+  int _downloadLoadToken = 0;
 
   @override
   void initState() {
@@ -313,6 +322,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
         mode: widget.initialProgress[mode] ?? const TutorialLessonProgress(),
     };
     if (!_showOverview) _loadLesson(_mode);
+    unawaited(_loadDownloads());
   }
 
   TranslationCatalog get catalog => widget.catalog;
@@ -381,6 +391,9 @@ class _TutorialDialogState extends State<TutorialDialog> {
                           authoredPaths: widget.authoredPaths,
                           workshopProgress: widget.workshopProgress,
                           onAuthoredPath: _startAuthoredPath,
+                          downloads: widget.downloads == null
+                              ? null
+                              : _buildDownloads(),
                         )
                       : compact
                       ? _buildCompactContent()
@@ -684,6 +697,128 @@ class _TutorialDialogState extends State<TutorialDialog> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  Future<void> _loadDownloads() async {
+    final downloads = widget.downloads;
+    if (downloads == null) return;
+    final token = ++_downloadLoadToken;
+    try {
+      final paths = await downloads.load();
+      if (mounted && token == _downloadLoadToken) {
+        setState(() {
+          _downloadedPaths = paths;
+          _downloadError = null;
+        });
+      }
+    } on Exception {
+      if (mounted && token == _downloadLoadToken) {
+        setState(() => _downloadError = 'tutorial.download.storageError');
+      }
+    }
+  }
+
+  Widget _buildDownloads() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                catalog.text('tutorial.classroom.section'),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: _openDownloads,
+                icon: const Icon(Icons.key_outlined),
+                label: Text(catalog.text('tutorial.classroom.enterCode')),
+              ),
+            ],
+          ),
+        ),
+      ),
+      if (_downloadError != null) Text(catalog.text(_downloadError!)),
+      if (_downloadedPaths.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text(
+          catalog.text('tutorial.download.heading'),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        for (final path in _downloadedPaths)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(path.titleFor(catalog.locale)),
+            subtitle: Text(
+              catalog.text('tutorial.official.stepProgress', {
+                'completed':
+                    widget.workshopProgress[path.id]?.completedCount(
+                      path.steps.map((step) => step.id),
+                    ) ??
+                    0,
+                'total': path.steps.length,
+              }),
+            ),
+            onTap: () => _startAuthoredPath(path),
+            trailing: IconButton(
+              onPressed: () => _removeDownload(path),
+              icon: const Icon(Icons.delete_outline),
+              tooltip: catalog.text('tutorial.download.remove'),
+            ),
+          ),
+      ],
+    ],
+  );
+
+  Future<void> _openDownloads() async {
+    final path = await showDialog<AuthoredLearningPath>(
+      context: context,
+      builder: (_) =>
+          RemoteWorkshopDialog(catalog: catalog, repository: widget.downloads!),
+    );
+    if (path == null || !mounted) return;
+    if (widget.onStartAuthoredPath != null) {
+      await _startAuthoredPath(path);
+    } else {
+      await _loadDownloads();
+    }
+  }
+
+  Future<void> _removeDownload(AuthoredLearningPath path) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(catalog.text('tutorial.download.remove')),
+        content: Text(path.titleFor(catalog.locale)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(catalog.text('tutorial.studio.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(catalog.text('tutorial.studio.deleteConfirm')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.downloads!.remove(path);
+      if (mounted) await _loadDownloads();
+    } on Exception {
+      if (mounted) {
+        setState(() => _downloadError = 'tutorial.download.storageError');
+      }
+    }
+  }
+
   Future<void> _saveProgress() async {
     await widget.onProgressChanged?.call(_mode, _lessonProgress);
   }
@@ -939,6 +1074,7 @@ class _LessonOverview extends StatelessWidget {
     required this.authoredPaths,
     required this.workshopProgress,
     required this.onAuthoredPath,
+    required this.downloads,
   });
 
   final TranslationCatalog catalog;
@@ -948,6 +1084,7 @@ class _LessonOverview extends StatelessWidget {
   final List<AuthoredLearningPath> authoredPaths;
   final Map<String, NodeQlWorkshopProgress> workshopProgress;
   final ValueChanged<AuthoredLearningPath> onAuthoredPath;
+  final Widget? downloads;
 
   @override
   Widget build(BuildContext context) {
@@ -1012,6 +1149,7 @@ class _LessonOverview extends StatelessWidget {
               height: 1.5,
             ),
           ),
+          if (downloads != null) ...[const SizedBox(height: 16), downloads!],
           const SizedBox(height: 24),
           _WorkshopSummary(
             catalog: catalog,
