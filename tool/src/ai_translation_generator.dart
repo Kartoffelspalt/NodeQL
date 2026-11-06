@@ -180,28 +180,32 @@ class GeminiTranslationClient {
         .where((part) => part['thought'] != true && part['text'] is String)
         .map((part) => part['text'] as String)
         .join();
-    final translated = jsonDecode(text);
-    if (translated is! Map ||
-        translated.length != messages.length ||
-        !messages.keys.every(translated.containsKey)) {
+    return _validateBatch(messages, jsonDecode(text));
+  }
+}
+
+Map<String, String> _validateBatch(
+  Map<String, String> messages,
+  Object? translated,
+) {
+  if (translated is! Map ||
+      translated.length != messages.length ||
+      !messages.keys.every(translated.containsKey)) {
+    throw const FormatException('Gemini response keys do not match the batch.');
+  }
+  final result = <String, String>{};
+  for (final key in messages.keys) {
+    final value = translated[key];
+    if (value is! String ||
+        value.trim().isEmpty ||
+        !_samePlaceholders(messages[key]!, value)) {
       throw const FormatException(
-        'Gemini response keys do not match the batch.',
+        'Gemini response has invalid strings or placeholders.',
       );
     }
-    final result = <String, String>{};
-    for (final key in messages.keys) {
-      final value = translated[key];
-      if (value is! String ||
-          value.trim().isEmpty ||
-          !_samePlaceholders(messages[key]!, value)) {
-        throw const FormatException(
-          'Gemini response has invalid strings or placeholders.',
-        );
-      }
-      result[key] = value;
-    }
-    return result;
+    result[key] = value;
   }
+  return result;
 }
 
 class TranslationRequestException implements Exception {
@@ -322,6 +326,10 @@ Future<void> generateTranslationPackages({
   }
   for (final tag in targets) {
     final destination = File('${output.path}/$tag.json');
+    final checkpoint = File('${stateFile.path}.$tag.partial.json');
+    final saved = await checkpoint.exists()
+        ? jsonDecode(await checkpoint.readAsString())
+        : null;
     final cached = await destination.exists()
         ? readTranslationPackage(destination)
         : null;
@@ -343,14 +351,23 @@ Future<void> generateTranslationPackages({
     final previousHashes = state[tag] is Map ? state[tag] as Map : const {};
     final messages = <String, String>{};
     final pending = <String, String>{};
+    final partial = <String, Map<String, String>>{};
     for (final entry in english.messages.entries) {
       final reviewedValue = human?.messages[entry.key];
       final cachedValue = cached?.messages[entry.key];
+      final savedValue = saved is Map ? saved[entry.key] : null;
       if (reviewedValue != null) {
         messages[entry.key] = reviewedValue;
       } else if (cachedValue != null &&
           previousHashes[entry.key] == hashes[entry.key]) {
         messages[entry.key] = cachedValue;
+      } else if (savedValue
+          case {'hash': final String hash, 'text': final String text}
+          when hash == hashes[entry.key] &&
+              text.trim().isNotEmpty &&
+              _samePlaceholders(entry.value, text)) {
+        messages[entry.key] = text;
+        partial[entry.key] = {'hash': hash, 'text': text};
       } else {
         pending[entry.key] = entry.value;
       }
@@ -365,21 +382,33 @@ Future<void> generateTranslationPackages({
       offset < entries.length;
       offset += batchSize * concurrency
     ) {
-      final translated = await Future.wait([
-        for (
-          var worker = 0;
-          worker < concurrency && offset + worker * batchSize < entries.length;
-          worker++
-        )
-          translate(
-            tag,
-            Map<String, String>.fromEntries(
-              entries.skip(offset + worker * batchSize).take(batchSize),
-            ),
-          ),
-      ]);
-      for (final batch in translated) {
-        messages.addAll(batch);
+      try {
+        await Future.wait([
+          for (
+            var start = offset;
+            start < entries.length && start < offset + batchSize * concurrency;
+            start += batchSize
+          )
+            () async {
+              final input = Map<String, String>.fromEntries(
+                entries.skip(start).take(batchSize),
+              );
+              final batch = _validateBatch(input, await translate(tag, input));
+              for (final entry in batch.entries) {
+                messages[entry.key] = entry.value;
+                partial[entry.key] = {
+                  'hash': hashes[entry.key]!,
+                  'text': entry.value,
+                };
+              }
+            }(),
+        ]);
+      } finally {
+        // Wait for every batch in the wave before saving its successful work,
+        // even when another batch failed. Publish only complete packages.
+        if (partial.isNotEmpty) {
+          await _writeAtomically(checkpoint, jsonEncode(partial));
+        }
       }
       log?.call(
         '$tag: ${messages.length}/${english.messages.length} messages ready.',
@@ -408,6 +437,7 @@ Future<void> generateTranslationPackages({
       stateFile,
       '${const JsonEncoder.withIndent('  ').convert(state)}\n',
     );
+    if (await checkpoint.exists()) await checkpoint.delete();
   }
   if (!dryRun) {
     // Only remove packages recorded as generated by an earlier invocation.
