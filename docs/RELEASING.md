@@ -40,6 +40,12 @@ failures stop the release. The release also contains
 to GitHub Pages for language downloads. A Pages failure can be retried without
 rebuilding or republishing the installers.
 
+To retry an unpublished release after a workflow or source fix has been merged,
+run **Desktop Release → Run workflow** on the release branch with the number of
+the original release PR. The retry uses the current branch commit, the original
+release notes, and the same version and build number. It checks the original
+version increase and skips an existing release.
+
 The release jobs run when the release version increases on `master`, the build
 number increases, and the release tag does not already exist. The workflow
 compares versions using SemVer precedence: `0.10.0` is newer than `0.9.0`,

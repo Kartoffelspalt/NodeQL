@@ -94,6 +94,7 @@ See docs/localization/README.md for GitHub Actions configuration.''');
               configured(env['NODEQL_TRANSLATION_MODEL']) ??
               defaultGeminiTranslationModel,
           apiKey: env['GEMINI_API_KEY'] ?? '',
+          log: stdout.writeln,
         );
         return translator!.translate(locale, messages);
       },
