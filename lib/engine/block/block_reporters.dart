@@ -11,6 +11,17 @@ BlockNode? reporterForInput(BlockNode node, String inputKey) {
   return BlockNode.fromJson(Map<String, dynamic>.from(rawReporter));
 }
 
+Iterable<BlockNode> embeddedReporters(BlockNode node) sync* {
+  final raw = node.inputs[reporterInputsKey];
+  if (raw is! Map) return;
+  for (final key in raw.keys.whereType<String>()) {
+    final reporter = reporterForInput(node, key);
+    if (reporter == null) continue;
+    yield reporter;
+    yield* embeddedReporters(reporter);
+  }
+}
+
 void setReporterForInput(BlockNode node, String inputKey, BlockNode? reporter) {
   final existing = node.inputs[reporterInputsKey];
   final reporters = existing is Map
@@ -98,5 +109,21 @@ String? primaryReporterInputKey(BlockType type) {
     BlockType.sqlDateSub ||
     BlockType.sqlToChar => 'expr',
     _ => null,
+  };
+}
+
+bool requiresReporterInput(BlockType type, String inputKey) {
+  return switch (type) {
+    BlockType.sqlWhere ||
+    BlockType.sqlAnd ||
+    BlockType.sqlOr => inputKey == 'value',
+    BlockType.sqlUpdate => inputKey == 'value' || inputKey == 'where_value',
+    BlockType.sqlDelete => inputKey == 'where_value',
+    BlockType.sqlCase || BlockType.sqlIf =>
+      inputKey == 'condition_value' ||
+          inputKey == 'value' ||
+          inputKey == 'result' ||
+          inputKey == 'default',
+    _ => false,
   };
 }

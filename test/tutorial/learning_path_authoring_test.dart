@@ -122,6 +122,53 @@ void main() {
   });
 
   test(
+    'a failed save keeps the last saved drafts and allows a retry',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('nodeql-draft-');
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/workshops.json');
+      var unavailable = false;
+      final controller = LearningPathLibraryController(
+        bundledPaths: () async => const [],
+        storageFile: () async {
+          if (unavailable)
+            throw const FileSystemException('Storage unavailable');
+          return file;
+        },
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      const path = AuthoredLearningPath(
+        id: 'retry',
+        title: 'My workshop',
+        description: '',
+        steps: [
+          LearningPathStep(
+            id: 'task',
+            title: 'Task',
+            instruction: 'Try SELECT.',
+          ),
+        ],
+      );
+      unavailable = true;
+      await expectLater(
+        controller.save(path),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(controller.state.paths, isEmpty);
+      unavailable = false;
+      await controller.save(path);
+      expect(controller.state.paths.single, path);
+      expect(
+        decodeLearningPathBundle(
+          jsonDecode(await file.readAsString()),
+        ).single.id,
+        path.id,
+      );
+    },
+  );
+
+  test(
     'bundled paths are visible and local paths override matching ids',
     () async {
       final directory = await Directory.systemTemp.createTemp(

@@ -2,24 +2,33 @@
 name = "nodeql-rust"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.95"
 description = "Native Rust rewrite of the NodeQL visual SQLite workbench"
 license = "MIT"
 default-run = "nodeql-rust"
 
+[workspace]
+members = ["crates/sqlite-file", "crates/sqlite-tables"]
+resolver = "3"
+
 [features]
 default = ["desktop"]
-desktop = ["dep:eframe", "dep:rfd"]
+desktop = ["dep:eframe", "dep:image", "dep:rfd"]
 
 [dependencies]
 eframe = { version = "0.37.0", optional = true, default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+image = { version = "0.25.10", optional = true, default-features = false, features = ["png"] }
+nodeql-sqlite-tables = { path = "crates/sqlite-tables" }
 rfd = { version = "0.17.2", optional = true }
-rusqlite = { version = "0.41.1", features = ["bundled", "hooks"] }
+rusqlite = { version = "0.41.1", features = ["backup", "bundled", "hooks"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+nodeql-sqlite-file = { path = "crates/sqlite-file" }
 
 [[bin]]
 name = "nodeql-rust"

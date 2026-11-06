@@ -6,11 +6,16 @@ packages, and database paths are stored on the user's device.
 NodeQL does not include advertising, analytics, account tracking, or automatic
 crash reporting.
 
-The application can make these outbound HTTPS requests:
+The application can make these network requests:
 
 - GitHub Releases API requests to check for a newer NodeQL release.
 - Public GitHub Pages or raw GitHub requests when the user refreshes or
   installs community language packages.
+- Public GitHub Pages or raw GitHub requests when the user checks a workshop
+  share link. The verified workshop is stored locally after confirmation.
+- A direct local-network request when a student enters a classroom workshop
+  code. Workshop Admin serves the selected bundle encrypted while the
+  classroom share dialog is active. Progress stays on the student's device.
 - Links explicitly opened by the user in an external browser.
 
 Database contents and project files are not uploaded by these features.

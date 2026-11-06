@@ -15,6 +15,7 @@ class LearningPathTimelinePanel extends StatelessWidget {
     this.mode,
     this.completedStepIds = const <String>{},
     this.onContinue,
+    this.pendingAction,
     super.key,
   });
 
@@ -27,6 +28,7 @@ class LearningPathTimelinePanel extends StatelessWidget {
   final SqlAbstractionMode? mode;
   final Set<String> completedStepIds;
   final VoidCallback? onContinue;
+  final String? pendingAction;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +104,20 @@ class LearningPathTimelinePanel extends StatelessWidget {
                       style: TextStyle(
                         color: colorScheme.tertiary,
                         fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  if (pendingAction case final action?) ...[
+                    const SizedBox(height: 6),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        action,
+                        key: const ValueKey('learning-path-pending-action'),
+                        style: TextStyle(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],

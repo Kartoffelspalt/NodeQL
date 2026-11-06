@@ -6,6 +6,8 @@ import 'package:nodeql/core/platform/picked_file.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:nodeql/engine/learning/sql_exercise_evaluator.dart';
+import 'package:nodeql/features/tutorial/remote_workshop_sql.dart';
+import 'package:nodeql/features/tutorial/workshop_dataset.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
 import 'package:path/path.dart' as p;
 import 'package:nodeql/core/platform/sqlite.dart';
@@ -249,15 +251,41 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   /// from [executeWithSnapshot]: opening a project must never turn its stored
   /// workspace into an implicit write capability.
   Future<SqlExecutionResult> executeReadOnlyPreview(String sql) async {
+    return _executeReadOnly(sql, downloadedWorkshop: false);
+  }
+
+  Future<void> executeDownloadedWorkshopQuery(
+    String sql, {
+    required String rejectedMessage,
+  }) async {
+    if (!isDownloadedWorkshopQuery(sql)) {
+      state = state.copyWith(
+        lastSql: sql,
+        lastRows: const [],
+        lastMessage: rejectedMessage,
+      );
+      return;
+    }
+    await _executeReadOnly(sql, downloadedWorkshop: true);
+  }
+
+  Future<SqlExecutionResult> _executeReadOnly(
+    String sql, {
+    required bool downloadedWorkshop,
+  }) async {
     final dbPath = state.dbPath;
-    if (dbPath == null) {
+    if (dbPath == null && !downloadedWorkshop) {
       const message = 'No database connected.';
       state = state.copyWith(lastMessage: message);
       return const SqlExecutionResult(success: false, message: message);
     }
     try {
       final result = await runSqlTask(
-        () => _runReadOnlyPreview(dbPath, sql, _maxPreviewRows),
+        () => _runReadOnlyPreview(
+          sql,
+          _maxPreviewRows,
+          databasePath: downloadedWorkshop ? null : dbPath,
+        ),
       );
       if (!mounted) {
         return const SqlExecutionResult(
@@ -432,14 +460,20 @@ class SqlRuntimeController extends StateNotifier<SqlRuntimeState> {
   }
 
   static _QueryResult _runReadOnlyPreview(
-    String path,
     String sql,
-    int maxRows,
-  ) {
-    final database = sqlite3.open(path, mode: OpenMode.readOnly);
+    int maxRows, {
+    required String? databasePath,
+  }) {
+    final database = databasePath == null
+        ? sqlite3.openInMemory()
+        : sqlite3.open(databasePath, mode: OpenMode.readOnly);
     var statements = <CommonPreparedStatement>[];
     try {
-      statements = database.prepareMultiple(sql);
+      if (databasePath == null) {
+        seedWorkshopDataset(database);
+        database.execute('PRAGMA query_only = ON; PRAGMA temp_store = MEMORY;');
+      }
+      statements = database.prepareMultiple(sql, vtab: databasePath != null);
       if (statements.isEmpty ||
           statements.any((statement) => !statement.isReadOnly)) {
         throw const FormatException(

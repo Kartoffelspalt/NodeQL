@@ -2,38 +2,34 @@
 
 ## Im separaten Admin-Build
 
-Das **Learning Path Studio** ist ausschließlich im privaten Desktop-Projekt
-`tools/workshop_admin` verfügbar. Der reguläre NodeQL-Build zeigt nur
-veröffentlichte Workshops an und enthält weder den Studio-Startpunkt noch den
-Datei-Import/-Export. Start und Build des Admin-Werkzeugs sind in
-`docs/admin-workshop-build.md` beschrieben.
+Das **Workshop Studio** ist ausschließlich im privaten Desktop-Projekt
+`tools/workshop_admin` verfügbar. Im regulären NodeQL-Build stehen offizielle
+Workshops und geprüfte Downloads zur Verfügung. Start, Build und
+Veröffentlichung sind in [NodeQL Workshop Admin](admin-workshop-build.md)
+beschrieben.
 
-Im Admin-Workshop öffnet der Button **Workshop Studio** das Authoring-Werkzeug.
-Der empfohlene Ablauf ist:
+**Neuer Workshop** führt vom Namen zur ersten Aufgabe. Ein Schritt braucht
+einen Titel und eine Aufgabe. Unter **Zur Arbeitsfläche** können Lehrkräfte
+bei Bedarf Nodes vorbereiten und danach den Entwurf fortsetzen. In
+**Übungs-Nodes** lässt sich pro Schritt auswählen, welche Nodes die Klasse
+aufbaut. Beschriftungen lassen sich einzelnen Nodes zuordnen und erscheinen
+im Player als nummerierte Timeline-Karten.
 
-1. Die Nodes für den ersten Schritt auf der Workshop-Arbeitsfläche bauen und
-   vollständig konfigurieren.
-2. Das Learning Path Studio öffnen, einen Pfad anlegen und **Aktuelle Nodes als
-   Schritt übernehmen** wählen.
-3. Titel, Aufgabe und optionalen Hinweis für den Schritt eintragen.
-4. Für jede Erklärung einen Ziel-Node, links oder rechts, einen Titel und den
-   Erklärungstext auswählen. Die Beschriftung erscheint beim Abspielen als
-   nummerierte Timeline-Karte außerhalb des Nodes.
-5. Den Pfad speichern. Für weitere Schritte die Arbeitsfläche anpassen, das
-   Studio erneut öffnen, den Pfad bearbeiten und den nächsten Snapshot
-   hinzufügen.
+Unter **Interaktion** lässt sich pro Schritt festlegen, welche Nodes der
+Player hervorhebt und welche Aktionen vor **Weiter** nötig sind. Das
+Workshop-Admin-Handbuch enthält ein [Beispiel mit einer Eingabeprüfung](admin-workshop-build.md#einen-interaktiven-schritt-bauen).
 
 Eigene Learning Paths werden lokal in `nodeql_learning_paths.json` im
-Application-Support-Verzeichnis des Admin-Builds gespeichert. **Start** öffnet
-den Pfad im geführten Player. Dieser zeigt die Schritt-Timeline oberhalb der
-Arbeitsfläche und verankert Beschriftungen an den aufgebauten Nodes.
-**Publish bundle** exportiert die veröffentlichbare `workshops.json`.
+Application-Support-Verzeichnis des Admin-Builds gespeichert.
+**Speichern und ausprobieren** öffnet den Pfad im geführten Player.
+**Katalog exportieren** erstellt die veröffentlichbare `workshops.json`.
 
 ## Deklarativ im Quellcode
 
 Die offiziellen Workshops stammen aus `assets/workshops/workshops.json`.
-Ihre Übersicht und ihr Fortschritt verwenden stabile Workshop- und Schritt-IDs;
-die reguläre App zeigt ausschließlich diese veröffentlichten Pfade.
+Ihre Übersicht und ihr Fortschritt verwenden stabile Workshop- und Schritt-IDs.
+Heruntergeladene Workshops sind nach Inhalt getrennt und haben einen eigenen
+Fortschritt.
 
 Die älteren Tutorial-APIs in `lib/features/tutorial/tutorial_practice.dart`
 bleiben für Kompatibilität erhalten, sind aber nicht die Quelle des offiziellen

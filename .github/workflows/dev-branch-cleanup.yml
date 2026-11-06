@@ -1,0 +1,56 @@
+name: Dev Branch Cleanup
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [master]
+
+permissions: {}
+
+jobs:
+  sync-dev:
+    name: Sync dev to master
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'dev' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create a branch sync token
+        if: vars.DEV_SYNC_APP_ID != ''
+        id: sync-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.DEV_SYNC_APP_ID }}
+          private-key: ${{ secrets.DEV_SYNC_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ steps.sync-token.outputs.token || github.token }}
+      - name: Align dev with master
+        shell: bash
+        env:
+          MERGED_DEV_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          master_sha="$(git rev-parse refs/remotes/origin/master)"
+          dev_sha="$(git rev-parse --verify --quiet refs/remotes/origin/dev || true)"
+
+          if [[ "$dev_sha" == "$master_sha" ]]; then
+            echo "dev already points to master."
+            exit 0
+          fi
+          if [[ -z "$dev_sha" || "$dev_sha" != "$MERGED_DEV_SHA" ]]; then
+            echo "::notice::dev changed or was deleted after the merge. Skipping the reset."
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$MERGE_SHA" "$master_sha"; then
+            echo "::error::The pull request merge commit is no longer in master."
+            exit 1
+          fi
+
+          git push --force-with-lease="refs/heads/dev:$dev_sha" origin "$master_sha:refs/heads/dev"

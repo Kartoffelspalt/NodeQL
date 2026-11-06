@@ -59,7 +59,28 @@ void main() {
           title: 'Projection',
           instruction: 'Add SELECT.',
           nodes: [
-            LearningPathNodeTemplate(ref: 'select', type: BlockType.sqlSelect),
+            LearningPathNodeTemplate(
+              ref: 'select',
+              type: BlockType.sqlSelect,
+              defaults: {'table': 'customers', 'columns': 'name'},
+            ),
+          ],
+          highlights: ['select'],
+          callouts: [
+            LearningPathNodeCallout(
+              id: 'table-hint',
+              targetRef: 'select',
+              title: 'Choose a table first',
+              body: 'Use the customers practice table.',
+            ),
+          ],
+          requirements: [
+            LearningPathRequirement(
+              action: LearningPathAction.enterInput,
+              nodeRef: 'select',
+              input: 'table',
+              value: 'customers',
+            ),
           ],
         ),
         LearningPathStep(
@@ -91,6 +112,9 @@ void main() {
           id: 'summary',
           title: 'Summary',
           instruction: 'Review your progress.',
+          requirements: [
+            LearningPathRequirement(action: LearningPathAction.runQuery),
+          ],
         ),
       ],
     );
@@ -184,6 +208,33 @@ void main() {
         .read(tutorialControllerProvider)
         .workshopProgressFor(path.id)
         .nodeIds['select']!;
+    final select = workspace.findById(selectId)!;
+    expect(find.text('Choose a table first'), findsOneWidget);
+    final continueButton = find.byKey(
+      const ValueKey('guided-learning-continue'),
+    );
+    expect(tester.widget<FilledButton>(continueButton).onPressed, isNull);
+    expect(
+      find.byKey(const ValueKey('learning-path-pending-action')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widgetList<BlockShape>(find.byType(BlockShape))
+          .any(
+            (shape) =>
+                shape.node.id == selectId && shape.selectedOutlineColor != null,
+          ),
+      isTrue,
+    );
+    workspace.updateInput(select, 'columns', 'id');
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(continueButton).onPressed, isNull);
+    workspace.updateInput(select, 'table', 'orders');
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(continueButton).onPressed, isNull);
+    workspace.updateInput(select, 'table', 'customers');
+    await tester.pumpAndSettle();
     final staleContinue = tester
         .widget<FilledButton>(
           find.byKey(const ValueKey('guided-learning-continue')),
@@ -293,7 +344,39 @@ void main() {
     await insert(BlockType.sqlSelect);
     await advance();
     expect(timeline().stepIndex, 3);
-    await tester.tap(find.byKey(const ValueKey('learning-path-continue')));
+    final finish = find.byKey(const ValueKey('learning-path-continue'));
+    expect(tester.widget<FilledButton>(finish).onPressed, isNull);
+    resumedWorkspace.resetWithRoot();
+    resumedWorkspace.addTemplate(
+      BlockType.sqlSelect,
+      resumedWorkspace.suggestedTemplatePosition(BlockType.sqlSelect),
+      defaults: {'table': 'customers', 'columns': 'name'},
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final result = Completer<String>.sync();
+      final subscription = resumed.listen(sqlRuntimeProvider, (_, state) {
+        if (state.lastMessage case final message?) {
+          if (!result.isCompleted) result.complete(message);
+        }
+      });
+      try {
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('workshop-run-sqlite')),
+            )
+            .onPressed!();
+        expect(
+          await result.future.timeout(const Duration(seconds: 5)),
+          startsWith('OK'),
+        );
+        await Future<void>.delayed(Duration.zero);
+      } finally {
+        subscription.close();
+      }
+    });
+    await tester.pumpAndSettle();
+    await tester.tap(finish);
     await tester.pumpAndSettle();
     expect(find.byType(LearningPathTimelinePanel), findsNothing);
     expect(

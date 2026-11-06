@@ -26,6 +26,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Workshop Admin shares the workshop you select with students on the local network.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

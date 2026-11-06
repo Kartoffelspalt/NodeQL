@@ -483,3 +483,47 @@ Map<BlockType, String>? _simpleByLanguage(String languageCode) {
       return null;
   }
 }
+
+String sqlInputKey(String slotKey) {
+  switch (slotKey) {
+    case 'condition':
+      return 'predicate';
+    case 'join_condition':
+      return 'on';
+    case 'table_name':
+      return 'table';
+    case 'column_definitions':
+    case 'Spaltendefinitionen':
+      return 'definition';
+    case 'Spalten':
+      return 'columns';
+    case 'Spalte':
+      return 'column';
+    case 'Spaltenname':
+      return 'column_name';
+    case 'Filter_Spalte':
+      return 'where_column';
+    case 'linke_Spalte':
+      return 'left_column';
+    case 'rechte_Spalte':
+      return 'right_column';
+    case 'Bedingungs_Spalte':
+      return 'condition_column';
+    case 'Alias':
+      return 'alias';
+    case 'JOIN_TYPE':
+      return 'join_type';
+    case 'union_mode':
+      return 'set_mode';
+    case 'pragma_value':
+      return 'value';
+    case 'explain_mode':
+      return 'mode';
+    case 'ASC|DESC':
+    case 'aufsteigend|absteigend':
+    case 'ascending|descending':
+      return 'order';
+    default:
+      return slotKey;
+  }
+}

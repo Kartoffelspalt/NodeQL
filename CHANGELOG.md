@@ -4,8 +4,24 @@ All notable changes to NodeQL are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## [0.5.2]
 
+### Added
+
+- Share a workshop over the classroom network with a join code, or distribute
+  the workshop as a JSON file.
+- Create interactive workshop steps with highlighted nodes, field labels, and
+  checks for actions such as connecting blocks or running a query.
+- Build Workshop Admin separately for Linux, macOS, and Windows and prepare a
+  standalone pre-release from GitHub Actions.
+- Add a workflow to align `dev` with `master` after a release pull request
+  merges, while preserving new work pushed to `dev`.
+- Extend the native Rust prototype with a desktop workbench and SQLite readers.
+
+### Fixed
+
+- Release validation now compares semantic versions and rejects version
+  downgrades even when the build number increases.
 - Fixed macOS update detection for Sparkle-enabled builds affected by the
   build number reset in 0.4.6.
 

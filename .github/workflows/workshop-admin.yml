@@ -1,0 +1,150 @@
+name: Workshop Admin
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - '.github/workflows/workshop-admin.yml'
+      - 'tools/workshop_admin/**'
+      - 'assets/**'
+      - 'lib/**'
+      - 'l10n.yaml'
+      - 'pubspec.lock'
+      - 'pubspec.yaml'
+  workflow_dispatch:
+    inputs:
+      create_release_draft:
+        description: Create a separate Workshop Admin release draft
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.44.1'
+
+jobs:
+  build:
+    name: Workshop Admin / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-24.04
+            archive: nodeql-workshop-admin-linux-x64.tar.gz
+          - platform: macos
+            runner: macos-latest
+            archive: nodeql-workshop-admin-macos.zip
+          - platform: windows
+            runner: windows-latest
+            archive: nodeql-workshop-admin-windows-x64.zip
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: tools/workshop_admin
+    env:
+      ARCHIVE_NAME: ${{ matrix.archive }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Generate NodeQL localizations
+        working-directory: .
+        shell: bash
+        run: |
+          mkdir -p build
+          flutter gen-l10n
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libsqlite3-dev ninja-build
+      - run: flutter pub get
+      - run: flutter test --no-pub
+      - run: flutter build ${{ matrix.platform }} --release --no-pub
+      - name: Package Linux bundle
+        if: matrix.platform == 'linux'
+        run: tar -C build/linux/x64/release -czf "$GITHUB_WORKSPACE/$ARCHIVE_NAME" bundle
+      - name: Package macOS application
+        if: matrix.platform == 'macos'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/macos/Build/Products/Release/nodeql_workshop_admin.app \
+            "$GITHUB_WORKSPACE/$ARCHIVE_NAME"
+      - name: Package Windows bundle
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $bundle = 'build/windows/x64/runner/Release/*'
+          $archive = Join-Path $env:GITHUB_WORKSPACE $env:ARCHIVE_NAME
+          Compress-Archive -Path $bundle -DestinationPath $archive
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nodeql-workshop-admin-${{ matrix.platform }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+          overwrite: true
+
+  release-draft:
+    name: Create Workshop Admin release draft
+    needs: build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.create_release_draft &&
+      (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: workshop-admin-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: nodeql-workshop-admin-*
+          path: artifacts
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: artifacts
+        shell: bash
+        run: |
+          sha256sum nodeql-workshop-admin-{linux-x64.tar.gz,macos.zip,windows-x64.zip} > SHA256SUMS.txt
+      - name: Create or complete the release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version="$(sed -n 's/^version: *//p' tools/workshop_admin/pubspec.yaml)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9]+)?$ ]]; then
+            echo "::error::Invalid Workshop Admin version: $version"
+            exit 1
+          fi
+          tag="workshop-admin-v$version"
+
+          if release="$(gh release view "$tag" --json isDraft,targetCommitish)"; then
+            if [[ "$(jq -r '.isDraft' <<< "$release")" != "true" ||
+                  "$(jq -r '.targetCommitish' <<< "$release")" != "$GITHUB_SHA" ]]; then
+              echo "::error::Release $tag already exists. Bump the Workshop Admin version for a new release."
+              exit 1
+            fi
+            gh release upload "$tag" artifacts/* --clobber
+            exit 0
+          fi
+
+          existing_tag="$(git ls-remote origin "refs/tags/$tag")"
+          if [[ -n "$existing_tag" ]]; then
+            echo "::error::Tag $tag already exists. Bump the Workshop Admin version for a new release."
+            exit 1
+          fi
+          gh release create "$tag" artifacts/* \
+            --target "$GITHUB_SHA" --draft --prerelease --latest=false \
+            --title "NodeQL Workshop Admin $version" \
+            --notes "Standalone Workshop Admin builds for Linux, macOS, and Windows."

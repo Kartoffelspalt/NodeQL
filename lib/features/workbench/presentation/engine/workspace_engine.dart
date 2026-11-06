@@ -11,12 +11,30 @@ enum SnapZone { topOuter, bottomOuter, innerTop, innerBottom }
 
 const columnSourceNodeInput = r'$nodeqlColumnSource';
 
+bool providesColumnSource(BlockType type) {
+  return type == BlockType.sqlSelect || type == BlockType.sqlFrom;
+}
+
+bool acceptsColumnSource(BlockType type) {
+  return type == BlockType.sqlWhere ||
+      type == BlockType.sqlAnd ||
+      type == BlockType.sqlOr ||
+      type == BlockType.sqlOrderBy ||
+      type == BlockType.sqlGroupBy ||
+      type == BlockType.sqlHaving ||
+      isJoinType(type) ||
+      type == BlockType.sqlUpdate ||
+      type == BlockType.sqlDelete;
+}
+
 class WorkspaceColumnLink {
   const WorkspaceColumnLink({required this.source, required this.target});
 
   final BlockNode source;
   final BlockNode target;
 }
+
+typedef WorkspaceInputEdit = ({String nodeId, Set<String> inputs});
 
 class WorkspaceState {
   const WorkspaceState({
@@ -36,6 +54,7 @@ class WorkspaceState {
     this.columnLinkPointer,
     this.columnLinkTargetId,
     this.selectedColumnLinkTargetId,
+    this.inputEdit,
     this.revision = 0,
   }) : _columnLinkMode = columnLinkMode;
 
@@ -59,6 +78,7 @@ class WorkspaceState {
   final String? columnLinkTargetId;
   final String? selectedColumnLinkTargetId;
   final int revision;
+  final WorkspaceInputEdit? inputEdit;
 
   WorkspaceState copyWith({
     List<BlockNode>? roots,
@@ -86,6 +106,7 @@ class WorkspaceState {
     bool clearColumnLinkTarget = false,
     bool clearSelectedColumnLink = false,
     int? revision,
+    WorkspaceInputEdit? inputEdit,
   }) {
     return WorkspaceState(
       roots: roots ?? this.roots,
@@ -125,6 +146,7 @@ class WorkspaceState {
           ? null
           : (selectedColumnLinkTargetId ?? this.selectedColumnLinkTargetId),
       revision: revision ?? this.revision,
+      inputEdit: inputEdit ?? this.inputEdit,
     );
   }
 }
@@ -302,7 +324,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       _propagateTableSelection(node, value.trim());
     }
     _relayoutAll();
-    _touch();
+    _touch(inputEdit: (nodeId: node.id, inputs: {key}));
   }
 
   /// Creates a reporter directly inside an input slot.
@@ -341,13 +363,16 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     String key,
     BlockNode reporter,
     String reporterKey,
-    dynamic value,
-  ) {
+    dynamic value, {
+    Set<String> alsoEdited = const {},
+  }) {
     _pushUndoSnapshot();
     reporter.inputs[reporterKey] = value;
     setReporterForInput(node, key, reporter);
     _relayoutAll();
-    _touch();
+    _touch(
+      inputEdit: (nodeId: reporter.id, inputs: {reporterKey, ...alsoEdited}),
+    );
   }
 
   /// Updates a SQLite function reporter embedded in another node. Argument
@@ -368,7 +393,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     );
     setReporterForInput(node, key, reporter);
     _relayoutAll();
-    _touch();
+    _touch(inputEdit: (nodeId: reporter.id, inputs: {'function'}));
   }
 
   /// Updates a standalone SQLite function while resetting edited text
@@ -385,7 +410,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
       (inputKey, _) => RegExp(r'^arg\d+$').hasMatch(inputKey),
     );
     _relayoutAll();
-    _touch();
+    _touch(inputEdit: (nodeId: node.id, inputs: {'function'}));
   }
 
   BlockNode? setNestedReporterInput(
@@ -422,7 +447,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     setReporterForInput(reporter, nestedKey, nested);
     setReporterForInput(node, key, reporter);
     _relayoutAll();
-    _touch();
+    _touch(inputEdit: (nodeId: nested.id, inputs: {nestedInputKey}));
   }
 
   void removeNestedReporterInput(
@@ -703,7 +728,7 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
   bool beginColumnLink(Offset worldPosition) {
     if (!state.columnLinkMode) return false;
     final source = _hitTest(worldPosition);
-    if (source == null || !_providesColumnSource(source)) {
+    if (source == null || !providesColumnSource(source.type)) {
       state = state.copyWith(
         clearColumnLink: true,
         revision: state.revision + 1,
@@ -755,7 +780,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     final source = findById(sourceId);
     final target = findById(targetId);
     if (source == null || target == null) return false;
-    if (!_providesColumnSource(source) || !_acceptsColumnSource(target)) {
+    if (!providesColumnSource(source.type) ||
+        !acceptsColumnSource(target.type)) {
       return false;
     }
     final seen = <String>{targetId};
@@ -2218,22 +2244,6 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     }
   }
 
-  bool _providesColumnSource(BlockNode node) {
-    return node.type == BlockType.sqlSelect || node.type == BlockType.sqlFrom;
-  }
-
-  bool _acceptsColumnSource(BlockNode node) {
-    return node.type == BlockType.sqlWhere ||
-        node.type == BlockType.sqlAnd ||
-        node.type == BlockType.sqlOr ||
-        node.type == BlockType.sqlOrderBy ||
-        node.type == BlockType.sqlGroupBy ||
-        node.type == BlockType.sqlHaving ||
-        isJoinType(node.type) ||
-        node.type == BlockType.sqlUpdate ||
-        node.type == BlockType.sqlDelete;
-  }
-
   void _applyLinkedColumn(BlockNode target, String column) {
     if (target.type == BlockType.sqlOrderBy) {
       final currentExpression = '${target.inputs['expr'] ?? ''}'.trim();
@@ -2543,8 +2553,8 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     }
   }
 
-  void _touch() {
-    state = state.copyWith(revision: state.revision + 1);
+  void _touch({WorkspaceInputEdit? inputEdit}) {
+    state = state.copyWith(revision: state.revision + 1, inputEdit: inputEdit);
   }
 
   Offset _columnLinkSourcePoint(BlockNode node) => Offset(

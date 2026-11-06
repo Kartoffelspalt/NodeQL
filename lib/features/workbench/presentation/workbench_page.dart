@@ -40,6 +40,8 @@ import 'package:nodeql/features/workbench/presentation/widgets/sql_code_editor.d
 import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/tutorial_dialog.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
+import 'package:nodeql/features/tutorial/learning_path_interactions.dart';
+import 'package:nodeql/features/tutorial/remote_workshop.dart';
 import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
 import 'package:nodeql/features/tutorial/workshop_admin_extension.dart';
 import 'package:nodeql/features/tutorial/tutorial_models.dart';
@@ -3069,9 +3071,12 @@ class _WorkshopWorkspaceViewState
   bool _authoredNodeInserted = false;
   Map<String, String> _authoredNodeIds = const <String, String>{};
   Set<String> _authoredCompletedSteps = const <String>{};
+  final Set<String> _authoredInteractions = {};
+  String? _authoredExecutedSql;
   bool _loadingAuthoredStep = false;
   int _authoredLoadToken = 0;
   bool _runningSql = false;
+  final _downloads = RemoteWorkshopRepository();
 
   @override
   void dispose() {
@@ -3086,15 +3091,19 @@ class _WorkshopWorkspaceViewState
     final catalog = translationState.catalog;
     final localeCode = translationState.locale.languageCode;
     final workspace = ref.watch(workspaceProvider);
-    final runtime = ref.watch(sqlRuntimeProvider);
+    final runtimeState = ref.watch(sqlRuntimeProvider);
     final mode = ref.watch(sqlModeProvider);
-    ref.listen(workspaceProvider.select((state) => state.revision), (_, _) {
-      _saveAuthoredProgress();
+    ref.listen(workspaceProvider, (previous, next) {
+      _rememberAuthoredInteractions(previous, next);
+      if (previous?.revision != next.revision) _saveAuthoredProgress();
     });
     ref.listen(sqlModeProvider, (_, _) => _saveAuthoredProgress());
     final roots = workspace.roots;
     final practice = _practice;
     final authoredPath = _authoredPath;
+    final runtime = authoredPath != null && isDownloadedWorkshop(authoredPath)
+        ? runtimeState.copyWith(schemas: WorkshopDatabase.practiceSchemas)
+        : runtimeState;
     final authoredStep = authoredPath == null
         ? null
         : authoredPath.steps[_authoredStepIndex];
@@ -3108,6 +3117,29 @@ class _WorkshopWorkspaceViewState
         ? null
         : tutorialPracticeDefinitions[practice.mode];
     final compileResult = _compiler.compileWorkspace(roots);
+    final pending = authoredStep == null || _loadingAuthoredStep
+        ? null
+        : _pendingAuthoredAction(authoredStep, compileResult.sql);
+    final focusIds = <String>{
+      for (final target in [...?authoredStep?.highlights, ...?pending?.refs])
+        if (_authoredNodeIds[target] case final id?) id,
+    };
+    final input = pending?.input;
+    final inputNodeId = _authoredNodeIds[pending?.nodeRef];
+    final focusedInput = input == null || inputNodeId == null
+        ? null
+        : (nodeId: inputNodeId, input: input);
+    final missing = pending == null || authoredStep == null
+        ? null
+        : authoredStep.nodes
+              .where(
+                (node) =>
+                    pending.refs.contains(node.ref) &&
+                    _findAuthoredNode(node.ref) == null,
+              )
+              .firstOrNull;
+    final guidedTarget =
+        missing ?? (!_activeAuthoredNodeExists() ? authoredNode : null);
     final result = definition?.evaluate(
       roots,
       practice?.stepIndex ?? 0,
@@ -3148,6 +3180,13 @@ class _WorkshopWorkspaceViewState
                   .setLocaleTag(code),
               mode: mode,
               running: _runningSql,
+              guideRun: pending?.action == LearningPathAction.runQuery,
+              guideColumnLink:
+                  pending?.action == LearningPathAction.linkColumns,
+              columnLinkMode: workspace.columnLinkMode,
+              onToggleColumnLink: () => ref
+                  .read(workspaceProvider.notifier)
+                  .setColumnLinkMode(!workspace.columnLinkMode),
               onRun: () => unawaited(_runWorkshopSql()),
               onModeChanged: (next) =>
                   unawaited(ref.read(sqlModeProvider.notifier).setMode(next)),
@@ -3233,23 +3272,23 @@ class _WorkshopWorkspaceViewState
                                   '${authoredPath == null ? '' : '$_authoredNodeIndex-${_activeAuthoredNodeExists()}'}-'
                                   '${mode.name}',
                                 ),
-                                category: _activeCategory,
+                                category: missing == null
+                                    ? _activeCategory
+                                    : _categoryForLearningNode(missing.type),
                                 runtime: runtime,
                                 mode: mode,
                                 localeCode: localeCode,
                                 catalog: catalog,
                                 width: paletteWidth,
                                 pluginEntries: const <PluginPaletteEntry>[],
-                                guidedBlockType:
-                                    authoredNode != null &&
-                                        !_activeAuthoredNodeExists()
-                                    ? authoredNode.type
-                                    : null,
-                                guidedLabel:
-                                    authoredNode != null &&
-                                        !_activeAuthoredNodeExists()
-                                    ? authoredGuide?.label
-                                    : null,
+                                guidedBlockType: guidedTarget?.type,
+                                guidedLabel: guidedTarget == null
+                                    ? null
+                                    : _learningNodeGuide(
+                                        guidedTarget.type,
+                                        localeCode,
+                                        mode,
+                                      ).label,
                                 onAdd: _addWorkshopNode,
                               ),
                             ),
@@ -3287,8 +3326,19 @@ class _WorkshopWorkspaceViewState
                                                 _authoredCompletedSteps,
                                             onStep: _showAuthoredStep,
                                             onClose: _closeAuthoredPath,
+                                            pendingAction: pending == null
+                                                ? null
+                                                : _authoredActionLabel(
+                                                    authoredStep,
+                                                    pending,
+                                                    missing,
+                                                    catalog,
+                                                    localeCode,
+                                                    mode,
+                                                  ),
                                             onContinue:
                                                 authoredNode == null &&
+                                                    pending == null &&
                                                     !_loadingAuthoredStep
                                                 ? () => _continueAuthoredGuide(
                                                     expectedStepId:
@@ -3311,6 +3361,7 @@ class _WorkshopWorkspaceViewState
                                                   _activeAuthoredNodeExists(),
                                               onContinue:
                                                   !_loadingAuthoredStep &&
+                                                      pending == null &&
                                                       _activeAuthoredNodeExists()
                                                   ? () =>
                                                         _continueAuthoredGuide(
@@ -3371,11 +3422,15 @@ class _WorkshopWorkspaceViewState
                                             diagnostics: diagnostics,
                                             learningPathCallouts:
                                                 _authoredGuideCallouts(
+                                                  authoredStep,
                                                   authoredNode,
                                                   authoredGuide,
                                                 ),
                                             learningPathNodeIds:
                                                 _authoredNodeIds,
+                                            learningPathHighlights: focusIds,
+                                            learningPathInputHighlight:
+                                                focusedInput,
                                             onPaletteNodeAdded:
                                                 _registerAuthoredNode,
                                             onReporterAdded:
@@ -3415,7 +3470,7 @@ class _WorkshopWorkspaceViewState
   }
 
   Future<void> _runWorkshopSql() async {
-    if (_runningSql) return;
+    if (_runningSql || _loadingAuthoredStep) return;
     final roots = ref.read(workspaceProvider).roots;
     final sql = _compiler.compileWorkspace(roots).sql.trim();
     final runtime = ref.read(sqlRuntimeProvider.notifier);
@@ -3429,8 +3484,26 @@ class _WorkshopWorkspaceViewState
       return;
     }
     setState(() => _runningSql = true);
+    final stepToken = _authoredLoadToken;
+    _authoredExecutedSql = null;
     try {
-      await runtime.executeWithSnapshot(sql);
+      final path = _authoredPath;
+      if (path != null && isDownloadedWorkshop(path)) {
+        await runtime.executeDownloadedWorkshopQuery(
+          sql,
+          rejectedMessage: ref
+              .read(translationControllerProvider)
+              .catalog
+              .text('tutorial.download.queryRejected'),
+        );
+      } else {
+        await runtime.executeWithSnapshot(sql);
+      }
+      if (mounted &&
+          stepToken == _authoredLoadToken &&
+          ref.read(sqlRuntimeProvider).lastMessage?.startsWith('OK') == true) {
+        _authoredExecutedSql = sql;
+      }
     } finally {
       if (mounted) setState(() => _runningSql = false);
     }
@@ -3447,6 +3520,9 @@ class _WorkshopWorkspaceViewState
       catalog: catalog,
       initialProgress: ref.read(tutorialControllerProvider).lessonProgress,
       authoredPaths: ref.read(learningPathLibraryProvider).paths,
+      downloads: ref.read(workshopAdminActionProvider) == null
+          ? _downloads
+          : null,
       workshopProgress: ref.read(tutorialControllerProvider).workshopProgress,
       onStartAuthoredPath: _startAuthoredPath,
       onProgressChanged: (mode, progress) => ref
@@ -3668,10 +3744,17 @@ class _WorkshopWorkspaceViewState
       _authoredPath = path;
       _authoredStepIndex = stepIndex;
       _authoredNodeIndex = nodeIndex < 0 ? step.nodes.length : nodeIndex;
-      _authoredNodeIds = resume ? progress.nodeIds : const <String, String>{};
+      _authoredNodeIds = _withAuthoredStartNode(
+        step,
+        resume ? progress.nodeIds : const <String, String>{},
+      );
       _authoredCompletedSteps = resume
           ? progress.completedStepIds
           : const <String>{};
+      _authoredInteractions
+        ..clear()
+        ..addAll(resume ? progress.interactions : const <String>{});
+      _authoredExecutedSql = null;
       _authoredNodeInserted = resume && progress.nodeInserted;
       _loadingAuthoredStep = false;
       final node = _activeAuthoredNode(step);
@@ -3712,6 +3795,9 @@ class _WorkshopWorkspaceViewState
       _authoredNodeIndex = firstNodeIndex < 0
           ? step.nodes.length
           : firstNodeIndex;
+      _authoredInteractions.clear();
+      _authoredExecutedSql = null;
+      _authoredNodeIds = _withAuthoredStartNode(step, _authoredNodeIds);
       _authoredNodeInserted = false;
       _loadingAuthoredStep = false;
       final node = _activeAuthoredNode(step);
@@ -3738,6 +3824,95 @@ class _WorkshopWorkspaceViewState
         node.type;
   }
 
+  BlockNode? _findAuthoredNode(String nodeRef) {
+    final id = _authoredNodeIds[nodeRef];
+    return id == null
+        ? null
+        : ref.read(workspaceProvider.notifier).findAnyNodeById(id);
+  }
+
+  Map<String, String> _withAuthoredStartNode(
+    LearningPathStep step,
+    Map<String, String> existing,
+  ) {
+    final templates = step.nodes.where(
+      (node) => node.type == BlockType.eventGreenFlag,
+    );
+    if (templates.isEmpty) return existing;
+    final start = ref
+        .read(workspaceProvider)
+        .roots
+        .where((node) => node.type == BlockType.eventGreenFlag)
+        .firstOrNull;
+    return {
+      ...existing,
+      if (start != null)
+        for (final node in templates) node.ref: start.id,
+    };
+  }
+
+  LearningPathRequirement? _pendingAuthoredAction(
+    LearningPathStep step,
+    String sql,
+  ) => pendingLearningPathRequirement(
+    step: step,
+    nodeIndex: _authoredNodeIndex,
+    findNode: _findAuthoredNode,
+    columnSourceId: (id) =>
+        ref.read(workspaceProvider.notifier).columnSourceForNode(id)?.id,
+    interactions: _authoredInteractions,
+    currentQueryRan: !_runningSql && _authoredExecutedSql == sql.trim(),
+  );
+
+  String _authoredActionLabel(
+    LearningPathStep step,
+    LearningPathRequirement rule,
+    LearningPathNodeTemplate? missing,
+    TranslationCatalog catalog,
+    String localeCode,
+    SqlAbstractionMode mode,
+  ) {
+    String label(String nodeRef) {
+      final node = step.nodes.where((node) => node.ref == nodeRef).firstOrNull;
+      return node == null
+          ? nodeRef
+          : _learningNodeGuide(node.type, localeCode, mode).displayedLabel;
+    }
+
+    if (missing != null) {
+      return catalog.text('tutorial.action.missingNode', {
+        'node': label(missing.ref),
+      });
+    }
+    return learningPathRequirementLabel(catalog, rule, label);
+  }
+
+  void _rememberAuthoredInteractions(
+    WorkspaceState? previous,
+    WorkspaceState next,
+  ) {
+    final path = _authoredPath;
+    if (path == null || _loadingAuthoredStep) return;
+    final edit = next.inputEdit;
+    for (final rule in path.steps[_authoredStepIndex].requirements) {
+      final id = _authoredNodeIds[rule.nodeRef];
+      if (id == null) continue;
+      if (rule.action == LearningPathAction.enterInput &&
+          edit != null &&
+          edit != previous?.inputEdit &&
+          edit.nodeId == id &&
+          edit.inputs.contains(rule.input)) {
+        _authoredInteractions.add(
+          learningPathInteractionKey(rule.action, id, rule.input),
+        );
+      } else if (rule.action == LearningPathAction.selectNode &&
+          previous?.selectedBlockIds != next.selectedBlockIds &&
+          next.selectedBlockIds.contains(id)) {
+        _authoredInteractions.add(learningPathInteractionKey(rule.action, id));
+      }
+    }
+  }
+
   void _saveAuthoredProgress({bool completed = false}) {
     final path = _authoredPath;
     if (path == null || _loadingAuthoredStep) return;
@@ -3757,6 +3932,7 @@ class _WorkshopWorkspaceViewState
               workspaceJson: workspace.toJsonString(),
               nodeIds: _authoredNodeIds,
               abstractionMode: ref.read(sqlModeProvider).name,
+              interactions: Set.unmodifiable(_authoredInteractions),
             ),
           ),
     );
@@ -3792,18 +3968,30 @@ class _WorkshopWorkspaceViewState
     VoidCallback? onDefaultsApplied,
   }) {
     final path = _authoredPath;
-    if (path == null || _loadingAuthoredStep || _activeAuthoredNodeExists()) {
-      return;
-    }
-    final active = _activeAuthoredNode(path.steps[_authoredStepIndex]);
-    if (active == null || active.type != node.type) return;
-    node.inputs.addAll(active.defaults);
+    if (path == null || _loadingAuthoredStep) return;
+    final step = path.steps[_authoredStepIndex];
+    final active = _activeAuthoredNode(step);
+    final target = active?.type == node.type && !_activeAuthoredNodeExists()
+        ? active
+        : step.nodes
+              .take(_authoredNodeIndex)
+              .where(
+                (candidate) =>
+                    candidate.type == node.type &&
+                    _findAuthoredNode(candidate.ref) == null &&
+                    step.requirements.any(
+                      (rule) => rule.refs.contains(candidate.ref),
+                    ),
+              )
+              .firstOrNull;
+    if (target == null) return;
+    node.inputs.addAll(target.defaults);
     onDefaultsApplied?.call();
     setState(() {
-      _authoredNodeInserted = true;
+      if (target == active) _authoredNodeInserted = true;
       _authoredNodeIds = Map.unmodifiable(<String, String>{
         ..._authoredNodeIds,
-        active.ref: node.id,
+        target.ref: node.id,
       });
     });
     _saveAuthoredProgress();
@@ -3833,7 +4021,15 @@ class _WorkshopWorkspaceViewState
     final active = _activeAuthoredNode(step);
     if ((expectedStepId != null && expectedStepId != step.id) ||
         (expectedNodeRef != null && expectedNodeRef != active?.ref) ||
-        (active != null && !_activeAuthoredNodeExists())) {
+        (active != null && !_activeAuthoredNodeExists()) ||
+        (step.requirements.isNotEmpty &&
+            _pendingAuthoredAction(
+                  step,
+                  _compiler
+                      .compileWorkspace(ref.read(workspaceProvider).roots)
+                      .sql,
+                ) !=
+                null)) {
       return;
     }
     var nextIndex = _authoredNodeIndex + 1;
@@ -3876,13 +4072,19 @@ class _WorkshopWorkspaceViewState
   }
 
   List<LearningPathNodeCallout> _authoredGuideCallouts(
+    LearningPathStep? step,
     LearningPathNodeTemplate? node,
     _LearningNodeGuide? guide,
   ) {
-    if (!_activeAuthoredNodeExists() || node == null || guide == null) {
-      return const <LearningPathNodeCallout>[];
+    final callouts = step?.callouts ?? const <LearningPathNodeCallout>[];
+    if (!_activeAuthoredNodeExists() ||
+        node == null ||
+        guide == null ||
+        callouts.any((callout) => callout.targetRef == node.ref)) {
+      return callouts;
     }
     return <LearningPathNodeCallout>[
+      ...callouts,
       LearningPathNodeCallout(
         id: 'guide-${node.ref}',
         targetRef: node.ref,
@@ -3896,6 +4098,14 @@ class _WorkshopWorkspaceViewState
 
   void _closeAuthoredPath({bool saveProgress = true}) {
     if (saveProgress) _saveAuthoredProgress();
+    final path = _authoredPath;
+    if (path != null && isDownloadedWorkshop(path)) {
+      _loadingAuthoredStep = true;
+      ref
+          .read(workspaceProvider.notifier)
+          .resetWithRoot(recordUndo: false, clearHistory: true);
+      ref.read(sqlRuntimeProvider.notifier).clearResults();
+    }
     _authoredLoadToken++;
     setState(() {
       _authoredPath = null;
@@ -3903,6 +4113,8 @@ class _WorkshopWorkspaceViewState
       _authoredNodeInserted = false;
       _authoredNodeIds = const <String, String>{};
       _authoredCompletedSteps = const <String>{};
+      _authoredInteractions.clear();
+      _authoredExecutedSql = null;
       _loadingAuthoredStep = false;
     });
   }
@@ -4332,6 +4544,10 @@ class _WorkshopModeTopBar extends StatelessWidget {
     required this.onLocale,
     required this.mode,
     required this.running,
+    required this.guideRun,
+    required this.guideColumnLink,
+    required this.columnLinkMode,
+    required this.onToggleColumnLink,
     required this.onRun,
     required this.onModeChanged,
     required this.onLessons,
@@ -4345,6 +4561,10 @@ class _WorkshopModeTopBar extends StatelessWidget {
   final ValueChanged<String> onLocale;
   final SqlAbstractionMode mode;
   final bool running;
+  final bool guideRun;
+  final bool guideColumnLink;
+  final bool columnLinkMode;
+  final VoidCallback onToggleColumnLink;
   final VoidCallback onRun;
   final ValueChanged<SqlAbstractionMode> onModeChanged;
   final VoidCallback onLessons;
@@ -4431,6 +4651,14 @@ class _WorkshopModeTopBar extends StatelessWidget {
           FilledButton.icon(
             key: const ValueKey('workshop-run-sqlite'),
             onPressed: running ? null : onRun,
+            style: guideRun
+                ? FilledButton.styleFrom(
+                    side: const BorderSide(
+                      color: _workshopFocusColor,
+                      width: 2,
+                    ),
+                  )
+                : null,
             icon: running
                 ? const SizedBox.square(
                     dimension: 18,
@@ -4438,6 +4666,22 @@ class _WorkshopModeTopBar extends StatelessWidget {
                   )
                 : const Icon(Icons.play_arrow_rounded),
             label: Text(catalog.text('toolbar.runSql')),
+          ),
+          IconButton(
+            key: const ValueKey('workshop-column-link-tool'),
+            onPressed: onToggleColumnLink,
+            tooltip: catalog.text('toolbar.connectColumns'),
+            isSelected: columnLinkMode,
+            selectedIcon: const Icon(Icons.link_rounded),
+            icon: const Icon(Icons.format_paint_outlined),
+            style: guideColumnLink
+                ? IconButton.styleFrom(
+                    side: const BorderSide(
+                      color: _workshopFocusColor,
+                      width: 2,
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: 10),
           FilledButton.icon(
@@ -6734,6 +6978,9 @@ class _RenameWorkspaceTabDialogState extends State<_RenameWorkspaceTabDialog> {
   );
 }
 
+const _workshopFocusColor = Color(0xFFB9FF39);
+typedef _WorkshopInputFocus = ({String nodeId, String input});
+
 class _WorkspaceCanvas extends ConsumerWidget {
   const _WorkspaceCanvas({
     super.key,
@@ -6744,6 +6991,8 @@ class _WorkspaceCanvas extends ConsumerWidget {
     required this.onSaveProject,
     this.learningPathCallouts = const <LearningPathNodeCallout>[],
     this.learningPathNodeIds = const <String, String>{},
+    this.learningPathHighlights = const <String>{},
+    this.learningPathInputHighlight,
     this.onPaletteNodeAdded,
     this.onReporterAdded,
   });
@@ -6755,6 +7004,8 @@ class _WorkspaceCanvas extends ConsumerWidget {
   final Future<void> Function() onSaveProject;
   final List<LearningPathNodeCallout> learningPathCallouts;
   final Map<String, String> learningPathNodeIds;
+  final Set<String> learningPathHighlights;
+  final _WorkshopInputFocus? learningPathInputHighlight;
   final ValueChanged<BlockNode>? onPaletteNodeAdded;
   final _ReporterAddedCallback? onReporterAdded;
 
@@ -6876,6 +7127,9 @@ class _WorkspaceCanvas extends ConsumerWidget {
                                   ? ropeColors.target
                                   : null,
                               columnLinkEndpointHaloColor: ropeColors.halo,
+                              learningPathHighlights: learningPathHighlights,
+                              learningPathInputHighlight:
+                                  learningPathInputHighlight,
                               onReporterAdded: onReporterAdded,
                             ),
                           for (
@@ -6988,6 +7242,8 @@ class _WorkspaceBlock extends ConsumerWidget {
     required this.diagnostic,
     required this.columnLinkEndpointColor,
     required this.columnLinkEndpointHaloColor,
+    required this.learningPathHighlights,
+    required this.learningPathInputHighlight,
     this.onReporterAdded,
   });
 
@@ -6995,6 +7251,8 @@ class _WorkspaceBlock extends ConsumerWidget {
   final _SimpleNodeDiagnostic? diagnostic;
   final Color? columnLinkEndpointColor;
   final Color columnLinkEndpointHaloColor;
+  final Set<String> learningPathHighlights;
+  final _WorkshopInputFocus? learningPathInputHighlight;
   final _ReporterAddedCallback? onReporterAdded;
 
   @override
@@ -7030,6 +7288,8 @@ class _WorkspaceBlock extends ConsumerWidget {
           selected: visual.selected,
           columnLinkEndpointColor: columnLinkEndpointColor,
           columnLinkEndpointHaloColor: columnLinkEndpointHaloColor,
+          learningPathHighlights: learningPathHighlights,
+          learningPathInputHighlight: learningPathInputHighlight,
           onReporterAdded: onReporterAdded,
         ),
       ),
@@ -7052,7 +7312,15 @@ class _LearningPathCanvasCallout extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(workspaceProvider);
     final controller = ref.read(workspaceProvider.notifier);
-    final node = controller.findById(targetId);
+    final node =
+        controller.findById(targetId) ??
+        controller
+            .allBlocks()
+            .where(
+              (block) =>
+                  embeddedReporters(block).any((node) => node.id == targetId),
+            )
+            .firstOrNull;
     if (node == null) return const SizedBox.shrink();
     final colors = NodeQlWorkbenchColors.of(context);
     final nodeWidth = controller.nodeWidth(node);
@@ -7929,6 +8197,8 @@ class _NodeView extends ConsumerWidget {
     required this.selected,
     required this.columnLinkEndpointColor,
     required this.columnLinkEndpointHaloColor,
+    this.learningPathHighlights = const <String>{},
+    this.learningPathInputHighlight,
     this.onReporterAdded,
   });
 
@@ -7940,7 +8210,17 @@ class _NodeView extends ConsumerWidget {
   final bool selected;
   final Color? columnLinkEndpointColor;
   final Color columnLinkEndpointHaloColor;
+  final Set<String> learningPathHighlights;
+  final _WorkshopInputFocus? learningPathInputHighlight;
   final _ReporterAddedCallback? onReporterAdded;
+
+  Color? get _outlineColor =>
+      columnLinkEndpointColor ??
+      (learningPathHighlights.contains(node.id) ? _workshopFocusColor : null);
+
+  Color? get _outlineHaloColor => columnLinkEndpointColor != null
+      ? columnLinkEndpointHaloColor
+      : _outlineColor?.withValues(alpha: .35);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -7957,7 +8237,7 @@ class _NodeView extends ConsumerWidget {
     final color = pluginBlock == null
         ? _colorForNodeType(node.type)
         : Color(pluginBlock.colorValue);
-    final endpointColor = columnLinkEndpointColor;
+    final endpointColor = _outlineColor;
 
     final pluginShape = pluginBlock?.shape.name;
     final visualKind = blockVisualKind(node, pluginShape: pluginShape);
@@ -8062,9 +8342,7 @@ class _NodeView extends ConsumerWidget {
                   isErrorHighlighted: effectiveDiagnostic != null,
                   isSelected: selected || endpointColor != null,
                   selectedOutlineColor: endpointColor,
-                  selectedOutlineHaloColor: endpointColor == null
-                      ? null
-                      : columnLinkEndpointHaloColor,
+                  selectedOutlineHaloColor: _outlineHaloColor,
                   showInnerHighlight: innerHighlighted,
                   showLabel: !usesInlineOverlay,
                 ),
@@ -8216,8 +8494,7 @@ class _NodeView extends ConsumerWidget {
     }
 
     return AnimatedScale(
-      scale:
-          highlighted || rejected || selected || columnLinkEndpointColor != null
+      scale: highlighted || rejected || selected || _outlineColor != null
           ? 1.012
           : 1,
       duration: const Duration(milliseconds: 90),
@@ -8238,11 +8515,9 @@ class _NodeView extends ConsumerWidget {
                   showLabel: false,
                   isHighlighted: highlighted,
                   isErrorHighlighted: diagnostic != null,
-                  isSelected: selected || columnLinkEndpointColor != null,
-                  selectedOutlineColor: columnLinkEndpointColor,
-                  selectedOutlineHaloColor: columnLinkEndpointColor == null
-                      ? null
-                      : columnLinkEndpointHaloColor,
+                  isSelected: selected || _outlineColor != null,
+                  selectedOutlineColor: _outlineColor,
+                  selectedOutlineHaloColor: _outlineHaloColor,
                   showInnerHighlight: innerHighlighted,
                 ),
                 Positioned.fill(
@@ -8341,9 +8616,20 @@ class _NodeView extends ConsumerWidget {
       },
       builder: (context, candidates, _) {
         final highlighted = candidates.isNotEmpty;
+        final reporter = slot.reporter;
+        final inputFocus = learningPathInputHighlight;
+        final guideSlot =
+            (inputFocus?.nodeId == node.id &&
+                inputFocus?.input == slot.inputKey) ||
+            (reporter != null &&
+                learningPathHighlights.isNotEmpty &&
+                (learningPathHighlights.contains(reporter.id) ||
+                    embeddedReporters(
+                      reporter,
+                    ).any((node) => learningPathHighlights.contains(node.id))));
         final requiresReporter =
             slot.reporter == null &&
-            _requiresReporterInput(node.type, slot.inputKey);
+            requiresReporterInput(node.type, slot.inputKey);
         return GestureDetector(
           key: ValueKey<String>('inline-slot-${node.id}-${slot.inputKey}'),
           onTap: requiresReporter
@@ -8392,10 +8678,12 @@ class _NodeView extends ConsumerWidget {
                         : Colors.white.withValues(alpha: 0.22),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: highlighted
+                      color: guideSlot
+                          ? _workshopFocusColor
+                          : highlighted
                           ? Colors.white
                           : Colors.white.withValues(alpha: 0.55),
-                      width: highlighted ? 2 : 1,
+                      width: highlighted || guideSlot ? 2 : 1,
                     ),
                   ),
                   child: Text(
@@ -8424,6 +8712,10 @@ class _NodeView extends ConsumerWidget {
                       slot.inputKey,
                     ),
                     isHighlighted: highlighted,
+                    isSelected: guideSlot,
+                    selectedOutlineColor: guideSlot
+                        ? _workshopFocusColor
+                        : null,
                   ),
                 ),
         );
@@ -8597,6 +8889,7 @@ class _NodeView extends ConsumerWidget {
           reporter,
           'alias',
           result['alias']?.trim() ?? '',
+          alsoEdited: nestedReporter == null ? const {'value'} : const {},
         );
       }
       return;
@@ -8838,7 +9131,7 @@ class _NodeView extends ConsumerWidget {
       buffer.write(before);
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
-      final inputKey = _slotInputKey(rawKey);
+      final inputKey = sqlInputKey(rawKey);
       final leadingGap = _slotLeadingGap(before, inputKey);
       if (leadingGap > 0) {
         buffer.write(' ' * (leadingGap / safeSpaceWidth).ceil());
@@ -8907,7 +9200,7 @@ class _NodeView extends ConsumerWidget {
 
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
-      final inputKey = _slotInputKey(rawKey);
+      final inputKey = sqlInputKey(rawKey);
       x += _slotLeadingGap(before, inputKey);
       final display = _slotDisplay(
         values[inputKey] ?? _functionArgumentValue(values, inputKey),
@@ -8976,7 +9269,7 @@ class _NodeView extends ConsumerWidget {
       }
       final token = m.group(0)!;
       final rawKey = token.substring(1, token.length - 1).trim();
-      final inputKey = _slotInputKey(rawKey);
+      final inputKey = sqlInputKey(rawKey);
       final display = _slotDisplay(
         values[inputKey] ?? _functionArgumentValue(values, inputKey),
         rawKey,
@@ -9104,7 +9397,7 @@ class _NodeView extends ConsumerWidget {
         : '${value ?? ''}'.trim();
     final rawLower = rawKey.toLowerCase();
     final normalized = text.toLowerCase();
-    final inputKey = _slotInputKey(rawKey);
+    final inputKey = sqlInputKey(rawKey);
     if (text.isEmpty) {
       if (inputKey == 'table_alias') return 'No Alias';
       if (inputKey == 'select_mode') return 'ALL';
@@ -9334,7 +9627,7 @@ class _NodeView extends ConsumerWidget {
     required String localeCode,
   }) async {
     final catalog = translationCatalogOf(context);
-    final mappedKey = _slotInputKey(slotKey);
+    final mappedKey = sqlInputKey(slotKey);
     if (node.type == BlockType.sqlFunction && mappedKey == 'function') {
       await _editSqliteFunctionNode(
         context: context,
@@ -9667,66 +9960,6 @@ class _NodeView extends ConsumerWidget {
       'alter_action',
     };
     return dropdownRaw.contains(rawToken) || dropdownMapped.contains(mappedKey);
-  }
-
-  String _slotInputKey(String slotKey) {
-    switch (slotKey) {
-      case 'condition':
-        return 'predicate';
-      case 'join_condition':
-        return 'on';
-      case 'table_name':
-        return 'table';
-      case 'column_definitions':
-      case 'Spaltendefinitionen':
-        return 'definition';
-      case 'Spalten':
-        return 'columns';
-      case 'Spalte':
-        return 'column';
-      case 'Spaltenname':
-        return 'column_name';
-      case 'Filter_Spalte':
-        return 'where_column';
-      case 'linke_Spalte':
-        return 'left_column';
-      case 'rechte_Spalte':
-        return 'right_column';
-      case 'Bedingungs_Spalte':
-        return 'condition_column';
-      case 'Alias':
-        return 'alias';
-      case 'JOIN_TYPE':
-        return 'join_type';
-      case 'union_mode':
-        return 'set_mode';
-      case 'pragma_value':
-        return 'value';
-      case 'explain_mode':
-        return 'mode';
-      case 'ASC|DESC':
-      case 'aufsteigend|absteigend':
-      case 'ascending|descending':
-        return 'order';
-      default:
-        return slotKey;
-    }
-  }
-
-  bool _requiresReporterInput(BlockType type, String inputKey) {
-    return switch (type) {
-      BlockType.sqlWhere ||
-      BlockType.sqlAnd ||
-      BlockType.sqlOr => inputKey == 'value',
-      BlockType.sqlUpdate => inputKey == 'value' || inputKey == 'where_value',
-      BlockType.sqlDelete => inputKey == 'where_value',
-      BlockType.sqlCase || BlockType.sqlIf =>
-        inputKey == 'condition_value' ||
-            inputKey == 'value' ||
-            inputKey == 'result' ||
-            inputKey == 'default',
-      _ => false,
-    };
   }
 
   List<String> _inlineOptionsForToken({
