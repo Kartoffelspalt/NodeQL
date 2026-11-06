@@ -3122,7 +3122,7 @@ class _WorkshopWorkspaceViewState
         : _pendingAuthoredAction(authoredStep, compileResult.sql);
     final focusIds = <String>{
       for (final target in [...?authoredStep?.highlights, ...?pending?.refs])
-        if (_authoredNodeIds[target] case final id?) id,
+        ?_authoredNodeIds[target],
     };
     final input = pending?.input;
     final inputNodeId = _authoredNodeIds[pending?.nodeRef];

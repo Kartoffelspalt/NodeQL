@@ -131,8 +131,9 @@ void main() {
       final controller = LearningPathLibraryController(
         bundledPaths: () async => const [],
         storageFile: () async {
-          if (unavailable)
+          if (unavailable) {
             throw const FileSystemException('Storage unavailable');
+          }
           return file;
         },
       );

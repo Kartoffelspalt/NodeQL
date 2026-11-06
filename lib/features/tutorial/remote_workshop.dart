@@ -326,8 +326,9 @@ void _validateStepInteractions(Map<String, dynamic> step, Set<String> refs) {
     final action = LearningPathAction.values
         .where((action) => action.name == rule['action'])
         .firstOrNull;
-    if (action == null)
+    if (action == null) {
       throw const FormatException('Unsupported workshop action.');
+    }
     _require(
       action.needsNode
           ? refs.contains(_id(rule['nodeRef']))

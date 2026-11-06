@@ -19,7 +19,8 @@ Block palette -> Workspace -> Block tree -> SQLite compiler -> SQLite preview
 ```
 
 Projects, settings, installed plugins, and databases stay on the user's device.
-NodeQL is not a cloud service and not a machine-learning project.
+The desktop app runs without an account. Optional network activity includes
+update checks, downloads, and classroom workshop sharing.
 
 ## What You See in NodeQL
 
@@ -36,6 +37,33 @@ The central interface is the workbench. It is made up of several areas:
 
 The workbench is designed as a visual SQLite builder. Users do not only see the
 final query; they also see the structure that produced it.
+
+## Workshops in NodeQL 0.5.2
+
+Open **Workshop** in the desktop app to work through an official learning path.
+Each path has its own practice workspace and saves progress locally.
+
+Teachers use the separate **Workshop Admin** app to create and try learning
+paths in **Workshop Studio**. A step can highlight nodes, add labels to fields,
+and wait for an action such as entering a value, connecting blocks, or running
+a query before it unlocks **Next**.
+
+To share a workshop in class, connect the teacher's and learners' devices to
+the same local network.
+In Workshop Studio, choose **Share with class → Create code → Copy code**.
+Learners choose **Workshop → Enter code**, paste the code, check the preview,
+and select **Save and start**. Keep the sharing dialog open while the class
+joins. The bundle is transferred directly between the devices using AES-GCM.
+The session ends when sharing stops or after at most 30 minutes.
+
+If the devices cannot reach one another, choose **Save file** in the sharing
+dialog and distribute the JSON file. Learners import it using **Enter code →
+Open file**. To publish a downloadable workshop, use **Export for download**
+and share a direct GitHub JSON link with the bundle's SHA-256 hash.
+
+Installed workshops appear in **My workshops** and can be played offline.
+Imported workshop queries run read-only on an isolated practice dataset.
+The browser preview offers the workbench. Workshops are a desktop feature.
 
 ## The Block Model
 
@@ -285,31 +313,32 @@ externally while NodeQL itself only executes the constrained, explicit contract.
 
 ## Localization
 
-Visible text comes from ARB files under `lib/l10n/` and is generated into
-`lib/localization/generated/`.
+NodeQL generates its Flutter localizations from `lib/l10n/` into
+`lib/localization/generated/`. The runtime catalog uses
+`assets/translations/en.json` as the English source of truth.
 
-Supported languages:
-
-- German
-- English
-- French
-- Spanish
-- Italian
-- Portuguese
-- Turkish
-- Arabic with RTL
-- Japanese
-- Korean
-- Chinese
-
-After text changes, run:
-
-```bash
-flutter gen-l10n
-```
+The built-in Flutter locales include German, English, French, Spanish,
+Italian, Portuguese, Turkish, Arabic with right-to-left layout, Japanese,
+Korean, and Chinese. Run `flutter gen-l10n` after editing ARB files.
 
 At runtime, NodeQL can also use validated community language packages. These
 packages are checked for schema, size, metadata, placeholders, and hashes.
+The desktop release workflow generates and bundles validated language packs
+for offline use. The app loads translations locally, with reviewed community
+strings taking priority over generated strings.
+
+## Desktop Releases and Workshop Admin
+
+GitHub Actions builds the main desktop app for Linux x64, macOS, and Windows
+x64 after a release PR is merged into `master`. Sparkle on macOS checks signed
+update feeds when configured and compares build numbers. Version 0.5.2 uses
+build 13.
+
+The **Workshop Admin** workflow builds the authoring app separately. Download
+its packages from the workflow run's **Artifacts**. From **Run workflow** on
+`master`, enable `create_release_draft` to prepare an Admin pre-release with
+its own tag and checksums. The release guide describes how to enable the
+post-merge branch sync. [Release guide](RELEASING.md)
 
 ## Code Architecture
 
@@ -325,9 +354,12 @@ The most important areas are:
 | `lib/engine/plugins` | Plugin manifests, loader, repository logic |
 | `lib/engine/runtime` | General runtime models and scheduler |
 | `lib/engine/workspace` | Workspace models and docking service |
+| `lib/features/tutorial` | Workshops, practice sessions, and validated imports |
 | `lib/features/workbench` | Visible workbench, SQLite mode, compiler, runtime |
 | `lib/ui` | Shell and app entry |
 | `test` | Unit, widget, runtime, plugin, and workspace tests |
+| `tools/workshop_admin` | Standalone workshop authoring app |
+| `nodeql-rust` | Native Rust prototype and SQLite readers |
 
 State management is based on Riverpod. Routing uses `go_router`. The relevant
 logic for block structure, SQLite compilation, plugin manifests, and SQLite
@@ -410,6 +442,7 @@ update tests in the corresponding subsystem.
 - `README.md` for the short project overview.
 - `docs/plugins/README.md` for Plugin SDK v1 and v2.
 - `docs/localization/README.md` for community translations.
+- [Workshop Admin guide](admin-workshop-build.md) for builds, authoring, and sharing.
 - `docs/RELEASING.md` for the release process and signing.
 - `docs/node-ui-and-logic.md` for notes about node appearance and logic.
 - `CHANGELOG.md` for the change history.
