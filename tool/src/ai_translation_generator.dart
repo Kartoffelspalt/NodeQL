@@ -21,6 +21,8 @@ class GeminiTranslationClient {
     this.model = defaultGeminiTranslationModel,
     this.timeout = const Duration(seconds: 90),
     this.retryDelay = const Duration(seconds: 2),
+    this.wait = Future<void>.delayed,
+    this.log,
   }) {
     if (!RegExp(r'^gemini-[a-z0-9][a-z0-9._-]*$').hasMatch(model)) {
       throw const FormatException(
@@ -37,6 +39,8 @@ class GeminiTranslationClient {
   final String apiKey;
   final Duration timeout;
   final Duration retryDelay;
+  final Future<void> Function(Duration) wait;
+  final void Function(String)? log;
 
   Uri get endpoint => Uri.https(
     'generativelanguage.googleapis.com',
@@ -48,10 +52,15 @@ class GeminiTranslationClient {
     Map<String, String> messages,
   ) async {
     for (var attempt = 0; attempt < 3; attempt++) {
+      var delay = retryDelay * (attempt + 1);
       try {
         return await _request(locale, messages).timeout(timeout);
       } on TranslationRequestException catch (error) {
         if (!error.retryable || attempt == 2) rethrow;
+        if (error.retryAfter case final retryAfter?) {
+          delay = retryAfter * (attempt + 1);
+          log?.call('Gemini rate limit. Retrying in ${delay.inSeconds}s.');
+        }
       } on FormatException {
         if (attempt == 2) {
           throw const FormatException(
@@ -67,7 +76,7 @@ class GeminiTranslationClient {
           );
         }
       }
-      await Future<void>.delayed(retryDelay * (attempt + 1));
+      await wait(delay);
     }
     throw StateError('Unreachable');
   }
@@ -121,12 +130,12 @@ class GeminiTranslationClient {
         },
       });
     final response = await client.send(request);
-    if (response.statusCode != 200) {
+    if (response.statusCode != 200 && response.statusCode != 429) {
       // Do not print response bodies: providers may echo credentials or input.
       await response.stream.drain<void>();
       throw TranslationRequestException(
         'Gemini translation request failed (HTTP ${response.statusCode}).',
-        retryable: response.statusCode == 429 || response.statusCode >= 500,
+        retryable: response.statusCode >= 500,
       );
     }
     final bytes = <int>[];
@@ -135,6 +144,9 @@ class GeminiTranslationClient {
       if (bytes.length > maxTranslationPackageBytes) {
         throw const FormatException('Gemini response exceeds 2 MiB.');
       }
+    }
+    if (response.statusCode == 429) {
+      throw _rateLimitError(response.headers['retry-after'], bytes);
     }
     final decoded = jsonDecode(utf8.decode(bytes));
     if (decoded is! Map) {
@@ -193,11 +205,58 @@ class GeminiTranslationClient {
 }
 
 class TranslationRequestException implements Exception {
-  const TranslationRequestException(this.message, {this.retryable = false});
+  const TranslationRequestException(
+    this.message, {
+    this.retryable = false,
+    this.retryAfter,
+  });
   final String message;
   final bool retryable;
+  final Duration? retryAfter;
   @override
   String toString() => message;
+}
+
+TranslationRequestException _rateLimitError(
+  String? retryAfter,
+  List<int> bytes,
+) {
+  var seconds = int.tryParse(retryAfter ?? '') ?? 0;
+  try {
+    // Read only structured quota metadata. The provider's message may contain
+    // echoed input and must never enter the build log.
+    if (jsonDecode(utf8.decode(bytes)) case {
+      'error': {'details': final List<dynamic> details},
+    }) {
+      for (final detail in details) {
+        if (detail case {'violations': final List<dynamic> violations}) {
+          for (final violation in violations) {
+            if (violation case {
+              'quotaId': final String quotaId,
+            } when quotaId.toLowerCase().contains('perday')) {
+              return const TranslationRequestException(
+                'Gemini daily quota is exhausted (HTTP 429). '
+                'Retry after the quota resets or increase the project quota.',
+              );
+            }
+          }
+        }
+        if (detail case {'retryDelay': final String delay}) {
+          final match = RegExp(r'^(\d{1,6}(?:\.\d{1,9})?)s$').firstMatch(delay);
+          if (match != null) {
+            seconds = math.max(seconds, double.parse(match[1]!).ceil() + 1);
+          }
+        }
+      }
+    }
+  } on FormatException {
+    // A missing or malformed hint still gets a full quota window.
+  }
+  return TranslationRequestException(
+    'Gemini rate limit exceeded (HTTP 429).',
+    retryable: true,
+    retryAfter: Duration(seconds: seconds > 0 ? seconds : 60),
+  );
 }
 
 bool _samePlaceholders(String source, String translated) {

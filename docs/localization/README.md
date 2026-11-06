@@ -38,8 +38,9 @@ schema requiring exactly the requested translation keys. The API key is sent
 in the `x-goog-api-key` header, never in the request URL or build artifacts.
 SQL keywords, product names, placeholders, and code must retain their meaning.
 Requests use batches of 40 strings with up to three batches in parallel by
-default. Invalid output, throttling, and server errors are retried up to three
-attempts; a failed batch stops the release.
+default. Invalid output and transient server errors get up to three attempts.
+Rate limits use Gemini's retry hint or a one-minute fallback. A reported daily
+quota stops generation, and completed language packs are cached for a retry.
 Blocked Gemini responses fail immediately. Missing credentials fail when an
 API call is needed, rather than silently publishing incomplete packages.
 Configure Gemini API billing and rate limits before the first run.

@@ -5,6 +5,16 @@ on:
     branches: [master, main]
     paths:
       - 'pubspec.yaml'
+  workflow_dispatch:
+    inputs:
+      release_pr:
+        description: Merged dev-to-release-branch PR for the unpublished version
+        type: number
+        required: true
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -18,22 +28,53 @@ env:
 jobs:
   prepare:
     name: Prepare release
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       build-number: ${{ steps.version.outputs.build-number }}
       tag: ${{ steps.version.outputs.tag }}
       should-release: ${{ steps.release.outputs.should-release }}
-      release-pr-number: ${{ steps.release-notes.outputs.pr-number }}
+      release-pr-number: ${{ steps.retry-release.outputs.pr-number || steps.release-notes.outputs.pr-number }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Verify the release pull request for this retry
+        id: retry-release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          RELEASE_PR_NUMBER: ${{ inputs.release_pr }}
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Enter the number of the original release pull request."
+            exit 1
+          fi
+          pull_request="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$RELEASE_PR_NUMBER")"
+          merge_sha="$(jq -er --arg branch "$BASE_BRANCH" --arg repo "$GITHUB_REPOSITORY" '
+            select(.merged_at != null and .base.ref == $branch and
+              .head.ref == "dev" and .head.repo.full_name == $repo) | .merge_commit_sha
+          ' <<< "$pull_request")"
+          if ! git merge-base --is-ancestor "$merge_sha" "$GITHUB_SHA"; then
+            echo "::error::The release pull request merge must be an ancestor of this build."
+            exit 1
+          fi
+          release_pubspec="$(git show "$merge_sha:pubspec.yaml")"
+          release_version="$(sed -n 's/^version: *//p' <<< "$release_pubspec")"
+          if [[ "$release_version" != "$(sed -n 's/^version: *//p' pubspec.yaml)" ]]; then
+            echo "::error::The current build must have the same version as the release pull request."
+            exit 1
+          fi
+          echo "previous-sha=$(git rev-parse "$merge_sha^")" >> "$GITHUB_OUTPUT"
+          echo "pr-number=$RELEASE_PR_NUMBER" >> "$GITHUB_OUTPUT"
       - name: Read and validate version
         id: version
         shell: bash
         env:
-          PREVIOUS_SHA: ${{ github.event.before }}
+          PREVIOUS_SHA: ${{ steps.retry-release.outputs.previous-sha || github.event.before }}
         run: |
           PUBSPEC_VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
           PREVIOUS_PUBSPEC="$(git show "${PREVIOUS_SHA}:pubspec.yaml" 2>/dev/null || true)"
@@ -62,7 +103,7 @@ jobs:
           fi
       - name: Find the dev-to-master release pull request
         id: release-notes
-        if: steps.release.outputs.should-release == 'true'
+        if: github.event_name == 'push' && steps.release.outputs.should-release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_BRANCH: ${{ github.ref_name }}
@@ -128,7 +169,8 @@ jobs:
         run: |
           scope="$(printf '%s\n' "$NODEQL_TRANSLATION_MODEL" "$NODEQL_TRANSLATION_LOCALES" | sha256sum | cut -d ' ' -f 1)"
           echo "scope=${scope}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: restore-translations
         with:
           path: build/ai-translations
           key: gemini-translations-v1-${{ steps.cache-scope.outputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -138,6 +180,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TRANSLATION_BUILD_NUMBER: ${{ needs.prepare.outputs.build-number }}
         run: dart run tool/generate_translations.dart --revision="$TRANSLATION_BUILD_NUMBER"
+      - uses: actions/cache/save@v4
+        if: ${{ !cancelled() && hashFiles('build/ai-translations/state.json') != '' }}
+        with:
+          path: build/ai-translations
+          key: ${{ steps.restore-translations.outputs.cache-primary-key }}
       - name: Validate generated packages
         run: dart run tool/validate_translations.dart build/ai-translations/packages
       - name: Build language catalog
