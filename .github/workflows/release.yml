@@ -11,6 +11,10 @@ on:
         description: Merged dev-to-release-branch PR for the unpublished version
         type: number
         required: true
+      skip_translations:
+        description: Build with the complete language packs already cached for this version
+        type: boolean
+        default: false
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -146,11 +150,14 @@ jobs:
       - run: dart run tool/validate_translations.dart
 
   translations:
-    name: Generate release language packs with Gemini
+    name: Prepare optional release language packs
     needs: [prepare, quality]
     if: needs.prepare.outputs.should-release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      has-packs: ${{ steps.catalog.outputs.has-packs }}
+      catalog-ready: ${{ steps.generate-translations.outcome == 'success' && steps.catalog.outputs.has-packs == 'true' }}
     env:
       NODEQL_TRANSLATION_MODEL: ${{ vars.NODEQL_TRANSLATION_MODEL || 'gemini-3.8-flash' }}
       NODEQL_TRANSLATION_CONCURRENCY: ${{ vars.NODEQL_TRANSLATION_CONCURRENCY || '3' }}
@@ -176,31 +183,63 @@ jobs:
           key: gemini-translations-v1-${{ steps.cache-scope.outputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: gemini-translations-v1-${{ steps.cache-scope.outputs.scope }}-
       - name: Generate missing and changed translations
+        id: generate-translations
+        if: github.event_name != 'workflow_dispatch' || !inputs.skip_translations
+        continue-on-error: true
+        timeout-minutes: 50
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TRANSLATION_BUILD_NUMBER: ${{ needs.prepare.outputs.build-number }}
         run: dart run tool/generate_translations.dart --revision="$TRANSLATION_BUILD_NUMBER"
       - uses: actions/cache/save@v4
-        if: ${{ !cancelled() && hashFiles('build/ai-translations/state.json') != '' }}
+        if: >-
+          ${{ !cancelled() && steps.generate-translations.outcome != 'skipped' &&
+            hashFiles('build/ai-translations/state.json', 'build/ai-translations/state.json.*.partial.json') != '' }}
         with:
           path: build/ai-translations
           key: ${{ steps.restore-translations.outputs.cache-primary-key }}
-      - name: Validate generated packages
-        run: dart run tool/validate_translations.dart build/ai-translations/packages
+      - name: Select completed packages for this release
+        shell: bash
+        env:
+          TRANSLATION_BUILD_NUMBER: ${{ needs.prepare.outputs.build-number }}
+          GENERATION_OUTCOME: ${{ steps.generate-translations.outcome }}
+        run: |
+          mkdir -p build/release-language-packs
+          shopt -s nullglob
+          for package in build/ai-translations/packages/*.json; do
+            if jq -e --argjson revision "$TRANSLATION_BUILD_NUMBER" \
+              --slurpfile source assets/translations/en.json \
+              '.revision == $revision and (.messages | keys) == ($source[0].messages | keys)' \
+              "$package" >/dev/null; then
+              cp "$package" build/release-language-packs/
+            fi
+          done
+          if [[ "$GENERATION_OUTCOME" == "failure" ]]; then
+            echo "::warning::Gemini generation stopped. Continuing the release with built-in translations and completed packs."
+          fi
+      - name: Validate completed packages
+        run: dart run tool/validate_translations.dart build/release-language-packs
       - name: Build language catalog
+        id: catalog
         env:
           NODEQL_TRANSLATION_MINIMUM_APP_VERSION: ${{ needs.prepare.outputs.version }}
-        run: dart run tool/build_translation_site.dart build/ai-translations/packages
+        run: |
+          dart run tool/build_translation_site.dart build/release-language-packs
+          has_packs="$(jq '.languages | length > 0' build/translation-site/translations/translation-manifest.json)"
+          echo "has-packs=$has_packs" >> "$GITHUB_OUTPUT"
       - name: Archive language packs for the release
+        if: steps.catalog.outputs.has-packs == 'true'
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: tar -C build/translation-site -czf "nodeql-translations-${RELEASE_VERSION}.tar.gz" translations
       - uses: actions/upload-artifact@v7
+        if: steps.catalog.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: build/translation-site/translations
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
+        if: steps.catalog.outputs.has-packs == 'true'
         with:
           name: nodeql-translations
           path: nodeql-translations-*.tar.gz
@@ -218,6 +257,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        if: needs.translations.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: assets/translations
@@ -327,6 +367,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        if: needs.translations.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: assets/translations
@@ -528,6 +569,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        if: needs.translations.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: assets/translations
@@ -724,7 +766,8 @@ jobs:
 
   publish-translations:
     name: Publish release language catalog
-    needs: publish
+    needs: [publish, translations]
+    if: needs.translations.outputs.catalog-ready == 'true'
     permissions:
       contents: read
       actions: read

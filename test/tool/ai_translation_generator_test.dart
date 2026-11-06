@@ -464,6 +464,58 @@ void main() {
       },
     );
 
+    test('reuses successful batches from an unfinished locale', () async {
+      final checkpoint = File('${state.path}.de.partial.json');
+      await expectLater(
+        generate((_, batch) async {
+          if (batch.containsKey('welcome')) {
+            throw const TranslationRequestException('offline');
+          }
+          await Future<void>.delayed(Duration.zero);
+          return {'plain': 'Hallo'};
+        }),
+        throwsA(isA<TranslationRequestException>()),
+      );
+      expect(await File('${output.path}/de.json').exists(), isFalse);
+      expect(await state.exists(), isFalse);
+      expect(jsonDecode(await checkpoint.readAsString()).keys, ['plain']);
+
+      await generate((_, batch) async {
+        expect(batch, {'welcome': 'Hello {name}'});
+        return {'welcome': 'Hallo {name}'};
+      });
+      expect(readTranslationPackage(File('${output.path}/de.json')).messages, {
+        'plain': 'Hallo',
+        'welcome': 'Hallo {name}',
+      });
+      expect(await checkpoint.exists(), isFalse);
+    });
+
+    test(
+      'invalidates checkpointed strings when their source changes',
+      () async {
+        await expectLater(
+          generate((_, batch) async {
+            if (batch.containsKey('welcome')) {
+              throw const TranslationRequestException('offline');
+            }
+            return {'plain': 'Hallo'};
+          }),
+          throwsA(isA<TranslationRequestException>()),
+        );
+        await writePackage(source, 'en', {
+          'plain': 'Good evening',
+          'welcome': 'Hello {name}',
+        });
+        final requested = <String, String>{};
+        await generate((_, batch) async {
+          requested.addAll(batch);
+          return batch;
+        });
+        expect(requested, {'plain': 'Good evening', 'welcome': 'Hello {name}'});
+      },
+    );
+
     test('rejects revisions below previously generated packages', () async {
       await generate((_, batch) async => batch);
       await expectLater(
