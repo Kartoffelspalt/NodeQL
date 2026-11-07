@@ -139,6 +139,19 @@ For portable use, extract the entire ZIP to a folder and run `nodeql.exe` from
 that folder. The ZIP includes the Flutter data and DLLs, plus the application-local
 Visual C++ runtime.
 
+Windows installations created by the Setup EXE support in-app updates. NodeQL
+verifies the download's SHA-256 digest and waits for its PowerShell helper to
+signal readiness before requesting a clean shutdown. The helper waits for the
+app to exit, runs the installer with administrator approval, and restarts NodeQL.
+Portable ZIP installations use manual downloads instead.
+
+To verify a Windows update, install an older Setup EXE, then accept the in-app
+update to a newer release. Check that NodeQL closes, the administrator prompt
+appears, and the restarted app reports the new version. Also check that canceling
+the update's exit request leaves NodeQL running without launching Setup. Older
+versions affected by the premature update cancellation need one manual update:
+close NodeQL and run the latest Setup EXE.
+
 Publish the Linux release public key alongside the project documentation. Users
 can verify a Linux asset with `gpg --verify <asset>.asc <asset>` after importing
 that public key.

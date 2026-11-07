@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
+import 'desktop_update_handoff.dart';
 import 'github_release_update_service.dart';
 
 class DesktopUpdateInstaller {
@@ -100,17 +99,10 @@ class DesktopUpdateInstaller {
         ], mode: ProcessStartMode.detached);
       }
       handedOff = true;
-      try {
-        final response = await ServicesBinding.instance.exitApplication(
-          AppExitType.cancelable,
-        );
-        if (response == AppExitResponse.cancel) {
-          throw StateError('The application did not close');
-        }
-      } catch (_) {
-        await File(path.join(directory.path, 'cancel')).create();
-        rethrow;
-      }
+      await finishDesktopUpdateHandoff(
+        directory,
+        waitForWindowsHelper: windows,
+      );
     } finally {
       client.close();
       if (!handedOff) {
@@ -126,6 +118,7 @@ $parent, $target, $installer = Get-Content -Raw -Encoding UTF8 -LiteralPath (Joi
 try {
   $process = Get-Process -Id ([int]$parent) -ErrorAction SilentlyContinue
   $cancel = Join-Path $PSScriptRoot 'cancel'
+  [System.IO.File]::WriteAllText((Join-Path $PSScriptRoot 'ready'), '')
   if ($process) {
     for ($attempt = 0; !$process.WaitForExit(1000); $attempt++) {
       if ($attempt -ge 59 -or (Test-Path -LiteralPath $cancel)) { return }
