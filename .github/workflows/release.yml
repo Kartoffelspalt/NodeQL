@@ -128,7 +128,7 @@ jobs:
         run: |
           scope="$(printf '%s\n' "$NODEQL_TRANSLATION_MODEL" "$NODEQL_TRANSLATION_LOCALES" | sha256sum | cut -d ' ' -f 1)"
           echo "scope=${scope}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: build/ai-translations
           key: gemini-translations-v1-${{ steps.cache-scope.outputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
