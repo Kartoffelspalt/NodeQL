@@ -6,95 +6,108 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
 import 'package:nodeql/features/tutorial/learning_path_studio.dart';
 import 'package:nodeql/features/tutorial/remote_workshop.dart';
+import 'package:nodeql/features/tutorial/workshop_admin_extension.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/localization/translation_controller.dart';
 
-import 'classroom_share_dialog.dart';
+import 'classroom_share_panel.dart';
 
-class WorkshopAdminLauncher extends ConsumerStatefulWidget {
-  const WorkshopAdminLauncher({required this.onStart, super.key});
-
-  final ValueChanged<AuthoredLearningPath> onStart;
+class WorkshopAdminLauncher extends ConsumerWidget {
+  const WorkshopAdminLauncher({super.key});
 
   @override
-  ConsumerState<WorkshopAdminLauncher> createState() =>
-      _WorkshopAdminLauncherState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authoring = ref.watch(workshopAuthoringProvider);
+    final catalog = ref.watch(translationControllerProvider).catalog;
+    return FilledButton.tonalIcon(
+      key: const ValueKey('workshop-learning-path-studio'),
+      onPressed: authoring
+          ? null
+          : () => ref.read(workshopAuthoringProvider.notifier).state = true,
+      icon: const Icon(Icons.edit_outlined),
+      label: Text(catalog.text('tutorial.studio.returnToEditor')),
+    );
+  }
 }
 
-class _WorkshopAdminLauncherState extends ConsumerState<WorkshopAdminLauncher> {
-  AuthoredLearningPath? _draft;
-  bool _opening = false;
+class WorkshopAdminPanel extends ConsumerStatefulWidget {
+  const WorkshopAdminPanel({required this.onStart, super.key});
+
+  final Future<void> Function(AuthoredLearningPath) onStart;
+
+  @override
+  ConsumerState<WorkshopAdminPanel> createState() => _WorkshopAdminPanelState();
+}
+
+class _WorkshopAdminPanelState extends ConsumerState<WorkshopAdminPanel> {
+  late final Future<void> _initialization;
+  AuthoredLearningPath? _sharing;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialization = ref
+        .read(learningPathLibraryProvider.notifier)
+        .initialize();
+  }
 
   @override
   Widget build(BuildContext context) {
     final catalog = ref.watch(translationControllerProvider).catalog;
-    final resuming = _draft != null;
-    return FilledButton.tonalIcon(
-      key: const ValueKey('workshop-learning-path-studio'),
-      onPressed: _opening ? null : _open,
-      icon: Icon(resuming ? Icons.edit_outlined : Icons.add_road_rounded),
-      label: Text(
-        catalog.text(
-          resuming
-              ? 'tutorial.studio.resumeDraft'
-              : 'tutorial.studio.adminBadge',
+    ref.watch(workspaceProvider.select((state) => state.revision));
+    final mode = ref.watch(sqlModeProvider);
+    final controller = ref.read(learningPathLibraryProvider.notifier);
+    return Stack(
+      children: [
+        Offstage(
+          offstage: _sharing != null,
+          child: FutureBuilder<void>(
+            future: _initialization,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return LearningPathStudioPanel(
+                catalog: catalog,
+                paths: _draftsFirst(controller),
+                workspaceNodes: ref
+                    .read(workspaceProvider.notifier)
+                    .allBlocks(),
+                workspaceMode: mode == SqlAbstractionMode.advanced
+                    ? LearningPathMode.advanced
+                    : LearningPathMode.simple,
+                onHighlightsChanged: (ids) =>
+                    ref
+                            .read(workshopAuthoringHighlightsProvider.notifier)
+                            .state =
+                        ids,
+                onStart: widget.onStart,
+                onSave: controller.save,
+                onDelete: controller.delete,
+                onImport: () => _importBundle(controller),
+                onExport: (_) =>
+                    _saveBundle(controller.exportBundle(), 'workshops.json'),
+                onExportRemote: _exportRemoteBundle,
+                onShareClassroom: (path) => setState(() => _sharing = path),
+              );
+            },
+          ),
         ),
-      ),
-    );
-  }
-
-  Future<void> _open() async {
-    if (_opening) return;
-    setState(() => _opening = true);
-    try {
-      final controller = ref.read(learningPathLibraryProvider.notifier);
-      await controller.initialize();
-      if (!mounted) return;
-      final draft = _draft;
-      _draft = null;
-      final catalog = ref.read(translationControllerProvider).catalog;
-      final workspaceNodes = ref.read(workspaceProvider.notifier).allBlocks();
-      final workspaceMode =
-          ref.read(sqlModeProvider) == SqlAbstractionMode.advanced
-          ? LearningPathMode.advanced
-          : LearningPathMode.simple;
-      final selected = await showDialog<AuthoredLearningPath>(
-        context: context,
-        barrierDismissible: false,
-        builder: (studioContext) => LearningPathStudioDialog(
-          catalog: catalog,
-          paths: _draftsFirst(controller),
-          initialDraft: draft,
-          workspaceNodes: workspaceNodes,
-          workspaceMode: workspaceMode,
-          onEditWorkspace: (draft) {
-            setState(() => _draft = draft);
-            Navigator.of(studioContext).pop();
-          },
-          onSave: controller.save,
-          onDelete: controller.delete,
-          onImport: () => _importBundle(controller),
-          onExport: (_) =>
-              _saveBundle(controller.exportBundle(), 'workshops.json'),
-          onExportRemote: _exportRemoteBundle,
-          onShareClassroom: (path) => showDialog<void>(
-            context: studioContext,
-            builder: (_) => ClassroomShareDialog(
+        if (_sharing case final path?)
+          Positioned.fill(
+            child: ClassroomSharePanel(
               catalog: catalog,
               path: path,
+              onClose: () => setState(() => _sharing = null),
               onSaveFile: () => _exportRemoteBundle(
                 path,
                 dialogTitle: catalog.text('tutorial.classroom.saveFile'),
               ),
             ),
           ),
-        ),
-      );
-      if (mounted && selected != null) widget.onStart(selected);
-    } finally {
-      if (mounted) setState(() => _opening = false);
-    }
+      ],
+    );
   }
 
   List<AuthoredLearningPath> _draftsFirst(

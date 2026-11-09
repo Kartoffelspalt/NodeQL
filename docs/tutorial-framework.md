@@ -9,11 +9,11 @@ Veröffentlichung sind in [NodeQL Workshop Admin](admin-workshop-build.md)
 beschrieben.
 
 **Neuer Workshop** führt vom Namen zur ersten Aufgabe. Ein Schritt braucht
-einen Titel und eine Aufgabe. Unter **Zur Arbeitsfläche** können Lehrkräfte
-bei Bedarf Nodes vorbereiten und danach den Entwurf fortsetzen. In
+einen Titel und eine Aufgabe. Die Erstellungswerkzeuge liegen rechts neben
+der bedienbaren Arbeitsfläche anstelle der beiden Vorschauen. In
 **Übungs-Nodes** lässt sich pro Schritt auswählen, welche Nodes die Klasse
-aufbaut. Beschriftungen lassen sich einzelnen Nodes zuordnen und erscheinen
-im Player als nummerierte Timeline-Karten.
+aufbaut. **Aktuelle Nodes übernehmen** aktualisiert die Auswahl direkt im
+geöffneten Schritt. Beschriftungen lassen sich einzelnen Nodes zuordnen.
 
 Unter **Interaktion** lässt sich pro Schritt festlegen, welche Nodes der
 Player hervorhebt und welche Aktionen vor **Weiter** nötig sind. Das
@@ -22,6 +22,7 @@ Workshop-Admin-Handbuch enthält ein [Beispiel mit einer Eingabeprüfung](admin-
 Eigene Learning Paths werden lokal in `nodeql_learning_paths.json` im
 Application-Support-Verzeichnis des Admin-Builds gespeichert.
 **Speichern und ausprobieren** öffnet den Pfad im geführten Player.
+**Weiter bearbeiten** stellt den eigenen Node-Aufbau vor dem Test wieder her.
 **Katalog exportieren** erstellt die veröffentlichbare `workshops.json`.
 
 ## Deklarativ im Quellcode

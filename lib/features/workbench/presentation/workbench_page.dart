@@ -479,7 +479,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
     _menuChannel.setMethodCallHandler(_handleNativeMenuAction);
-    if (!kIsWeb) {
+    if (!kIsWeb && ref.read(workshopAdminPanelProvider) == null) {
       Future<void>.microtask(
         () => ref.read(pluginPaletteProvider.notifier).reload(),
       );
@@ -520,6 +520,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _initializeFirstRunOnboarding() async {
+    if (ref.read(workshopAdminPanelProvider) != null) return;
     final controller = ref.read(onboardingLaunchProvider.notifier);
     await controller.initialize();
     if (!mounted || !ref.read(onboardingLaunchProvider).shouldShow) return;
@@ -664,7 +665,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final translationState = ref.watch(translationControllerProvider);
     final catalog = translationState.catalog;
     final locale = translationState.locale;
-    if (_workshopMode) {
+    if (_workshopMode || ref.watch(workshopAdminPanelProvider) != null) {
       return _WorkshopProviderScope(onExit: _exitWorkshop);
     }
     // Keep this shell reactive to workspace edits; autosave itself is driven
@@ -3076,6 +3077,9 @@ class _WorkshopWorkspaceViewState
   bool _loadingAuthoredStep = false;
   int _authoredLoadToken = 0;
   bool _runningSql = false;
+  String? _creationWorkspaceJson;
+  SqlAbstractionMode? _creationMode;
+  Matrix4? _creationTransform;
   final _downloads = RemoteWorkshopRepository();
 
   @override
@@ -3098,6 +3102,15 @@ class _WorkshopWorkspaceViewState
       if (previous?.revision != next.revision) _saveAuthoredProgress();
     });
     ref.listen(sqlModeProvider, (_, _) => _saveAuthoredProgress());
+    final adminPanelBuilder = ref.watch(workshopAdminPanelProvider);
+    final authoring =
+        adminPanelBuilder != null && ref.watch(workshopAuthoringProvider);
+    final creationHighlights = ref.watch(workshopAuthoringHighlightsProvider);
+    ref.listen(workshopAuthoringProvider, (previous, next) {
+      if (adminPanelBuilder != null && previous == false && next) {
+        _restoreCreationWorkspace();
+      }
+    });
     final roots = workspace.roots;
     final practice = _practice;
     final authoredPath = _authoredPath;
@@ -3163,6 +3176,8 @@ class _WorkshopWorkspaceViewState
           children: [
             _WorkshopModeTopBar(
               catalog: catalog,
+              authoring: authoring,
+              showClose: adminPanelBuilder == null,
               languageChoices: <SupportedLanguage>[
                 ...supportedLanguages,
                 for (final package in translationState.installed.values)
@@ -3209,10 +3224,15 @@ class _WorkshopWorkspaceViewState
                   final paletteWidth = compact
                       ? layout.paletteWidth.clamp(200.0, 280.0)
                       : layout.paletteWidth;
-                  final runtimeExtents = _runtimeDockExtents(
-                    size: constraints.biggest,
-                    layout: layout,
-                  );
+                  final creationWidth = (constraints.maxWidth * .38)
+                      .clamp(360.0, 520.0)
+                      .toDouble();
+                  final runtimeExtents = authoring
+                      ? (creationWidth, 0.0)
+                      : _runtimeDockExtents(
+                          size: constraints.biggest,
+                          layout: layout,
+                        );
                   final workspaceWidth = math.max(
                     0.0,
                     constraints.maxWidth - 78.0 - paletteWidth,
@@ -3220,12 +3240,14 @@ class _WorkshopWorkspaceViewState
                   final workspaceRightInset = runtimeExtents.$1
                       .clamp(0.0, math.max(0.0, workspaceWidth - 120.0))
                       .toDouble();
-                  final workspaceBottomInset = switch (layout
-                      .runtimePanelLayout) {
-                    RuntimePanelLayoutMode.rightSplit => 0.0,
-                    RuntimePanelLayoutMode.commandBottom ||
-                    RuntimePanelLayoutMode.previewBottom => runtimeExtents.$2,
-                  };
+                  final workspaceBottomInset = authoring
+                      ? 0.0
+                      : switch (layout.runtimePanelLayout) {
+                          RuntimePanelLayoutMode.rightSplit => 0.0,
+                          RuntimePanelLayoutMode.commandBottom ||
+                          RuntimePanelLayoutMode.previewBottom =>
+                            runtimeExtents.$2,
+                        };
                   final practicePanelMinHeight = 220.0;
                   final practicePanelMaxHeight = math.max(
                     practicePanelMinHeight,
@@ -3315,7 +3337,8 @@ class _WorkshopWorkspaceViewState
                                     bottom: 0,
                                     child: Column(
                                       children: [
-                                        if (authoredPath != null &&
+                                        if (!authoring &&
+                                            authoredPath != null &&
                                             authoredStep != null) ...[
                                           LearningPathTimelinePanel(
                                             catalog: catalog,
@@ -3372,7 +3395,8 @@ class _WorkshopWorkspaceViewState
                                                         )
                                                   : null,
                                             ),
-                                        ] else if (practice != null &&
+                                        ] else if (!authoring &&
+                                            practice != null &&
                                             definition != null &&
                                             result != null)
                                           AnimatedSwitcher(
@@ -3408,7 +3432,7 @@ class _WorkshopWorkspaceViewState
                                                   ),
                                             ),
                                           )
-                                        else
+                                        else if (!authoring)
                                           _WorkshopEmptyCoach(
                                             catalog: catalog,
                                             onChoosePath: () =>
@@ -3420,17 +3444,20 @@ class _WorkshopWorkspaceViewState
                                             transform: _transform,
                                             paletteWidth: 72.0 + paletteWidth,
                                             diagnostics: diagnostics,
-                                            learningPathCallouts:
-                                                _authoredGuideCallouts(
-                                                  authoredStep,
-                                                  authoredNode,
-                                                  authoredGuide,
-                                                ),
+                                            learningPathCallouts: authoring
+                                                ? const []
+                                                : _authoredGuideCallouts(
+                                                    authoredStep,
+                                                    authoredNode,
+                                                    authoredGuide,
+                                                  ),
                                             learningPathNodeIds:
                                                 _authoredNodeIds,
-                                            learningPathHighlights: focusIds,
+                                            learningPathHighlights: authoring
+                                                ? creationHighlights
+                                                : focusIds,
                                             learningPathInputHighlight:
-                                                focusedInput,
+                                                authoring ? null : focusedInput,
                                             onPaletteNodeAdded:
                                                 _registerAuthoredNode,
                                             onReporterAdded:
@@ -3447,17 +3474,42 @@ class _WorkshopWorkspaceViewState
                           ],
                         ),
                       ),
-                      _FloatingRuntimeWindows(
-                        sql: compileResult.sql,
-                        runtime: runtime,
-                        mode: mode,
-                        localeCode: localeCode,
-                        catalog: catalog,
-                        layout: layout,
-                        customMode: false,
-                        showCustomModeToggle: false,
-                        onToggleCustomMode: () {},
-                      ),
+                      if (adminPanelBuilder != null)
+                        PositionedDirectional(
+                          top: 0,
+                          bottom: 0,
+                          end: 0,
+                          width: creationWidth,
+                          child: Offstage(
+                            offstage: !authoring,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: BorderDirectional(
+                                  start: BorderSide(
+                                    color: Theme.of(context).dividerColor,
+                                  ),
+                                ),
+                              ),
+                              child: adminPanelBuilder(
+                                context,
+                                ref,
+                                _tryCreatedWorkshop,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (!authoring)
+                        _FloatingRuntimeWindows(
+                          sql: compileResult.sql,
+                          runtime: runtime,
+                          mode: mode,
+                          localeCode: localeCode,
+                          catalog: catalog,
+                          layout: layout,
+                          customMode: false,
+                          showCustomModeToggle: false,
+                          onToggleCustomMode: () {},
+                        ),
                     ],
                   );
                 },
@@ -3467,6 +3519,33 @@ class _WorkshopWorkspaceViewState
         ),
       ),
     );
+  }
+
+  Future<void> _tryCreatedWorkshop(AuthoredLearningPath path) async {
+    if (_loadingAuthoredStep || path.steps.isEmpty) return;
+    _creationWorkspaceJson ??= ref
+        .read(workspaceProvider.notifier)
+        .toJsonString();
+    _creationMode ??= ref.read(sqlModeProvider);
+    _creationTransform ??= _transform.value.clone();
+    await _startAuthoredPath(path, restart: true);
+    if (mounted) ref.read(workshopAuthoringProvider.notifier).state = false;
+  }
+
+  void _restoreCreationWorkspace() {
+    _closeAuthoredPath();
+    final source = _creationWorkspaceJson;
+    _creationWorkspaceJson = null;
+    if (source != null) {
+      ref.read(workspaceProvider.notifier).loadFromJsonString(source);
+    }
+    final mode = _creationMode;
+    _creationMode = null;
+    if (mode != null)
+      unawaited(ref.read(sqlModeProvider.notifier).setMode(mode));
+    _transform.value = _creationTransform ?? Matrix4.identity();
+    _creationTransform = null;
+    ref.read(sqlRuntimeProvider.notifier).clearResults();
   }
 
   Future<void> _runWorkshopSql() async {
@@ -3689,7 +3768,10 @@ class _WorkshopWorkspaceViewState
 
   void _closePractice() => setState(() => _practice = null);
 
-  Future<void> _startAuthoredPath(AuthoredLearningPath path) async {
+  Future<void> _startAuthoredPath(
+    AuthoredLearningPath path, {
+    bool restart = false,
+  }) async {
     if (path.steps.isEmpty) return;
     _saveAuthoredProgress();
     final tutorial = ref.read(tutorialControllerProvider.notifier);
@@ -3703,7 +3785,10 @@ class _WorkshopWorkspaceViewState
       (step) => step.id == progress.currentStepId,
     );
     var resume =
-        !repeat && savedStepIndex >= 0 && progress.workspaceJson != null;
+        !restart &&
+        !repeat &&
+        savedStepIndex >= 0 &&
+        progress.workspaceJson != null;
     _loadingAuthoredStep = true;
     final token = ++_authoredLoadToken;
     final workspace = ref.read(workspaceProvider.notifier);
@@ -4539,6 +4624,8 @@ class _GuidedLearningCard extends StatelessWidget {
 class _WorkshopModeTopBar extends StatelessWidget {
   const _WorkshopModeTopBar({
     required this.catalog,
+    this.authoring = false,
+    this.showClose = true,
     required this.languageChoices,
     required this.localeCode,
     required this.onLocale,
@@ -4556,6 +4643,8 @@ class _WorkshopModeTopBar extends StatelessWidget {
   });
 
   final TranslationCatalog catalog;
+  final bool authoring;
+  final bool showClose;
   final List<SupportedLanguage> languageChoices;
   final String localeCode;
   final ValueChanged<String> onLocale;
@@ -4594,7 +4683,13 @@ class _WorkshopModeTopBar extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  catalog.text('tutorial.window.title'),
+                  catalog.text(
+                    authoring
+                        ? 'tutorial.studio.title'
+                        : 'tutorial.window.title',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: colors.topBarForeground,
                     fontSize: 18,
@@ -4602,7 +4697,13 @@ class _WorkshopModeTopBar extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  catalog.text('tutorial.window.subtitle'),
+                  catalog.text(
+                    authoring
+                        ? 'tutorial.studio.dockedHelp'
+                        : 'tutorial.window.subtitle',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: colors.muted, fontSize: 11),
                 ),
               ],
@@ -4631,14 +4732,18 @@ class _WorkshopModeTopBar extends StatelessWidget {
             dropdownColor: colors.panelElevated,
             iconEnabledColor: colors.topBarForeground,
             underline: const SizedBox.shrink(),
-            style: TextStyle(color: colors.topBarForeground),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.topBarForeground),
             items: languageChoices
                 .map(
                   (language) => DropdownMenuItem<String>(
                     value: language.code,
                     child: Text(
                       language.nativeName,
-                      style: TextStyle(color: colors.topBarForeground),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colors.topBarForeground,
+                      ),
                     ),
                   ),
                 )
@@ -4648,25 +4753,26 @@ class _WorkshopModeTopBar extends StatelessWidget {
             },
           ),
           const SizedBox(width: 10),
-          FilledButton.icon(
-            key: const ValueKey('workshop-run-sqlite'),
-            onPressed: running ? null : onRun,
-            style: guideRun
-                ? FilledButton.styleFrom(
-                    side: const BorderSide(
-                      color: _workshopFocusColor,
-                      width: 2,
-                    ),
-                  )
-                : null,
-            icon: running
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.play_arrow_rounded),
-            label: Text(catalog.text('toolbar.runSql')),
-          ),
+          if (!authoring)
+            FilledButton.icon(
+              key: const ValueKey('workshop-run-sqlite'),
+              onPressed: running ? null : onRun,
+              style: guideRun
+                  ? FilledButton.styleFrom(
+                      side: const BorderSide(
+                        color: _workshopFocusColor,
+                        width: 2,
+                      ),
+                    )
+                  : null,
+              icon: running
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.play_arrow_rounded),
+              label: Text(catalog.text('toolbar.runSql')),
+            ),
           IconButton(
             key: const ValueKey('workshop-column-link-tool'),
             onPressed: onToggleColumnLink,
@@ -4684,20 +4790,25 @@ class _WorkshopModeTopBar extends StatelessWidget {
                 : null,
           ),
           const SizedBox(width: 10),
-          FilledButton.icon(
-            key: const ValueKey('workshop-choose-path'),
-            onPressed: onLessons,
-            icon: const Icon(Icons.route_outlined),
-            label: Text(catalog.text('tutorial.window.paths')),
-          ),
+          if (!authoring)
+            FilledButton.icon(
+              key: const ValueKey('workshop-choose-path'),
+              onPressed: onLessons,
+              icon: const Icon(Icons.route_outlined),
+              label: Text(catalog.text('tutorial.window.paths')),
+            ),
           const SizedBox(width: 6),
-          if (adminAction != null) ...[adminAction!, const SizedBox(width: 6)],
-          IconButton(
-            key: const ValueKey('workshop-mode-exit'),
-            onPressed: onClose,
-            tooltip: catalog.text('tutorial.window.close'),
-            icon: const Icon(Icons.close),
-          ),
+          if (!authoring && adminAction != null) ...[
+            adminAction!,
+            const SizedBox(width: 6),
+          ],
+          if (showClose)
+            IconButton(
+              key: const ValueKey('workshop-mode-exit'),
+              onPressed: onClose,
+              tooltip: catalog.text('tutorial.window.close'),
+              icon: const Icon(Icons.close),
+            ),
         ],
       ),
     );

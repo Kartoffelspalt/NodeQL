@@ -13,8 +13,11 @@ void main() {
         learningPathLibraryProvider.overrideWith(
           (_) => LearningPathLibraryController(),
         ),
+        workshopAdminPanelProvider.overrideWithValue(
+          (context, ref, onStart) => WorkshopAdminPanel(onStart: onStart),
+        ),
         workshopAdminActionProvider.overrideWithValue(
-          (context, ref, onStart) => WorkshopAdminLauncher(onStart: onStart),
+          (context, ref, onStart) => const WorkshopAdminLauncher(),
         ),
       ],
       child: const NodeQlApp(),

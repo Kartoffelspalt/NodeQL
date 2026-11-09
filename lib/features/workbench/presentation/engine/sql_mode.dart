@@ -31,7 +31,7 @@ class SqlModeController extends StateNotifier<SqlAbstractionMode> {
 
   Future<void> setMode(SqlAbstractionMode mode) async {
     await initialize();
-    if (state == mode) return;
+    if (!mounted || state == mode) return;
     state = mode;
     final storageFile = _storageFile;
     if (storageFile == null) return;

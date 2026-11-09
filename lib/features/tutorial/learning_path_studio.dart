@@ -8,8 +8,8 @@ import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 
-class LearningPathStudioDialog extends StatefulWidget {
-  const LearningPathStudioDialog({
+class LearningPathStudioPanel extends StatefulWidget {
+  const LearningPathStudioPanel({
     required this.catalog,
     required this.paths,
     required this.workspaceNodes,
@@ -17,7 +17,8 @@ class LearningPathStudioDialog extends StatefulWidget {
     required this.onDelete,
     this.initialDraft,
     this.workspaceMode = LearningPathMode.simple,
-    this.onEditWorkspace,
+    required this.onStart,
+    this.onHighlightsChanged,
     this.onImport,
     this.onExport,
     this.onExportRemote,
@@ -30,7 +31,8 @@ class LearningPathStudioDialog extends StatefulWidget {
   final List<BlockNode> workspaceNodes;
   final LearningPathMode workspaceMode;
   final AuthoredLearningPath? initialDraft;
-  final ValueChanged<AuthoredLearningPath>? onEditWorkspace;
+  final Future<void> Function(AuthoredLearningPath) onStart;
+  final ValueChanged<Set<String>>? onHighlightsChanged;
   final Future<void> Function(AuthoredLearningPath path) onSave;
   final Future<void> Function(String id) onDelete;
   final Future<List<AuthoredLearningPath>> Function()? onImport;
@@ -39,13 +41,14 @@ class LearningPathStudioDialog extends StatefulWidget {
   final ValueChanged<AuthoredLearningPath>? onShareClassroom;
 
   @override
-  State<LearningPathStudioDialog> createState() =>
-      _LearningPathStudioDialogState();
+  State<LearningPathStudioPanel> createState() =>
+      _LearningPathStudioPanelState();
 }
 
-class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
+class _LearningPathStudioPanelState extends State<LearningPathStudioPanel> {
   late List<AuthoredLearningPath> _paths;
   AuthoredLearningPath? _editing;
+  String? _pendingDelete;
 
   TranslationCatalog get catalog => widget.catalog;
 
@@ -58,13 +61,10 @@ class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.all(24),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 980, maxHeight: 760),
-        child: _editing == null ? _buildLibrary() : _buildEditor(_editing),
-      ),
+    return Material(
+      key: const ValueKey('workshop-creation-panel'),
+      color: Theme.of(context).colorScheme.surface,
+      child: _editing == null ? _buildLibrary() : _buildEditor(_editing),
     );
   }
 
@@ -74,7 +74,6 @@ class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
         _StudioHeader(
           title: catalog.text('tutorial.studio.title'),
           subtitle: catalog.text('tutorial.studio.subtitle'),
-          onClose: () => Navigator.of(context).pop(),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
@@ -163,6 +162,24 @@ class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
                 '${path.calloutCount} ${catalog.text('tutorial.studio.callouts')}',
               ),
             ),
+            if (_pendingDelete == path.id) ...[
+              Text(
+                catalog.text('tutorial.studio.deleteBody', {'title': title}),
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: () => setState(() => _pendingDelete = null),
+                    child: Text(catalog.text('tutorial.studio.cancel')),
+                  ),
+                  TextButton(
+                    onPressed: () => _delete(path),
+                    child: Text(catalog.text('tutorial.studio.deleteConfirm')),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 8),
             Wrap(
               spacing: 4,
@@ -175,7 +192,7 @@ class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
                   label: Text(catalog.text('tutorial.studio.edit')),
                 ),
                 TextButton.icon(
-                  onPressed: () => Navigator.of(context).pop(path),
+                  onPressed: () => widget.onStart(path),
                   icon: const Icon(Icons.play_arrow_rounded),
                   label: Text(catalog.text('tutorial.studio.start')),
                 ),
@@ -193,7 +210,7 @@ class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
                   ),
                 IconButton(
                   tooltip: catalog.text('tutorial.studio.delete'),
-                  onPressed: () => _delete(path),
+                  onPressed: () => setState(() => _pendingDelete = path.id),
                   icon: const Icon(Icons.delete_outline),
                 ),
               ],
@@ -211,23 +228,20 @@ class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
       initialPath: path!,
       workspaceNodes: widget.workspaceNodes,
       workspaceMode: widget.workspaceMode,
-      onEditWorkspace: widget.onEditWorkspace,
+      onHighlightsChanged: widget.onHighlightsChanged,
       onCancel: () => setState(() => _editing = null),
       onSave: (next, tryWorkshop) async {
         await widget.onSave(next);
         if (!mounted) return;
-        if (tryWorkshop) {
-          Navigator.of(context).pop(next);
-          return;
-        }
         setState(() {
           _paths = [
             next,
             for (final existing in _paths)
               if (existing.id != next.id) existing,
           ];
-          _editing = null;
+          _editing = next;
         });
+        if (tryWorkshop) await widget.onStart(next);
       },
     );
   }
@@ -240,26 +254,6 @@ class _LearningPathStudioDialogState extends State<LearningPathStudioDialog> {
   );
 
   Future<void> _delete(AuthoredLearningPath path) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(catalog.text('tutorial.studio.deleteTitle')),
-        content: Text(
-          catalog.text('tutorial.studio.deleteBody', {'title': path.title}),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(catalog.text('tutorial.studio.cancel')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(catalog.text('tutorial.studio.deleteConfirm')),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
     await widget.onDelete(path.id);
     if (!mounted) return;
     setState(() => _paths.removeWhere((item) => item.id == path.id));
@@ -289,7 +283,7 @@ class _LearningPathEditor extends StatefulWidget {
     required this.initialPath,
     required this.workspaceNodes,
     required this.workspaceMode,
-    required this.onEditWorkspace,
+    required this.onHighlightsChanged,
     required this.onCancel,
     required this.onSave,
     super.key,
@@ -299,7 +293,7 @@ class _LearningPathEditor extends StatefulWidget {
   final AuthoredLearningPath initialPath;
   final List<BlockNode> workspaceNodes;
   final LearningPathMode workspaceMode;
-  final ValueChanged<AuthoredLearningPath>? onEditWorkspace;
+  final ValueChanged<Set<String>>? onHighlightsChanged;
   final VoidCallback onCancel;
   final Future<void> Function(AuthoredLearningPath path, bool tryWorkshop)
   onSave;
@@ -312,6 +306,7 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
   late final TextEditingController _title;
   late final TextEditingController _description;
   late final List<LearningPathStep> _steps;
+  int? _editingStep;
   bool _saving = false;
   bool _saveFailed = false;
 
@@ -334,6 +329,33 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final editingStep = _editingStep;
+    if (editingStep != null) {
+      return _LearningPathStepEditor(
+        key: ValueKey('step-editor-$editingStep'),
+        catalog: catalog,
+        workspaceNodes: widget.workspaceNodes,
+        workspaceMode: widget.workspaceMode,
+        stepNumber: editingStep + 1,
+        initialStep: editingStep < _steps.length ? _steps[editingStep] : null,
+        onHighlightsChanged: widget.onHighlightsChanged,
+        onCancel: () {
+          widget.onHighlightsChanged?.call({});
+          setState(() => _editingStep = null);
+        },
+        onSave: (step) {
+          widget.onHighlightsChanged?.call({});
+          setState(() {
+            if (editingStep == _steps.length) {
+              _steps.add(step);
+            } else {
+              _steps[editingStep] = step;
+            }
+            _editingStep = null;
+          });
+        },
+      );
+    }
     final hasName = _title.text.trim().isNotEmpty;
     final canSave = !_saving && hasName && _steps.isNotEmpty;
     final message = _saveFailed
@@ -427,16 +449,6 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
                     icon: const Icon(Icons.add),
                     label: Text(catalog.text('tutorial.studio.addStep')),
                   ),
-                  if (widget.onEditWorkspace != null)
-                    TextButton.icon(
-                      onPressed: _saving
-                          ? null
-                          : () => widget.onEditWorkspace!(_draft()),
-                      icon: const Icon(Icons.dashboard_outlined),
-                      label: Text(
-                        catalog.text('tutorial.studio.editWorkspace'),
-                      ),
-                    ),
                 ],
               ),
             ],
@@ -487,25 +499,8 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
     );
   }
 
-  Future<void> _openStep([int? index]) async {
-    final step = await showDialog<LearningPathStep>(
-      context: context,
-      builder: (_) => _LearningPathStepDialog(
-        catalog: catalog,
-        workspaceNodes: widget.workspaceNodes,
-        workspaceMode: widget.workspaceMode,
-        stepNumber: index == null ? _steps.length + 1 : index + 1,
-        initialStep: index == null ? null : _steps[index],
-      ),
-    );
-    if (step == null || !mounted) return;
-    setState(() {
-      if (index == null) {
-        _steps.add(step);
-      } else {
-        _steps[index] = step;
-      }
-    });
+  void _openStep([int? index]) {
+    setState(() => _editingStep = index ?? _steps.length);
   }
 
   void _move(int from, int to) {
@@ -542,6 +537,7 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
     });
     try {
       await widget.onSave(draft, tryWorkshop);
+      if (mounted) setState(() => _saving = false);
     } on Exception {
       if (mounted) {
         setState(() {
@@ -553,12 +549,16 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
   }
 }
 
-class _LearningPathStepDialog extends StatefulWidget {
-  const _LearningPathStepDialog({
+class _LearningPathStepEditor extends StatefulWidget {
+  const _LearningPathStepEditor({
     required this.catalog,
     required this.workspaceNodes,
     required this.workspaceMode,
     required this.stepNumber,
+    super.key,
+    required this.onSave,
+    required this.onCancel,
+    this.onHighlightsChanged,
     this.initialStep,
   });
 
@@ -567,13 +567,16 @@ class _LearningPathStepDialog extends StatefulWidget {
   final LearningPathMode workspaceMode;
   final int stepNumber;
   final LearningPathStep? initialStep;
+  final ValueChanged<LearningPathStep> onSave;
+  final VoidCallback onCancel;
+  final ValueChanged<Set<String>>? onHighlightsChanged;
 
   @override
-  State<_LearningPathStepDialog> createState() =>
-      _LearningPathStepDialogState();
+  State<_LearningPathStepEditor> createState() =>
+      _LearningPathStepEditorState();
 }
 
-class _LearningPathStepDialogState extends State<_LearningPathStepDialog> {
+class _LearningPathStepEditorState extends State<_LearningPathStepEditor> {
   late final TextEditingController _title;
   late final TextEditingController _instruction;
   late final TextEditingController _hint;
@@ -585,6 +588,7 @@ class _LearningPathStepDialogState extends State<_LearningPathStepDialog> {
   late final List<LearningPathNodeCallout> _callouts;
   late final Set<String> _highlights;
   late List<LearningPathRequirement> _requirements;
+  bool _editingRule = false;
   String? _targetRef;
   LearningPathCalloutSide _side = LearningPathCalloutSide.right;
 
@@ -620,6 +624,12 @@ class _LearningPathStepDialogState extends State<_LearningPathStepDialog> {
               .toList() ??
           _workspaceTemplates(),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted)
+        widget.onHighlightsChanged?.call(
+          _highlights.where(_isInteractionRef).toSet(),
+        );
+    });
   }
 
   @override
@@ -669,6 +679,9 @@ class _LearningPathStepDialogState extends State<_LearningPathStepDialog> {
       } else {
         _selectedRefs.remove(node.ref);
       }
+      widget.onHighlightsChanged?.call(
+        _highlights.where(_isInteractionRef).toSet(),
+      );
       if (!_selectedRefs.contains(_targetRef)) {
         _targetRef = _nodes
             .where((node) => _selectedRefs.contains(node.ref))
@@ -699,147 +712,172 @@ class _LearningPathStepDialogState extends State<_LearningPathStepDialog> {
   @override
   Widget build(BuildContext context) {
     final canSave =
-        _title.text.trim().isNotEmpty && _instruction.text.trim().isNotEmpty;
-    final canReplaceNodes =
-        widget.initialStep != null &&
-        widget.workspaceNodes.any(
-          (node) => node.type != BlockType.eventGreenFlag,
-        );
-    return AlertDialog(
-      scrollable: true,
-      title: Text(
-        catalog.text('tutorial.studio.stepEditor', {
-          'number': widget.stepNumber,
-        }),
-      ),
-      content: SizedBox(
-        width: 560,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(catalog.text('tutorial.studio.stepHelp')),
-            const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey('learning-step-title'),
-              controller: _title,
-              autofocus: widget.initialStep == null,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: catalog.text('tutorial.studio.stepTitle'),
-                border: const OutlineInputBorder(),
+        !_editingRule &&
+        _title.text.trim().isNotEmpty &&
+        _instruction.text.trim().isNotEmpty;
+    final canReplaceNodes = widget.workspaceNodes.any(
+      (node) => node.type != BlockType.eventGreenFlag,
+    );
+    return Column(
+      children: [
+        _StudioHeader(
+          title: catalog.text('tutorial.studio.stepEditor', {
+            'number': widget.stepNumber,
+          }),
+          subtitle: catalog.text('tutorial.studio.stepHelp'),
+          onBack: widget.onCancel,
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(18),
+            children: [
+              Text(catalog.text('tutorial.studio.stepHelp')),
+              const SizedBox(height: 16),
+              TextField(
+                key: const ValueKey('learning-step-title'),
+                controller: _title,
+                autofocus: widget.initialStep == null,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: catalog.text('tutorial.studio.stepTitle'),
+                  border: const OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('learning-step-instruction'),
-              controller: _instruction,
-              onChanged: (_) => setState(() {}),
-              minLines: 2,
-              maxLines: 4,
-              decoration: InputDecoration(
-                labelText: catalog.text('tutorial.studio.instruction'),
-                hintText: catalog.text('tutorial.studio.instructionExample'),
-                border: const OutlineInputBorder(),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('learning-step-instruction'),
+                controller: _instruction,
+                onChanged: (_) => setState(() {}),
+                minLines: 2,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: catalog.text('tutorial.studio.instruction'),
+                  hintText: catalog.text('tutorial.studio.instructionExample'),
+                  border: const OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: Text(catalog.text('tutorial.studio.hint')),
-              initiallyExpanded: _hint.text.isNotEmpty,
-              children: [
-                TextField(
-                  controller: _hint,
-                  decoration: InputDecoration(
-                    labelText: catalog.text('tutorial.studio.hintLabel'),
-                    border: const OutlineInputBorder(),
+              const SizedBox(height: 10),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(catalog.text('tutorial.studio.hint')),
+                initiallyExpanded: _hint.text.isNotEmpty,
+                children: [
+                  TextField(
+                    controller: _hint,
+                    decoration: InputDecoration(
+                      labelText: catalog.text('tutorial.studio.hintLabel'),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              if (_nodes.isNotEmpty || canReplaceNodes)
+                ExpansionTile(
+                  key: const ValueKey('learning-step-nodes'),
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(catalog.text('tutorial.studio.practiceNodes')),
+                  subtitle: Text(
+                    catalog.text('tutorial.studio.nodeSnapshot', {
+                      'count': _selectedRefs.length,
+                    }),
+                  ),
+                  children: [
+                    for (final node in _nodes)
+                      CheckboxListTile(
+                        key: ValueKey('learning-step-node-${node.ref}'),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          _nodeLabel(node),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        value: _selectedRefs.contains(node.ref),
+                        onChanged: _editingRule
+                            ? null
+                            : (selected) => _toggleNode(node, selected == true),
+                      ),
+                  ],
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    catalog.text('tutorial.studio.noNodes'),
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
-              ],
-            ),
-            if (_nodes.isNotEmpty || canReplaceNodes)
-              ExpansionTile(
-                key: const ValueKey('learning-step-nodes'),
-                tilePadding: EdgeInsets.zero,
-                title: Text(catalog.text('tutorial.studio.practiceNodes')),
-                subtitle: Text(
-                  catalog.text('tutorial.studio.nodeSnapshot', {
-                    'count': _selectedRefs.length,
-                  }),
+              if (canReplaceNodes)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    key: const ValueKey('learning-step-use-workspace'),
+                    onPressed: _editingRule
+                        ? null
+                        : () => setState(() {
+                            _selectNodes(_workspaceTemplates());
+                            widget.onHighlightsChanged?.call(
+                              _highlights.where(_isInteractionRef).toSet(),
+                            );
+                          }),
+                    icon: const Icon(Icons.add_to_photos_outlined),
+                    label: Text(
+                      catalog.text('tutorial.studio.useWorkspaceNodes'),
+                    ),
+                  ),
                 ),
-                children: [
-                  for (final node in _nodes)
-                    CheckboxListTile(
-                      key: ValueKey('learning-step-node-${node.ref}'),
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        _nodeLabel(node),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      value: _selectedRefs.contains(node.ref),
-                      onChanged: (selected) =>
-                          _toggleNode(node, selected == true),
-                    ),
-                  if (canReplaceNodes)
-                    TextButton.icon(
-                      onPressed: () =>
-                          setState(() => _selectNodes(_workspaceTemplates())),
-                      icon: const Icon(Icons.refresh),
-                      label: Text(
-                        catalog.text('tutorial.studio.useWorkspaceNodes'),
-                      ),
-                    ),
+              LearningPathInteractionEditor(
+                catalog: catalog,
+                onEditingChanged: (editing) =>
+                    setState(() => _editingRule = editing),
+                mode:
+                    (widget.initialStep?.mode ?? widget.workspaceMode) ==
+                        LearningPathMode.simple
+                    ? SqlAbstractionMode.simple
+                    : SqlAbstractionMode.advanced,
+                nodes: [
+                  ?_startNode,
+                  ..._nodes.where((node) => _selectedRefs.contains(node.ref)),
                 ],
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  catalog.text('tutorial.studio.noNodes'),
-                  style: Theme.of(context).textTheme.bodySmall,
+                nodeLabel: _nodeLabel,
+                highlights: _highlights.where(_isInteractionRef).toSet(),
+                requirements: _selectedRequirements.toList(),
+                onHighlight: (ref) => setState(() {
+                  if (!_highlights.add(ref)) _highlights.remove(ref);
+                  widget.onHighlightsChanged?.call(
+                    _highlights.where(_isInteractionRef).toSet(),
+                  );
+                }),
+                onRequirementsChanged: (rules) =>
+                    setState(() => _requirements = rules),
+              ),
+              if (_selectedRefs.isNotEmpty)
+                ExpansionTile(
+                  key: const ValueKey('learning-step-callouts'),
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(catalog.text('tutorial.studio.explainNodes')),
+                  initiallyExpanded: _callouts.isNotEmpty,
+                  children: _buildCalloutControls(),
                 ),
-              ),
-            LearningPathInteractionEditor(
-              catalog: catalog,
-              mode:
-                  (widget.initialStep?.mode ?? widget.workspaceMode) ==
-                      LearningPathMode.simple
-                  ? SqlAbstractionMode.simple
-                  : SqlAbstractionMode.advanced,
-              nodes: [
-                ?_startNode,
-                ..._nodes.where((node) => _selectedRefs.contains(node.ref)),
-              ],
-              nodeLabel: _nodeLabel,
-              highlights: _highlights.where(_isInteractionRef).toSet(),
-              requirements: _selectedRequirements.toList(),
-              onHighlight: (ref) => setState(() {
-                if (!_highlights.add(ref)) _highlights.remove(ref);
-              }),
-              onRequirementsChanged: (rules) =>
-                  setState(() => _requirements = rules),
-            ),
-            if (_selectedRefs.isNotEmpty)
-              ExpansionTile(
-                key: const ValueKey('learning-step-callouts'),
-                tilePadding: EdgeInsets.zero,
-                title: Text(catalog.text('tutorial.studio.explainNodes')),
-                initiallyExpanded: _callouts.isNotEmpty,
-                children: _buildCalloutControls(),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(catalog.text('tutorial.studio.cancel')),
-        ),
-        FilledButton(
-          key: const ValueKey('learning-step-apply'),
-          onPressed: canSave ? _save : null,
-          child: Text(catalog.text('tutorial.studio.applyStep')),
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: widget.onCancel,
+                child: Text(catalog.text('tutorial.studio.cancel')),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                key: const ValueKey('learning-step-apply'),
+                onPressed: canSave ? _save : null,
+                child: Text(catalog.text('tutorial.studio.applyStep')),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -958,7 +996,7 @@ class _LearningPathStepDialogState extends State<_LearningPathStepDialog> {
             _callouts.any((callout) => callout.targetRef == start.ref) ||
             widget.initialStep?.nodes.any((node) => node.ref == start.ref) ==
                 true);
-    Navigator.of(context).pop(
+    widget.onSave(
       LearningPathStep(
         id:
             widget.initialStep?.id ??
@@ -1073,13 +1111,11 @@ class _StudioHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.onBack,
-    this.onClose,
   });
 
   final String title;
   final String subtitle;
   final VoidCallback? onBack;
-  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -1110,12 +1146,6 @@ class _StudioHeader extends StatelessWidget {
               ],
             ),
           ),
-          if (onClose != null)
-            IconButton(
-              onPressed: onClose,
-              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-              icon: const Icon(Icons.close),
-            ),
         ],
       ),
     );
