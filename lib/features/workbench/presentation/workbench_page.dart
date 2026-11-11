@@ -3541,8 +3541,9 @@ class _WorkshopWorkspaceViewState
     }
     final mode = _creationMode;
     _creationMode = null;
-    if (mode != null)
+    if (mode != null) {
       unawaited(ref.read(sqlModeProvider.notifier).setMode(mode));
+    }
     _transform.value = _creationTransform ?? Matrix4.identity();
     _creationTransform = null;
     ref.read(sqlRuntimeProvider.notifier).clearResults();

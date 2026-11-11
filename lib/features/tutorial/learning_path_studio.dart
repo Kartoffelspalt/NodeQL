@@ -625,10 +625,11 @@ class _LearningPathStepEditorState extends State<_LearningPathStepEditor> {
           _workspaceTemplates(),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted)
+      if (mounted) {
         widget.onHighlightsChanged?.call(
           _highlights.where(_isInteractionRef).toSet(),
         );
+      }
     });
   }
 
