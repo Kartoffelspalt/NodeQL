@@ -27,18 +27,25 @@ x64. Web, Android, and iOS are not release targets yet.
 
 The merged `pubspec.yaml` change starts the `Desktop Release` workflow. It
 validates that the version is newer and has not already been published,
-generates and validates AI language packs, builds and signs all three desktop
-targets with those packages included, generates `SHA256SUMS.txt`, and creates
+attempts AI language pack generation, builds and signs all three desktop
+targets, generates `SHA256SUMS.txt`, and creates
 the matching Git tag and GitHub release only after all quality and build jobs
 succeed.
 
-Language packages are generated once and shared across the desktop build jobs.
-Reviewed translations override generated messages; source hashes and Actions
-caching avoid translating unchanged strings again. API or translation validation
-failures stop the release. The release also contains
-`nodeql-translations-X.Y.Z.tar.gz`. After publication, the same catalog is deployed
-to GitHub Pages for language downloads. A Pages failure can be retried without
-rebuilding or republishing the installers.
+The desktop build jobs share the complete, validated language packs for the
+release. Reviewed translations override generated messages. Actions caches
+successful batches by source hash for future runs. If generation fails, the
+release continues with built-in translations and any complete packs for the
+current build. The language pack archive is included when packs are available.
+GitHub Pages is updated after a release with a complete generated catalog. A
+Pages failure can be retried independently of the installers.
+
+To retry an unpublished release after a workflow or source fix has been merged,
+run **Desktop Release → Run workflow** on the release branch with the number of
+the original release PR. The retry uses the current branch commit, the original
+release notes, and the same version and build number. It checks the original
+version increase and skips an existing release. Enable `skip_translations` to
+build with the complete language packs already cached for that build number.
 
 The release jobs run when the release version increases on `master`, the build
 number increases, and the release tag does not already exist. The workflow

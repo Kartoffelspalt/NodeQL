@@ -21,6 +21,8 @@ class GeminiTranslationClient {
     this.model = defaultGeminiTranslationModel,
     this.timeout = const Duration(seconds: 90),
     this.retryDelay = const Duration(seconds: 2),
+    this.wait = Future<void>.delayed,
+    this.log,
   }) {
     if (!RegExp(r'^gemini-[a-z0-9][a-z0-9._-]*$').hasMatch(model)) {
       throw const FormatException(
@@ -37,6 +39,8 @@ class GeminiTranslationClient {
   final String apiKey;
   final Duration timeout;
   final Duration retryDelay;
+  final Future<void> Function(Duration) wait;
+  final void Function(String)? log;
 
   Uri get endpoint => Uri.https(
     'generativelanguage.googleapis.com',
@@ -48,10 +52,15 @@ class GeminiTranslationClient {
     Map<String, String> messages,
   ) async {
     for (var attempt = 0; attempt < 3; attempt++) {
+      var delay = retryDelay * (attempt + 1);
       try {
         return await _request(locale, messages).timeout(timeout);
       } on TranslationRequestException catch (error) {
         if (!error.retryable || attempt == 2) rethrow;
+        if (error.retryAfter case final retryAfter?) {
+          delay = retryAfter * (attempt + 1);
+          log?.call('Gemini rate limit. Retrying in ${delay.inSeconds}s.');
+        }
       } on FormatException {
         if (attempt == 2) {
           throw const FormatException(
@@ -67,7 +76,7 @@ class GeminiTranslationClient {
           );
         }
       }
-      await Future<void>.delayed(retryDelay * (attempt + 1));
+      await wait(delay);
     }
     throw StateError('Unreachable');
   }
@@ -121,12 +130,12 @@ class GeminiTranslationClient {
         },
       });
     final response = await client.send(request);
-    if (response.statusCode != 200) {
+    if (response.statusCode != 200 && response.statusCode != 429) {
       // Do not print response bodies: providers may echo credentials or input.
       await response.stream.drain<void>();
       throw TranslationRequestException(
         'Gemini translation request failed (HTTP ${response.statusCode}).',
-        retryable: response.statusCode == 429 || response.statusCode >= 500,
+        retryable: response.statusCode >= 500,
       );
     }
     final bytes = <int>[];
@@ -135,6 +144,9 @@ class GeminiTranslationClient {
       if (bytes.length > maxTranslationPackageBytes) {
         throw const FormatException('Gemini response exceeds 2 MiB.');
       }
+    }
+    if (response.statusCode == 429) {
+      throw _rateLimitError(response.headers['retry-after'], bytes);
     }
     final decoded = jsonDecode(utf8.decode(bytes));
     if (decoded is! Map) {
@@ -168,36 +180,87 @@ class GeminiTranslationClient {
         .where((part) => part['thought'] != true && part['text'] is String)
         .map((part) => part['text'] as String)
         .join();
-    final translated = jsonDecode(text);
-    if (translated is! Map ||
-        translated.length != messages.length ||
-        !messages.keys.every(translated.containsKey)) {
-      throw const FormatException(
-        'Gemini response keys do not match the batch.',
-      );
-    }
-    final result = <String, String>{};
-    for (final key in messages.keys) {
-      final value = translated[key];
-      if (value is! String ||
-          value.trim().isEmpty ||
-          !_samePlaceholders(messages[key]!, value)) {
-        throw const FormatException(
-          'Gemini response has invalid strings or placeholders.',
-        );
-      }
-      result[key] = value;
-    }
-    return result;
+    return _validateBatch(messages, jsonDecode(text));
   }
 }
 
+Map<String, String> _validateBatch(
+  Map<String, String> messages,
+  Object? translated,
+) {
+  if (translated is! Map ||
+      translated.length != messages.length ||
+      !messages.keys.every(translated.containsKey)) {
+    throw const FormatException('Gemini response keys do not match the batch.');
+  }
+  final result = <String, String>{};
+  for (final key in messages.keys) {
+    final value = translated[key];
+    if (value is! String ||
+        value.trim().isEmpty ||
+        !_samePlaceholders(messages[key]!, value)) {
+      throw const FormatException(
+        'Gemini response has invalid strings or placeholders.',
+      );
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
 class TranslationRequestException implements Exception {
-  const TranslationRequestException(this.message, {this.retryable = false});
+  const TranslationRequestException(
+    this.message, {
+    this.retryable = false,
+    this.retryAfter,
+  });
   final String message;
   final bool retryable;
+  final Duration? retryAfter;
   @override
   String toString() => message;
+}
+
+TranslationRequestException _rateLimitError(
+  String? retryAfter,
+  List<int> bytes,
+) {
+  var seconds = int.tryParse(retryAfter ?? '') ?? 0;
+  try {
+    // Read only structured quota metadata. The provider's message may contain
+    // echoed input and must never enter the build log.
+    if (jsonDecode(utf8.decode(bytes)) case {
+      'error': {'details': final List<dynamic> details},
+    }) {
+      for (final detail in details) {
+        if (detail case {'violations': final List<dynamic> violations}) {
+          for (final violation in violations) {
+            if (violation case {
+              'quotaId': final String quotaId,
+            } when quotaId.toLowerCase().contains('perday')) {
+              return const TranslationRequestException(
+                'Gemini daily quota is exhausted (HTTP 429). '
+                'Retry after the quota resets or increase the project quota.',
+              );
+            }
+          }
+        }
+        if (detail case {'retryDelay': final String delay}) {
+          final match = RegExp(r'^(\d{1,6}(?:\.\d{1,9})?)s$').firstMatch(delay);
+          if (match != null) {
+            seconds = math.max(seconds, double.parse(match[1]!).ceil() + 1);
+          }
+        }
+      }
+    }
+  } on FormatException {
+    // A missing or malformed hint still gets a full quota window.
+  }
+  return TranslationRequestException(
+    'Gemini rate limit exceeded (HTTP 429).',
+    retryable: true,
+    retryAfter: Duration(seconds: seconds > 0 ? seconds : 60),
+  );
 }
 
 bool _samePlaceholders(String source, String translated) {
@@ -263,6 +326,10 @@ Future<void> generateTranslationPackages({
   }
   for (final tag in targets) {
     final destination = File('${output.path}/$tag.json');
+    final checkpoint = File('${stateFile.path}.$tag.partial.json');
+    final saved = await checkpoint.exists()
+        ? jsonDecode(await checkpoint.readAsString())
+        : null;
     final cached = await destination.exists()
         ? readTranslationPackage(destination)
         : null;
@@ -284,14 +351,23 @@ Future<void> generateTranslationPackages({
     final previousHashes = state[tag] is Map ? state[tag] as Map : const {};
     final messages = <String, String>{};
     final pending = <String, String>{};
+    final partial = <String, Map<String, String>>{};
     for (final entry in english.messages.entries) {
       final reviewedValue = human?.messages[entry.key];
       final cachedValue = cached?.messages[entry.key];
+      final savedValue = saved is Map ? saved[entry.key] : null;
       if (reviewedValue != null) {
         messages[entry.key] = reviewedValue;
       } else if (cachedValue != null &&
           previousHashes[entry.key] == hashes[entry.key]) {
         messages[entry.key] = cachedValue;
+      } else if (savedValue
+          case {'hash': final String hash, 'text': final String text}
+          when hash == hashes[entry.key] &&
+              text.trim().isNotEmpty &&
+              _samePlaceholders(entry.value, text)) {
+        messages[entry.key] = text;
+        partial[entry.key] = {'hash': hash, 'text': text};
       } else {
         pending[entry.key] = entry.value;
       }
@@ -306,21 +382,33 @@ Future<void> generateTranslationPackages({
       offset < entries.length;
       offset += batchSize * concurrency
     ) {
-      final translated = await Future.wait([
-        for (
-          var worker = 0;
-          worker < concurrency && offset + worker * batchSize < entries.length;
-          worker++
-        )
-          translate(
-            tag,
-            Map<String, String>.fromEntries(
-              entries.skip(offset + worker * batchSize).take(batchSize),
-            ),
-          ),
-      ]);
-      for (final batch in translated) {
-        messages.addAll(batch);
+      try {
+        await Future.wait([
+          for (
+            var start = offset;
+            start < entries.length && start < offset + batchSize * concurrency;
+            start += batchSize
+          )
+            () async {
+              final input = Map<String, String>.fromEntries(
+                entries.skip(start).take(batchSize),
+              );
+              final batch = _validateBatch(input, await translate(tag, input));
+              for (final entry in batch.entries) {
+                messages[entry.key] = entry.value;
+                partial[entry.key] = {
+                  'hash': hashes[entry.key]!,
+                  'text': entry.value,
+                };
+              }
+            }(),
+        ]);
+      } finally {
+        // Wait for every batch in the wave before saving its successful work,
+        // even when another batch failed. Publish only complete packages.
+        if (partial.isNotEmpty) {
+          await _writeAtomically(checkpoint, jsonEncode(partial));
+        }
       }
       log?.call(
         '$tag: ${messages.length}/${english.messages.length} messages ready.',
@@ -349,6 +437,7 @@ Future<void> generateTranslationPackages({
       stateFile,
       '${const JsonEncoder.withIndent('  ').convert(state)}\n',
     );
+    if (await checkpoint.exists()) await checkpoint.delete();
   }
   if (!dryRun) {
     // Only remove packages recorded as generated by an earlier invocation.

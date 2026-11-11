@@ -5,16 +5,15 @@ translation keys. Flutter's generated Material, Cupertino, and Widgets
 localizations remain enabled for platform controls.
 
 English and the current partial German catalog are available in development
-builds. Desktop releases also bundle AI-generated language packages. The same
-packages are published as release assets and through the download manifest.
+builds. Desktop releases also bundle complete AI-generated language packages
+when available.
 
 ## AI translations during GitHub releases
 
-The `Desktop Release` workflow generates language packs with **Google Gemini**
-**once**, after the quality gates and before the Linux, macOS, and Windows builds.
-All three builds
-include the same validated packages in `assets/translations/`, so they work
-offline from the first launch. No AI API key is embedded in the app.
+The `Desktop Release` workflow attempts language pack generation with
+**Google Gemini** before the Linux, macOS, and Windows builds. All three builds
+include the same available validated packages in `assets/translations/` for
+offline use. The API key is used by the CI translation step.
 
 Configure **Settings → Secrets and variables → Actions**:
 
@@ -38,14 +37,14 @@ schema requiring exactly the requested translation keys. The API key is sent
 in the `x-goog-api-key` header, never in the request URL or build artifacts.
 SQL keywords, product names, placeholders, and code must retain their meaning.
 Requests use batches of 40 strings with up to three batches in parallel by
-default. Invalid output, throttling, and server errors are retried up to three
-attempts; a failed batch stops the release.
-Blocked Gemini responses fail immediately. Missing credentials fail when an
-API call is needed, rather than silently publishing incomplete packages.
-Configure Gemini API billing and rate limits before the first run.
+default. Invalid output and transient server errors get up to three attempts.
+Rate limits use Gemini's retry hint or a one-minute fallback. A reported daily
+quota, a blocked response, or missing credentials stop generation. The
+release continues with built-in translations and completed packs for that build.
+On a manual release retry, `skip_translations` skips Gemini entirely.
 
-Generated packages and per-message English source hashes are cached between
-release runs. Only new or changed English messages need another API call.
+Complete packages and successful batches from unfinished locales are cached
+between release runs. Source hashes let a later run reuse unchanged strings.
 Changing the Gemini model or target locale configuration starts a new cache.
 Gemini uses its own cache namespace; old provider caches are not reused.
 The release build number becomes the package revision, so it must continue to
@@ -61,14 +60,12 @@ and placeholders (including repeated occurrences). These checks do not replace
 human review of translation quality. Corrections can be contributed through
 the pull request workflow below and are included in the next release.
 
-Each release includes `nodeql-translations-X.Y.Z.tar.gz` containing the language
-packages and their SHA-256 manifest. After the GitHub release succeeds, the
-reusable `Publish translations` workflow deploys that exact catalog to GitHub
-Pages. Configure Pages with **GitHub Actions** as its source. An unrelated
-translation commit no longer replaces the release catalog. If Pages deployment
-fails, the installers and archive remain usable; rerun the failed job. The
-workflow can also be dispatched manually with a successful release's run ID
-while its `translation-packages` artifact is retained.
+When completed packs are available, the release includes
+`nodeql-translations-X.Y.Z.tar.gz` with those packs and their SHA-256 manifest.
+After a release with successful generation, the reusable `Publish translations`
+workflow deploys that catalog to GitHub Pages. Configure Pages with **GitHub
+Actions** as its source. If Pages deployment fails, rerun the failed job while
+the release's `translation-packages` artifact is retained.
 
 ### Local preview and testing
 

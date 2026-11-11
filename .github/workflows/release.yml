@@ -5,6 +5,20 @@ on:
     branches: [master, main]
     paths:
       - 'pubspec.yaml'
+  workflow_dispatch:
+    inputs:
+      release_pr:
+        description: Merged dev-to-release-branch PR for the unpublished version
+        type: number
+        required: true
+      skip_translations:
+        description: Build with the complete language packs already cached for this version
+        type: boolean
+        default: false
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -18,22 +32,53 @@ env:
 jobs:
   prepare:
     name: Prepare release
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       build-number: ${{ steps.version.outputs.build-number }}
       tag: ${{ steps.version.outputs.tag }}
       should-release: ${{ steps.release.outputs.should-release }}
-      release-pr-number: ${{ steps.release-notes.outputs.pr-number }}
+      release-pr-number: ${{ steps.retry-release.outputs.pr-number || steps.release-notes.outputs.pr-number }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Verify the release pull request for this retry
+        id: retry-release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          RELEASE_PR_NUMBER: ${{ inputs.release_pr }}
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Enter the number of the original release pull request."
+            exit 1
+          fi
+          pull_request="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$RELEASE_PR_NUMBER")"
+          merge_sha="$(jq -er --arg branch "$BASE_BRANCH" --arg repo "$GITHUB_REPOSITORY" '
+            select(.merged_at != null and .base.ref == $branch and
+              .head.ref == "dev" and .head.repo.full_name == $repo) | .merge_commit_sha
+          ' <<< "$pull_request")"
+          if ! git merge-base --is-ancestor "$merge_sha" "$GITHUB_SHA"; then
+            echo "::error::The release pull request merge must be an ancestor of this build."
+            exit 1
+          fi
+          release_pubspec="$(git show "$merge_sha:pubspec.yaml")"
+          release_version="$(sed -n 's/^version: *//p' <<< "$release_pubspec")"
+          if [[ "$release_version" != "$(sed -n 's/^version: *//p' pubspec.yaml)" ]]; then
+            echo "::error::The current build must have the same version as the release pull request."
+            exit 1
+          fi
+          echo "previous-sha=$(git rev-parse "$merge_sha^")" >> "$GITHUB_OUTPUT"
+          echo "pr-number=$RELEASE_PR_NUMBER" >> "$GITHUB_OUTPUT"
       - name: Read and validate version
         id: version
         shell: bash
         env:
-          PREVIOUS_SHA: ${{ github.event.before }}
+          PREVIOUS_SHA: ${{ steps.retry-release.outputs.previous-sha || github.event.before }}
         run: |
           PUBSPEC_VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
           PREVIOUS_PUBSPEC="$(git show "${PREVIOUS_SHA}:pubspec.yaml" 2>/dev/null || true)"
@@ -62,7 +107,7 @@ jobs:
           fi
       - name: Find the dev-to-master release pull request
         id: release-notes
-        if: steps.release.outputs.should-release == 'true'
+        if: github.event_name == 'push' && steps.release.outputs.should-release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_BRANCH: ${{ github.ref_name }}
@@ -105,11 +150,14 @@ jobs:
       - run: dart run tool/validate_translations.dart
 
   translations:
-    name: Generate release language packs with Gemini
+    name: Prepare optional release language packs
     needs: [prepare, quality]
     if: needs.prepare.outputs.should-release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      has-packs: ${{ steps.catalog.outputs.has-packs }}
+      catalog-ready: ${{ steps.generate-translations.outcome == 'success' && steps.catalog.outputs.has-packs == 'true' }}
     env:
       NODEQL_TRANSLATION_MODEL: ${{ vars.NODEQL_TRANSLATION_MODEL || 'gemini-3.8-flash' }}
       NODEQL_TRANSLATION_CONCURRENCY: ${{ vars.NODEQL_TRANSLATION_CONCURRENCY || '3' }}
@@ -128,32 +176,70 @@ jobs:
         run: |
           scope="$(printf '%s\n' "$NODEQL_TRANSLATION_MODEL" "$NODEQL_TRANSLATION_LOCALES" | sha256sum | cut -d ' ' -f 1)"
           echo "scope=${scope}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: restore-translations
         with:
           path: build/ai-translations
           key: gemini-translations-v1-${{ steps.cache-scope.outputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: gemini-translations-v1-${{ steps.cache-scope.outputs.scope }}-
       - name: Generate missing and changed translations
+        id: generate-translations
+        if: github.event_name != 'workflow_dispatch' || !inputs.skip_translations
+        continue-on-error: true
+        timeout-minutes: 50
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TRANSLATION_BUILD_NUMBER: ${{ needs.prepare.outputs.build-number }}
         run: dart run tool/generate_translations.dart --revision="$TRANSLATION_BUILD_NUMBER"
-      - name: Validate generated packages
-        run: dart run tool/validate_translations.dart build/ai-translations/packages
+      - uses: actions/cache/save@v4
+        if: >-
+          ${{ !cancelled() && steps.generate-translations.outcome != 'skipped' &&
+            hashFiles('build/ai-translations/state.json', 'build/ai-translations/state.json.*.partial.json') != '' }}
+        with:
+          path: build/ai-translations
+          key: ${{ steps.restore-translations.outputs.cache-primary-key }}
+      - name: Select completed packages for this release
+        shell: bash
+        env:
+          TRANSLATION_BUILD_NUMBER: ${{ needs.prepare.outputs.build-number }}
+          GENERATION_OUTCOME: ${{ steps.generate-translations.outcome }}
+        run: |
+          mkdir -p build/release-language-packs
+          shopt -s nullglob
+          for package in build/ai-translations/packages/*.json; do
+            if jq -e --argjson revision "$TRANSLATION_BUILD_NUMBER" \
+              --slurpfile source assets/translations/en.json \
+              '.revision == $revision and (.messages | keys) == ($source[0].messages | keys)' \
+              "$package" >/dev/null; then
+              cp "$package" build/release-language-packs/
+            fi
+          done
+          if [[ "$GENERATION_OUTCOME" == "failure" ]]; then
+            echo "::warning::Gemini generation stopped. Continuing the release with built-in translations and completed packs."
+          fi
+      - name: Validate completed packages
+        run: dart run tool/validate_translations.dart build/release-language-packs
       - name: Build language catalog
+        id: catalog
         env:
           NODEQL_TRANSLATION_MINIMUM_APP_VERSION: ${{ needs.prepare.outputs.version }}
-        run: dart run tool/build_translation_site.dart build/ai-translations/packages
+        run: |
+          dart run tool/build_translation_site.dart build/release-language-packs
+          has_packs="$(jq '.languages | length > 0' build/translation-site/translations/translation-manifest.json)"
+          echo "has-packs=$has_packs" >> "$GITHUB_OUTPUT"
       - name: Archive language packs for the release
+        if: steps.catalog.outputs.has-packs == 'true'
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: tar -C build/translation-site -czf "nodeql-translations-${RELEASE_VERSION}.tar.gz" translations
       - uses: actions/upload-artifact@v7
+        if: steps.catalog.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: build/translation-site/translations
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
+        if: steps.catalog.outputs.has-packs == 'true'
         with:
           name: nodeql-translations
           path: nodeql-translations-*.tar.gz
@@ -171,6 +257,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        if: needs.translations.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: assets/translations
@@ -280,6 +367,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        if: needs.translations.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: assets/translations
@@ -481,6 +569,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        if: needs.translations.outputs.has-packs == 'true'
         with:
           name: translation-packages
           path: assets/translations
@@ -677,7 +766,8 @@ jobs:
 
   publish-translations:
     name: Publish release language catalog
-    needs: publish
+    needs: [publish, translations]
+    if: needs.translations.outputs.catalog-ready == 'true'
     permissions:
       contents: read
       actions: read

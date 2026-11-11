@@ -27,13 +27,15 @@ http.Response completion(Object messages, {String finish = 'STOP'}) =>
 
 void main() {
   group('Gemini provider', () {
-    GeminiTranslationClient provider(http.Client client) =>
-        GeminiTranslationClient(
-          client: client,
-          model: 'gemini-test-model',
-          apiKey: 'test-secret',
-          retryDelay: Duration.zero,
-        );
+    GeminiTranslationClient provider(
+      http.Client client, {
+      Future<void> Function(Duration)? wait,
+    }) => GeminiTranslationClient(
+      client: client,
+      model: 'gemini-test-model',
+      apiKey: 'test-secret',
+      wait: wait ?? (_) async {},
+    );
 
     test('sends only catalog strings and returns Unicode translations', () async {
       final client = MockClient((request) async {
@@ -102,6 +104,7 @@ void main() {
 
     test('retries throttling and transient server errors', () async {
       var requests = 0;
+      final delays = <Duration>[];
       final client = MockClient((_) async {
         requests++;
         return requests == 1
@@ -111,11 +114,82 @@ void main() {
             : completion({'plain': 'Hallo'});
       });
       addTearDown(client.close);
-      expect(await provider(client).translate('de', {'plain': 'Hello'}), {
+      final translator = provider(
+        client,
+        wait: (delay) async => delays.add(delay),
+      );
+      expect(await translator.translate('de', {'plain': 'Hello'}), {
         'plain': 'Hallo',
       });
       expect(requests, 3);
+      expect(delays, [const Duration(minutes: 1), const Duration(seconds: 4)]);
     });
+
+    test('honors the longest Gemini retry hint', () async {
+      var requests = 0;
+      final delays = <Duration>[];
+      final client = MockClient((_) async {
+        if (++requests > 1) return completion({'plain': 'Hallo'});
+        return http.Response(
+          jsonEncode({
+            'error': {
+              'details': [
+                {'retryDelay': '42.5s'},
+              ],
+            },
+          }),
+          429,
+          headers: {'retry-after': '20'},
+        );
+      });
+      addTearDown(client.close);
+      final translator = provider(
+        client,
+        wait: (delay) async => delays.add(delay),
+      );
+      await translator.translate('de', {'plain': 'Hello'});
+      expect(delays, [const Duration(seconds: 44)]);
+    });
+
+    test(
+      'daily quota exhaustion stops without retrying or logging the body',
+      () async {
+        var requests = 0;
+        final client = MockClient((_) async {
+          requests++;
+          return http.Response(
+            jsonEncode({
+              'error': {
+                'message': 'echoed test-secret',
+                'details': [
+                  {
+                    'violations': [
+                      {
+                        'quotaId':
+                            'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+            429,
+          );
+        });
+        addTearDown(client.close);
+        await expectLater(
+          provider(client).translate('de', {'plain': 'Hello'}),
+          throwsA(
+            isA<TranslationRequestException>().having(
+              (error) => '$error',
+              'safe error',
+              allOf(contains('daily quota'), isNot(contains('test-secret'))),
+            ),
+          ),
+        );
+        expect(requests, 1);
+      },
+    );
 
     test(
       'authentication failure is immediate and does not expose provider body',
@@ -387,6 +461,58 @@ void main() {
         );
         expect(await File('${output.path}/de.json').readAsString(), before);
         expect(await state.readAsString(), stateBefore);
+      },
+    );
+
+    test('reuses successful batches from an unfinished locale', () async {
+      final checkpoint = File('${state.path}.de.partial.json');
+      await expectLater(
+        generate((_, batch) async {
+          if (batch.containsKey('welcome')) {
+            throw const TranslationRequestException('offline');
+          }
+          await Future<void>.delayed(Duration.zero);
+          return {'plain': 'Hallo'};
+        }),
+        throwsA(isA<TranslationRequestException>()),
+      );
+      expect(await File('${output.path}/de.json').exists(), isFalse);
+      expect(await state.exists(), isFalse);
+      expect(jsonDecode(await checkpoint.readAsString()).keys, ['plain']);
+
+      await generate((_, batch) async {
+        expect(batch, {'welcome': 'Hello {name}'});
+        return {'welcome': 'Hallo {name}'};
+      });
+      expect(readTranslationPackage(File('${output.path}/de.json')).messages, {
+        'plain': 'Hallo',
+        'welcome': 'Hallo {name}',
+      });
+      expect(await checkpoint.exists(), isFalse);
+    });
+
+    test(
+      'invalidates checkpointed strings when their source changes',
+      () async {
+        await expectLater(
+          generate((_, batch) async {
+            if (batch.containsKey('welcome')) {
+              throw const TranslationRequestException('offline');
+            }
+            return {'plain': 'Hallo'};
+          }),
+          throwsA(isA<TranslationRequestException>()),
+        );
+        await writePackage(source, 'en', {
+          'plain': 'Good evening',
+          'welcome': 'Hello {name}',
+        });
+        final requested = <String, String>{};
+        await generate((_, batch) async {
+          requested.addAll(batch);
+          return batch;
+        });
+        expect(requested, {'plain': 'Good evening', 'welcome': 'Hello {name}'});
       },
     );
 
