@@ -329,7 +329,7 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.classroom.start': 'Code erstellen',
     'tutorial.classroom.stop': 'Freigabe beenden',
     'tutorial.classroom.shareHelp':
-        'Sende den Code an deine Klasse. Die Lernenden wählen in NodeQL Code eingeben. Lass dieses Fenster geöffnet, bis alle beigetreten sind.',
+        'Sende den Code an deine Klasse. Die Lernenden wählen in NodeQL Code eingeben. Lass die Freigabe geöffnet, bis alle beigetreten sind.',
     'tutorial.classroom.until': 'Verfügbar bis {time}',
     'tutorial.classroom.copy': 'Code kopieren',
     'tutorial.classroom.copied': 'Code kopiert',
@@ -396,6 +396,9 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.action.field.count': 'Anzahl',
     'tutorial.action.field.offset': 'Versatz',
     'tutorial.studio.cancel': 'Abbrechen',
+    'tutorial.studio.returnToEditor': 'Weiter bearbeiten',
+    'tutorial.studio.dockedHelp':
+        'Links Nodes bauen, rechts die Schritte erstellen.',
     'tutorial.studio.title': 'Workshop Studio',
     'tutorial.studio.adminBadge': 'Workshop Studio',
     'tutorial.studio.subtitle': 'Erstelle Übungen für deine Klasse.',
@@ -1456,7 +1459,7 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.practice.expert.step.4.instruction':
         'Verbinde INTERSECT mit dem frischen SELECT und trage SELECT id, name FROM archived_customers als zweite Abfrage ein. Führe sie aus und finde den gemeinsamen Datensatz.',
     'tutorial.practice.expert.step.4.hint':
-        'INTERSECT braucht ein vollständiges zweites SELECT. Ada steht in beiden Beispieltabellen.',
+        'INTERSECT braucht ein vollständiges zweites SELECT. Albrecht steht in beiden Beispieltabellen.',
     'tutorial.practice.expert.step.4.example':
         'SELECT id, name FROM customers INTERSECT SELECT id, name FROM archived_customers;',
     'tutorial.practice.expert.step.4.concept':
@@ -1474,7 +1477,7 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.practice.expert.step.6.instruction':
         'Verbinde UNION mit dem frischen SELECT, stelle ein zweites SELECT ein und aktiviere ALL. Führe die Abfrage aus und vergleiche Duplikate mit einfachem UNION.',
     'tutorial.practice.expert.step.6.hint':
-        'Nutze archived_customers als zweite Tabelle und aktiviere ALL im UNION-Node. Ada sollte zweimal erscheinen.',
+        'Nutze archived_customers als zweite Tabelle und aktiviere ALL im UNION-Node. Albrecht sollte zweimal erscheinen.',
     'tutorial.practice.expert.step.6.example':
         'SELECT id, name FROM customers UNION ALL SELECT id, name FROM archived_customers;',
     'tutorial.practice.expert.step.6.concept':

@@ -4,6 +4,17 @@ All notable changes to NodeQL are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed post-release synchronization of `dev` being rejected by branch
+  protection after squash/rebase merges. The sync now preserves both histories
+  and advances `dev` without a non-fast-forward update or ruleset bypass.
+- Fixed Windows updates being canceled after download by an early native exit
+  response. The updater now awaits the app's exit decision and confirms that
+  the installation helper has started before closing NodeQL.
+
 ## [0.5.2]
 
 ### Added

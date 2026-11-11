@@ -21,6 +21,10 @@ limitations.
 > SQLite functions, column aliases, fullscreen and exportable result tables,
 > a refined workspace, and fullscreen settings.
 
+Teachers can create and share guided SQLite exercises with the
+[NodeQL Workshop Admin](https://kartoffelspalt.github.io/NodeQL-Workshop-Admin/).
+The release page provides downloads and teaching materials.
+
 ## Demo
 
 <p align="center">

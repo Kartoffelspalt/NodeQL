@@ -399,9 +399,9 @@ void main() {
         rejectedMessage: rejected,
       );
       expect(runtime.state.lastRows, [
-        {'name': 'Ada'},
-        {'name': 'Clara'},
-        {'name': 'Fatima'},
+        {'name': 'Albrecht'},
+        {'name': 'Gertrud'},
+        {'name': 'Ottilie'},
       ]);
 
       await runtime.executeDownloadedWorkshopQuery(

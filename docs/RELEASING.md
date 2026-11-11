@@ -65,33 +65,29 @@ reset or unchanged build number still fails validation. See
 ## Synchronizing dev after a merge
 
 Once **Dev Branch Cleanup** is on `master`, merging a PR from this
-repository's `dev` into `master` moves `dev` to the same commit as
-`master`. The job skips the update if `dev` has moved since the merge.
-The push also checks the expected `dev` commit on the server.
+repository's `dev` into `master` synchronizes `dev` with the file content of
+`master`. A regular merge allows `dev` to advance directly to `master`. After a
+squash or rebase merge, the job creates a merge commit with both branch heads
+as parents and exactly the tree from `master`. The branch heads then have
+different commit IDs but identical files, and both histories are retained.
 
-A squash or rebase merge can require a force push. The repository's
-`branch deletion protection` ruleset currently blocks non-fast-forward
-updates on all branches. To enable the cleanup while keeping that protection
-for collaborators:
+Every update is a fast-forward from the previous `dev` head, so the existing
+rule blocking non-fast-forward updates can remain enabled. The workflow uses
+`GITHUB_TOKEN` with **Contents: Write**; no GitHub App or ruleset bypass is
+needed for the current branch rules. The lease option on the push only guards
+against concurrent changes; an ancestry check ensures it never rewrites history.
 
-1. Install a dedicated GitHub App on this repository with **Contents: Read and
-   write**.
-2. Keep the deletion rule on all branches. Place the non-fast-forward rule for
-   `dev` in a separate ruleset targeting only `dev`, with the app on its
-   bypass list set to **Always**. Retain the existing non-fast-forward rule for
-   other branches in a ruleset that excludes `dev` and preserve existing
-   bypass entries.
-3. Set the app ID as the `DEV_SYNC_APP_ID` Actions variable and
-   `DEV_SYNC_APP_PRIVATE_KEY` as an Actions secret. Use the full PEM contents
-   for the secret.
-
-With no app configured, the workflow uses `GITHUB_TOKEN` and the existing
-repository rules apply.
+The job skips the sync if `dev` changed or was deleted since the release PR was
+merged. The server also checks the expected `dev` head, so a push or deletion
+during the job cannot be overwritten. The merged release commit must still be
+an ancestor of `master`.
 
 ## Workshop Admin
 
-The [Workshop Admin workflow](admin-workshop-build.md#builds-und-release-in-github-actions)
-builds the standalone authoring app and can prepare a separate release draft.
+The [Workshop Admin repository](https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin)
+builds the standalone authoring app and prepares its own release drafts.
+Published packages and teaching materials appear on the
+[Workshop Admin release page](https://kartoffelspalt.github.io/NodeQL-Workshop-Admin/).
 
 ## Signing
 
@@ -145,6 +141,19 @@ It then signs the Inno Setup installer and verifies its Authenticode status.
 For portable use, extract the entire ZIP to a folder and run `nodeql.exe` from
 that folder. The ZIP includes the Flutter data and DLLs, plus the application-local
 Visual C++ runtime.
+
+Windows installations created by the Setup EXE support in-app updates. NodeQL
+verifies the download's SHA-256 digest and waits for its PowerShell helper to
+signal readiness before requesting a clean shutdown. The helper waits for the
+app to exit, runs the installer with administrator approval, and restarts NodeQL.
+Portable ZIP installations use manual downloads instead.
+
+To verify a Windows update, install an older Setup EXE, then accept the in-app
+update to a newer release. Check that NodeQL closes, the administrator prompt
+appears, and the restarted app reports the new version. Also check that canceling
+the update's exit request leaves NodeQL running without launching Setup. Older
+versions affected by the premature update cancellation need one manual update:
+close NodeQL and run the latest Setup EXE.
 
 Publish the Linux release public key alongside the project documentation. Users
 can verify a Linux asset with `gpg --verify <asset>.asc <asset>` after importing

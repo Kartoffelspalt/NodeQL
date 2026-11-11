@@ -22,14 +22,14 @@ void seedWorkshopDataset(CommonDatabase database) {
       name TEXT NOT NULL
     );
     INSERT INTO customers VALUES
-      (1, 'Ada', 'Berlin', 'DE', 1),
-      (2, 'Bruno', 'Hamburg', 'DE', 1),
-      (3, 'Clara', 'Berlin', 'DE', 0),
-      (4, 'Dina', 'Paris', 'FR', 1),
-      (5, 'Emil', 'Munich', 'DE', 1),
-      (6, 'Fatima', 'Berlin', 'DE', 1),
-      (7, 'Gio', 'Rome', 'IT', 0),
-      (8, 'Hana', 'Lyon', 'FR', 1);
+      (1, 'Albrecht', 'Berlin', 'DE', 1),
+      (2, 'Berthold', 'Hamburg', 'DE', 1),
+      (3, 'Gertrud', 'Berlin', 'DE', 0),
+      (4, 'Hildegard', 'Paris', 'FR', 1),
+      (5, 'Friedrich', 'Munich', 'DE', 1),
+      (6, 'Ottilie', 'Berlin', 'DE', 1),
+      (7, 'Siegfried', 'Rome', 'IT', 0),
+      (8, 'Walburga', 'Lyon', 'FR', 1);
     INSERT INTO orders VALUES
       (1, 1, 89.50, '2026-01-03'),
       (2, 1, 22.00, '2026-01-09'),
@@ -42,6 +42,6 @@ void seedWorkshopDataset(CommonDatabase database) {
       (9, 6, 18.50, '2026-03-06'),
       (10, 6, 31.00, '2026-03-10');
     INSERT INTO archived_customers VALUES
-      (1, 'Ada'), (101, 'Iris'), (102, 'Jamal'), (103, 'Kora');
+      (1, 'Albrecht'), (101, 'Anneliese'), (102, 'Burkhard'), (103, 'Edeltraud');
   ''');
 }

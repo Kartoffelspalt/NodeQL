@@ -8,7 +8,7 @@ import 'package:nodeql/localization/translation_catalog.dart';
 import 'learning_path_authoring.dart';
 import 'learning_path_interactions.dart';
 
-class LearningPathInteractionEditor extends StatelessWidget {
+class LearningPathInteractionEditor extends StatefulWidget {
   const LearningPathInteractionEditor({
     required this.catalog,
     required this.mode,
@@ -18,6 +18,7 @@ class LearningPathInteractionEditor extends StatelessWidget {
     required this.requirements,
     required this.onHighlight,
     required this.onRequirementsChanged,
+    required this.onEditingChanged,
     super.key,
   });
 
@@ -29,26 +30,45 @@ class LearningPathInteractionEditor extends StatelessWidget {
   final List<LearningPathRequirement> requirements;
   final ValueChanged<String> onHighlight;
   final ValueChanged<List<LearningPathRequirement>> onRequirementsChanged;
+  final ValueChanged<bool> onEditingChanged;
 
-  Future<void> _editRule(BuildContext context, [int? index]) async {
-    final rule = await showDialog<LearningPathRequirement>(
-      context: context,
-      builder: (_) => _ActionDialog(
-        catalog: catalog,
-        mode: mode,
-        nodes: nodes,
-        nodeLabel: nodeLabel,
-        initial: index == null ? null : requirements[index],
-      ),
-    );
-    if (rule == null || !context.mounted) return;
-    final next = List<LearningPathRequirement>.of(requirements);
-    if (index == null) {
+  @override
+  State<LearningPathInteractionEditor> createState() =>
+      _LearningPathInteractionEditorState();
+}
+
+class _LearningPathInteractionEditorState
+    extends State<LearningPathInteractionEditor> {
+  final _ruleFormKey = GlobalKey();
+  int? _editingRule;
+  TranslationCatalog get catalog => widget.catalog;
+
+  void _editRule([int? index]) {
+    setState(() => _editingRule = index ?? widget.requirements.length);
+    widget.onEditingChanged(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _ruleFormKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(
+          target,
+          alignment: 0.05,
+          duration: const Duration(milliseconds: 180),
+        );
+      }
+    });
+  }
+
+  void _saveRule(LearningPathRequirement rule) {
+    final index = _editingRule!;
+    final next = List<LearningPathRequirement>.of(widget.requirements);
+    if (index == next.length) {
       next.add(rule);
     } else {
       next[index] = rule;
     }
-    onRequirementsChanged(next);
+    widget.onRequirementsChanged(next);
+    setState(() => _editingRule = null);
+    widget.onEditingChanged(false);
   }
 
   @override
@@ -58,24 +78,27 @@ class LearningPathInteractionEditor extends StatelessWidget {
     title: Text(catalog.text('tutorial.action.title')),
     subtitle: Text(
       catalog.text('tutorial.action.summary', {
-        'rules': requirements.length,
-        'highlights': highlights.length,
+        'rules': widget.requirements.length,
+        'highlights': widget.highlights.length,
       }),
     ),
     expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (nodes.isNotEmpty) ...[
+      if (widget.nodes.isNotEmpty) ...[
         Text(catalog.text('tutorial.action.highlight')),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 4,
           children: [
-            for (final node in nodes)
+            for (final node in widget.nodes)
               FilterChip(
-                label: Text(nodeLabel(node), overflow: TextOverflow.ellipsis),
-                selected: highlights.contains(node.ref),
-                onSelected: (_) => onHighlight(node.ref),
+                label: Text(
+                  widget.nodeLabel(node),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                selected: widget.highlights.contains(node.ref),
+                onSelected: (_) => widget.onHighlight(node.ref),
               ),
           ],
         ),
@@ -86,49 +109,77 @@ class LearningPathInteractionEditor extends StatelessWidget {
         alignment: AlignmentDirectional.centerStart,
         child: TextButton.icon(
           key: const ValueKey('workshop-action-add'),
-          onPressed: requirements.length >= 16
+          onPressed: _editingRule != null || widget.requirements.length >= 16
               ? null
-              : () => _editRule(context),
+              : () => _editRule(),
           icon: const Icon(Icons.add),
           label: Text(catalog.text('tutorial.action.add')),
         ),
       ),
-      for (var index = 0; index < requirements.length; index++)
+      if (_editingRule case final index?)
+        Padding(
+          key: _ruleFormKey,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: _ActionEditor(
+            key: ValueKey(index),
+            catalog: catalog,
+            mode: widget.mode,
+            nodes: widget.nodes,
+            nodeLabel: widget.nodeLabel,
+            initial: index < widget.requirements.length
+                ? widget.requirements[index]
+                : null,
+            onSave: _saveRule,
+            onCancel: () {
+              setState(() => _editingRule = null);
+              widget.onEditingChanged(false);
+            },
+          ),
+        ),
+      for (var index = 0; index < widget.requirements.length; index++)
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(
             learningPathRequirementLabel(
               catalog,
-              requirements[index],
-              (ref) => nodeLabel(nodes.firstWhere((node) => node.ref == ref)),
+              widget.requirements[index],
+              (ref) => widget.nodeLabel(
+                widget.nodes.firstWhere((node) => node.ref == ref),
+              ),
             ),
           ),
-          subtitle: requirements[index].value == null
+          subtitle: widget.requirements[index].value == null
               ? null
               : Text(
                   catalog.text('tutorial.action.expectedSummary', {
-                    'value': requirements[index].value,
+                    'value': widget.requirements[index].value,
                   }),
                 ),
-          onTap: () => _editRule(context, index),
+          onTap: _editingRule == null ? () => _editRule(index) : null,
           trailing: IconButton(
             tooltip: MaterialLocalizations.of(context).deleteButtonTooltip,
             icon: const Icon(Icons.close),
-            onPressed: () => onRequirementsChanged(
-              List<LearningPathRequirement>.of(requirements)..removeAt(index),
-            ),
+            onPressed: _editingRule != null
+                ? null
+                : () => widget.onRequirementsChanged(
+                    List<LearningPathRequirement>.of(widget.requirements)
+                      ..removeAt(index),
+                  ),
           ),
         ),
     ],
   );
 }
 
-class _ActionDialog extends StatefulWidget {
-  const _ActionDialog({
+class _ActionEditor extends StatefulWidget {
+  const _ActionEditor({
     required this.catalog,
     required this.mode,
     required this.nodes,
     required this.nodeLabel,
+    required this.onSave,
+    required this.onCancel,
+    super.key,
     this.initial,
   });
 
@@ -137,12 +188,14 @@ class _ActionDialog extends StatefulWidget {
   final List<LearningPathNodeTemplate> nodes;
   final String Function(LearningPathNodeTemplate) nodeLabel;
   final LearningPathRequirement? initial;
+  final ValueChanged<LearningPathRequirement> onSave;
+  final VoidCallback onCancel;
 
   @override
-  State<_ActionDialog> createState() => _ActionDialogState();
+  State<_ActionEditor> createState() => _ActionEditorState();
 }
 
-class _ActionDialogState extends State<_ActionDialog> {
+class _ActionEditorState extends State<_ActionEditor> {
   late LearningPathAction _action;
   String? _nodeRef;
   String? _otherRef;
@@ -250,132 +303,139 @@ class _ActionDialogState extends State<_ActionDialog> {
     String displayNode(String ref) =>
         widget.nodeLabel(widget.nodes.firstWhere((node) => node.ref == ref));
 
-    return AlertDialog(
-      title: Text(
-        catalog.text(
-          widget.initial == null
-              ? 'tutorial.action.add'
-              : 'tutorial.action.edit',
-        ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
       ),
-      scrollable: true,
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _select<LearningPathAction>(
-              id: 'workshop-action-kind',
-              label: catalog.text('tutorial.action.kind'),
-              value: _action,
-              options: LearningPathAction.values.where(
-                (action) => !action.needsNode || widget.nodes.isNotEmpty,
-              ),
-              display: (action) =>
-                  catalog.text('tutorial.action.${action.name}'),
-              onChanged: (action) => setState(() {
-                if (action == null) return;
-                _action = action;
-                _nodeRef = null;
-                _otherRef = null;
-                _input = null;
-              }),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            catalog.text(
+              widget.initial == null
+                  ? 'tutorial.action.add'
+                  : 'tutorial.action.edit',
             ),
-            if (_action.needsNode) ...[
-              const SizedBox(height: 12),
-              if (targets.isEmpty)
-                Text(catalog.text('tutorial.action.noTargets'))
-              else
-                _select<String>(
-                  id: 'workshop-action-node-${_action.name}',
-                  label: catalog.text('tutorial.action.node'),
-                  value: target?.ref,
-                  options: targets.map((node) => node.ref),
-                  display: displayNode,
-                  onChanged: (node) => setState(() {
-                    _nodeRef = node;
-                    _input = null;
-                    _otherRef = null;
-                  }),
-                ),
-            ],
-            if (_action.needsInput && target != null) ...[
-              const SizedBox(height: 12),
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 14),
+          _select<LearningPathAction>(
+            id: 'workshop-action-kind',
+            label: catalog.text('tutorial.action.kind'),
+            value: _action,
+            options: LearningPathAction.values.where(
+              (action) => !action.needsNode || widget.nodes.isNotEmpty,
+            ),
+            display: (action) => catalog.text('tutorial.action.${action.name}'),
+            onChanged: (action) => setState(() {
+              if (action == null) return;
+              _action = action;
+              _nodeRef = null;
+              _otherRef = null;
+              _input = null;
+            }),
+          ),
+          if (_action.needsNode) ...[
+            const SizedBox(height: 12),
+            if (targets.isEmpty)
+              Text(catalog.text('tutorial.action.noTargets'))
+            else
               _select<String>(
-                id: 'workshop-action-input-${_action.name}-${target.ref}',
-                label: catalog.text('tutorial.action.input'),
-                value: fields.contains(_input) ? _input : null,
-                options: fields,
-                display: (input) => learningPathInputLabel(catalog, input),
-                onChanged: (input) => setState(() {
-                  _input = input;
+                id: 'workshop-action-node-${_action.name}',
+                label: catalog.text('tutorial.action.node'),
+                value: target?.ref,
+                options: targets.map((node) => node.ref),
+                display: displayNode,
+                onChanged: (node) => setState(() {
+                  _nodeRef = node;
+                  _input = null;
                   _otherRef = null;
                 }),
               ),
-            ],
-            if (_action.needsOtherNode &&
-                target != null &&
-                (!_action.needsInput || _input != null)) ...[
-              const SizedBox(height: 12),
-              if (others.isEmpty)
-                Text(catalog.text('tutorial.action.noTargets'))
-              else
-                _select<String>(
-                  id: 'workshop-action-other-${_action.name}-${target.ref}-$_input',
-                  label: catalog.text(
-                    _action == LearningPathAction.attachReporter
-                        ? 'tutorial.action.reporter'
-                        : 'tutorial.action.source',
-                  ),
-                  value: others.any((node) => node.ref == _otherRef)
-                      ? _otherRef
-                      : null,
-                  options: others.map((node) => node.ref),
-                  display: displayNode,
-                  onChanged: (node) => setState(() => _otherRef = node),
+          ],
+          if (_action.needsInput && target != null) ...[
+            const SizedBox(height: 12),
+            _select<String>(
+              id: 'workshop-action-input-${_action.name}-${target.ref}',
+              label: catalog.text('tutorial.action.input'),
+              value: fields.contains(_input) ? _input : null,
+              options: fields,
+              display: (input) => learningPathInputLabel(catalog, input),
+              onChanged: (input) => setState(() {
+                _input = input;
+                _otherRef = null;
+              }),
+            ),
+          ],
+          if (_action.needsOtherNode &&
+              target != null &&
+              (!_action.needsInput || _input != null)) ...[
+            const SizedBox(height: 12),
+            if (others.isEmpty)
+              Text(catalog.text('tutorial.action.noTargets'))
+            else
+              _select<String>(
+                id: 'workshop-action-other-${_action.name}-${target.ref}-$_input',
+                label: catalog.text(
+                  _action == LearningPathAction.attachReporter
+                      ? 'tutorial.action.reporter'
+                      : 'tutorial.action.source',
                 ),
-            ],
-            if (_action == LearningPathAction.enterInput && _input != null) ...[
-              const SizedBox(height: 12),
-              TextField(
-                key: const ValueKey('workshop-action-value'),
-                controller: _value,
-                maxLength: 512,
-                decoration: InputDecoration(
-                  labelText: catalog.text('tutorial.action.expected'),
-                  border: const OutlineInputBorder(),
-                  counterText: '',
-                ),
+                value: others.any((node) => node.ref == _otherRef)
+                    ? _otherRef
+                    : null,
+                options: others.map((node) => node.ref),
+                display: displayNode,
+                onChanged: (node) => setState(() => _otherRef = node),
+              ),
+          ],
+          if (_action == LearningPathAction.enterInput && _input != null) ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('workshop-action-value'),
+              controller: _value,
+              maxLength: 512,
+              decoration: InputDecoration(
+                labelText: catalog.text('tutorial.action.expected'),
+                border: const OutlineInputBorder(),
+                counterText: '',
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            children: [
+              TextButton(
+                onPressed: widget.onCancel,
+                child: Text(catalog.text('tutorial.studio.cancel')),
+              ),
+              FilledButton(
+                key: const ValueKey('workshop-action-apply'),
+                onPressed: canSave
+                    ? () => widget.onSave(
+                        LearningPathRequirement(
+                          action: _action,
+                          nodeRef: _action.needsNode ? _nodeRef : null,
+                          otherRef: _action.needsOtherNode ? _otherRef : null,
+                          input: _action.needsInput ? _input : null,
+                          value:
+                              _action == LearningPathAction.enterInput &&
+                                  _value.text.trim().isNotEmpty
+                              ? _value.text.trim()
+                              : null,
+                        ),
+                      )
+                    : null,
+                child: Text(catalog.text('tutorial.action.apply')),
               ),
             ],
-          ],
-        ),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(catalog.text('tutorial.studio.cancel')),
-        ),
-        FilledButton(
-          key: const ValueKey('workshop-action-apply'),
-          onPressed: canSave
-              ? () => Navigator.of(context).pop(
-                  LearningPathRequirement(
-                    action: _action,
-                    nodeRef: _action.needsNode ? _nodeRef : null,
-                    otherRef: _action.needsOtherNode ? _otherRef : null,
-                    input: _action.needsInput ? _input : null,
-                    value:
-                        _action == LearningPathAction.enterInput &&
-                            _value.text.trim().isNotEmpty
-                        ? _value.text.trim()
-                        : null,
-                  ),
-                )
-              : null,
-          child: Text(catalog.text('tutorial.action.apply')),
-        ),
-      ],
     );
   }
 }

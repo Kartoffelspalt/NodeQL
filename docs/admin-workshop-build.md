@@ -1,58 +1,51 @@
 # NodeQL Workshop Admin
 
-Der Workshop Admin ist eine eigenständige Flutter-Desktop-Anwendung unter
-`tools/workshop_admin`. Sie besitzt eigene native Runner und die separate
-App-ID `org.nodeql.nodeqlWorkshopAdmin`. Der öffentliche NodeQL-Release wird
-weiterhin ausschließlich aus `lib/main.dart` gebaut.
+Der Workshop Admin wird in einem eigenen öffentlichen Repository gepflegt.
+Im NodeQL-Checkout ist er als Git-Submodul unter `tools/workshop_admin`
+eingebunden. Die App hat eigene native Runner und die App-ID
+`org.nodeql.nodeqlWorkshopAdmin`.
+
+- [Release-Seite mit Downloads und Unterrichtsmaterial](https://kartoffelspalt.github.io/NodeQL-Workshop-Admin/)
+- [Quellcode und GitHub Releases](https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin)
 
 ## Starten und bauen
 
 ```bash
+git submodule update --init tools/workshop_admin
 cd tools/workshop_admin
+bash tool/bootstrap-nodeql.sh
 flutter pub get
 flutter run -d macos
 ```
 
-Für ein lokales macOS-Artefakt:
-
-```bash
-cd tools/workshop_admin
-flutter build macos --release
-```
-
-Unter Windows beziehungsweise Linux wird entsprechend `flutter build windows
---release` oder `flutter build linux --release` verwendet.
+Der Admin verwendet den Commit aus `nodeql-revision`. Das Bootstrap-Skript
+holt diesen Stand nach `.nodeql`. Für Windows oder Linux das entsprechende
+Flutter-Ziel wählen.
 
 ## Builds und Release in GitHub Actions
 
-Der Workflow **Workshop Admin** testet und baut die App bei relevanten
-Änderungen auf `master` oder `main` und lässt sich auch manuell starten.
-Unter **Artifacts** im Workflow-Lauf liegen die Pakete für Linux x64
-(`.tar.gz`), macOS (`.zip`) und Windows x64 (`.zip`). Die macOS-App ist
-ad hoc signiert. Unter Windows wird das
-[Microsoft Visual C++ Redistributable für x64](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist/)
-benötigt, falls es auf dem Rechner noch fehlt.
-
-Für einen separaten Release die Version in `tools/workshop_admin/pubspec.yaml`
-pflegen und **Actions → Workshop Admin → Run workflow** auf `master` mit
-`create_release_draft` starten. Der Workflow legt nach erfolgreichen Builds
-einen Entwurf mit den drei Paketen, `SHA256SUMS.txt` und einem eigenen Tag
-wie `workshop-admin-v1.0.0+1` an. Bei der Veröffentlichung die Markierung
-als Pre-Release beibehalten, damit der Update-Feed von NodeQL auf dem
-regulären Release bleibt.
+Der Workflow **Workshop Admin** im
+[Admin-Repository](https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin/actions/workflows/release.yml)
+testet und baut die App für macOS, Windows x64 und Linux x64. Ein manueller
+Lauf mit `create_release_draft` erstellt einen Release-Entwurf mit den drei
+Paketen und `SHA256SUMS.txt`. Die Release-Seite übernimmt die Downloads und
+Versionshinweise, sobald der Release veröffentlicht ist.
 
 ## Einen Workshop erstellen
 
-1. In **Workshop Admin** den Workshop-Modus öffnen. Im **Workshop Studio**
-   **Neuer Workshop** wählen und einen Namen eingeben.
+1. **Workshop Admin** öffnen. Die Arbeitsfläche mit Palette und Nodes ist
+   direkt bedienbar. Rechts ersetzen die Erstellungswerkzeuge die SQLite-
+   und Output-Vorschau. **Neuer Workshop** wählen und einen Namen eingeben.
 2. **Schritt hinzufügen** wählen, einen Titel und die Aufgabe für die Klasse
-   schreiben und **Schritt übernehmen** klicken. Ein Hinweis ist optional.
-3. Für einen geführten Node-Schritt **Zur Arbeitsfläche** wählen. Die
-   Beispiel-Nodes vorbereiten und **Entwurf fortsetzen** klicken. Beim nächsten
-   Schritt sind die Nodes der Arbeitsfläche unter **Übungs-Nodes** vorausgewählt.
-   Die Auswahl lässt sich dort ändern und optional mit Beschriftungen ergänzen.
-4. **Speichern** legt den Workshop lokal ab. **Speichern und ausprobieren**
-   öffnet ihn direkt im Workshop-Player.
+   schreiben. Der Schritt wird direkt im rechten Bereich bearbeitet.
+3. Nodes auf der Arbeitsfläche vorbereiten und bei Bedarf **Aktuelle Nodes
+   übernehmen** wählen. Unter **Übungs-Nodes** die Auswahl anpassen und
+   unter **Interaktion** Markierungen und Prüfungen ergänzen. Auch die
+   Eingabeprüfung öffnet sich direkt im rechten Bereich.
+4. **Schritt übernehmen** und **Speichern** wählen. **Speichern und
+   ausprobieren** startet den Player am ersten Schritt und zeigt beide
+   Vorschauen. Mit **Weiter bearbeiten** werden die Werkzeuge und der
+   Node-Aufbau vor dem Test wiederhergestellt.
 
 Eigene gespeicherte Workshops stehen oben im Studio.
 
@@ -111,13 +104,13 @@ nicht verteilt.
    unter **Netzwerk wechseln** anpassen.
 3. Die Lernenden wählen in NodeQL **Workshop → Code eingeben → Einfügen**.
    Nach der Vorschau öffnet **Speichern und starten** den Workshop direkt.
-4. Die Lehrkraft lässt den Dialog geöffnet, bis die Klasse beigetreten ist.
-   Mit **Freigabe beenden**, beim Schließen des Dialogs oder spätestens nach
+4. Die Lehrkraft lässt die Freigabe geöffnet, bis die Klasse beigetreten ist.
+   Mit **Freigabe beenden**, beim Schließen des Freigabebereichs oder spätestens nach
    30 Minuten endet die Freigabe. Installierte Workshops sind weiter offline
    spielbar.
 
 Falls sich die Geräte im lokalen Netz nicht erreichen, wählt die Lehrkraft
-im selben Teilen-Dialog **Datei speichern** und verteilt die JSON-Datei
+im selben Freigabebereich **Datei speichern** und verteilt die JSON-Datei
 über den üblichen Unterrichtskanal oder per Datenträger. Die Klasse wählt
 **Workshop → Code eingeben → Datei öffnen**.
 Der Import prüft die Datei vor der Installation nach denselben Inhaltsregeln.
@@ -170,9 +163,9 @@ Arbeitsspeicher beschränkt.
 
 ## Technische Trennung
 
-- `tools/workshop_admin` enthält Entry Point, Datei-Picker und Studio-Launcher.
+- Das Submodul `tools/workshop_admin` enthält Entry Point, Datei-Picker und Studio-Bereich.
 - Die normale App kennt nur den standardmäßig leeren Provider
-  `workshopAdminActionProvider`.
+  `workshopAdminActionProvider` und `workshopAdminPanelProvider`.
 - Die reguläre Learning-Path-Bibliothek lädt das veröffentlichte Asset-Bundle
   schreibgeschützt. Geprüfte Downloads stehen in einem getrennten Bereich.
 - Nur das Admin-Projekt überschreibt diesen Provider und importiert
@@ -185,3 +178,14 @@ Arbeitsspeicher beschränkt.
 Lokal gespeicherte Entwürfe und das veröffentlichte Bundle sind getrennt. Das
 verhindert, dass ein unfertiger Workshop allein durch Speichern im Admin-Tool
 in einer Release-Version erscheint.
+
+## PDF-Materialien
+
+- [Workshops erstellen](../output/pdf/NodeQL-Workshops-erstellen.pdf) erklärt
+  auf 19 Seiten den eingebetteten Editor mit Screenshots, allen Prüfungsarten,
+  einem vollständigen Beispielworkshop, Freigabe und Fehlersuche.
+- [Unterrichtsmaterial](../output/pdf/NodeQL-Unterrichtsmaterial.pdf) bietet
+  27 Seiten im Projektionsformat mit Aufgaben, Arbeitsblättern und geprüften
+  Lösungen auf den eingebauten Übungsdaten. Ein Ablauf für zwei Schulstunden
+  und eine gekürzte Variante für 45 Minuten sind im Leitfaden beschrieben.
+  Alle Personen in den Übungsdaten tragen traditionelle deutsche Vornamen.

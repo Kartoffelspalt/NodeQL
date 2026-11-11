@@ -19,10 +19,11 @@ void main() {
     AuthoredLearningPath? shared;
     await tester.pumpWidget(
       MaterialApp(
-        home: LearningPathStudioDialog(
+        home: LearningPathStudioPanel(
           catalog: _englishCatalog(),
           paths: const [path],
           workspaceNodes: const [],
+          onStart: (_) async {},
           onSave: (_) async {},
           onDelete: (_) async {},
           onShareClassroom: (path) => shared = path,
@@ -39,7 +40,7 @@ void main() {
     AuthoredLearningPath? saved;
     await tester.pumpWidget(
       MaterialApp(
-        home: LearningPathStudioDialog(
+        home: LearningPathStudioPanel(
           catalog: _englishCatalog(),
           paths: const [],
           workspaceNodes: [
@@ -55,6 +56,7 @@ void main() {
               operatorType: BlockType.sqlWhere,
             ),
           ],
+          onStart: (_) async {},
           onSave: (path) async => saved = path,
           onDelete: (_) async {},
         ),
@@ -127,12 +129,21 @@ void main() {
     await tester.ensureVisible(addRule);
     await tester.tap(addRule);
     await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('workshop-action-node-enterInput')),
+    );
     await tester.tap(
       find.byKey(const ValueKey('workshop-action-node-enterInput')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('SELECT name FROM customers').last);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(
+        const ValueKey('workshop-action-input-enterInput-select-node'),
+      ),
+    );
     await tester.tap(
       find.byKey(
         const ValueKey('workshop-action-input-enterInput-select-node'),
@@ -144,6 +155,9 @@ void main() {
     await tester.enterText(
       find.byKey(const ValueKey('workshop-action-value')),
       'customers',
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('workshop-action-apply')),
     );
     await tester.tap(find.byKey(const ValueKey('workshop-action-apply')));
     await tester.pumpAndSettle();
