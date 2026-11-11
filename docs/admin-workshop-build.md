@@ -1,45 +1,35 @@
 # NodeQL Workshop Admin
 
-Der Workshop Admin ist eine eigenständige Flutter-Desktop-Anwendung unter
-`tools/workshop_admin`. Sie besitzt eigene native Runner und die separate
-App-ID `org.nodeql.nodeqlWorkshopAdmin`. Der öffentliche NodeQL-Release wird
-weiterhin ausschließlich aus `lib/main.dart` gebaut.
+Der Workshop Admin wird in einem eigenen öffentlichen Repository gepflegt.
+Im NodeQL-Checkout ist er als Git-Submodul unter `tools/workshop_admin`
+eingebunden. Die App hat eigene native Runner und die App-ID
+`org.nodeql.nodeqlWorkshopAdmin`.
+
+- [Release-Seite mit Downloads und Unterrichtsmaterial](https://kartoffelspalt.github.io/NodeQL-Workshop-Admin/)
+- [Quellcode und GitHub Releases](https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin)
 
 ## Starten und bauen
 
 ```bash
+git submodule update --init tools/workshop_admin
 cd tools/workshop_admin
+bash tool/bootstrap-nodeql.sh
 flutter pub get
 flutter run -d macos
 ```
 
-Für ein lokales macOS-Artefakt:
-
-```bash
-cd tools/workshop_admin
-flutter build macos --release
-```
-
-Unter Windows beziehungsweise Linux wird entsprechend `flutter build windows
---release` oder `flutter build linux --release` verwendet.
+Der Admin verwendet den Commit aus `nodeql-revision`. Das Bootstrap-Skript
+holt diesen Stand nach `.nodeql`. Für Windows oder Linux das entsprechende
+Flutter-Ziel wählen.
 
 ## Builds und Release in GitHub Actions
 
-Der Workflow **Workshop Admin** testet und baut die App bei relevanten
-Änderungen auf `master` oder `main` und lässt sich auch manuell starten.
-Unter **Artifacts** im Workflow-Lauf liegen die Pakete für Linux x64
-(`.tar.gz`), macOS (`.zip`) und Windows x64 (`.zip`). Die macOS-App ist
-ad hoc signiert. Unter Windows wird das
-[Microsoft Visual C++ Redistributable für x64](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist/)
-benötigt, falls es auf dem Rechner noch fehlt.
-
-Für einen separaten Release die Version in `tools/workshop_admin/pubspec.yaml`
-pflegen und **Actions → Workshop Admin → Run workflow** auf `master` mit
-`create_release_draft` starten. Der Workflow legt nach erfolgreichen Builds
-einen Entwurf mit den drei Paketen, `SHA256SUMS.txt` und einem eigenen Tag
-wie `workshop-admin-v1.0.0+1` an. Bei der Veröffentlichung die Markierung
-als Pre-Release beibehalten, damit der Update-Feed von NodeQL auf dem
-regulären Release bleibt.
+Der Workflow **Workshop Admin** im
+[Admin-Repository](https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin/actions/workflows/release.yml)
+testet und baut die App für macOS, Windows x64 und Linux x64. Ein manueller
+Lauf mit `create_release_draft` erstellt einen Release-Entwurf mit den drei
+Paketen und `SHA256SUMS.txt`. Die Release-Seite übernimmt die Downloads und
+Versionshinweise, sobald der Release veröffentlicht ist.
 
 ## Einen Workshop erstellen
 
@@ -173,7 +163,7 @@ Arbeitsspeicher beschränkt.
 
 ## Technische Trennung
 
-- `tools/workshop_admin` enthält Entry Point, Datei-Picker und Studio-Bereich.
+- Das Submodul `tools/workshop_admin` enthält Entry Point, Datei-Picker und Studio-Bereich.
 - Die normale App kennt nur den standardmäßig leeren Provider
   `workshopAdminActionProvider` und `workshopAdminPanelProvider`.
 - Die reguläre Learning-Path-Bibliothek lädt das veröffentlichte Asset-Bundle

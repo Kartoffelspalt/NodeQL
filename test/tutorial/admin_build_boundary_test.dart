@@ -23,16 +23,12 @@ void main() {
     expect(workflow, isNot(contains('workshop_admin_launcher')));
   });
 
-  test('admin is a separate unpublished desktop application', () {
-    final pubspec = File(
-      'tools/workshop_admin/pubspec.yaml',
-    ).readAsStringSync();
-    final macConfig = File(
-      'tools/workshop_admin/macos/Runner/Configs/AppInfo.xcconfig',
-    ).readAsStringSync();
-
-    expect(pubspec, contains("publish_to: 'none'"));
-    expect(pubspec, contains('path: ../..'));
-    expect(macConfig, contains('org.nodeql.nodeqlWorkshopAdmin'));
+  test('the Workshop Admin is linked as a separate repository', () {
+    final modules = File('.gitmodules').readAsStringSync();
+    expect(modules, contains('path = tools/workshop_admin'));
+    expect(
+      modules,
+      contains('https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin.git'),
+    );
   });
 }

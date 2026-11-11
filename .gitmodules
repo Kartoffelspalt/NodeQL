@@ -1,0 +1,3 @@
+[submodule "workshop-admin"]
+	path = tools/workshop_admin
+	url = https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin.git

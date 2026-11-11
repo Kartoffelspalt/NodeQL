@@ -2,7 +2,7 @@
 
 ## Im separaten Admin-Build
 
-Das **Workshop Studio** ist ausschließlich im privaten Desktop-Projekt
+Das **Workshop Studio** ist im eigenständigen Desktop-Projekt
 `tools/workshop_admin` verfügbar. Im regulären NodeQL-Build stehen offizielle
 Workshops und geprüfte Downloads zur Verfügung. Start, Build und
 Veröffentlichung sind in [NodeQL Workshop Admin](admin-workshop-build.md)

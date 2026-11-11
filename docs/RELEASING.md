@@ -77,8 +77,10 @@ an ancestor of `master`.
 
 ## Workshop Admin
 
-The [Workshop Admin workflow](admin-workshop-build.md#builds-und-release-in-github-actions)
-builds the standalone authoring app and can prepare a separate release draft.
+The [Workshop Admin repository](https://github.com/Kartoffelspalt/NodeQL-Workshop-Admin)
+builds the standalone authoring app and prepares its own release drafts.
+Published packages and teaching materials appear on the
+[Workshop Admin release page](https://kartoffelspalt.github.io/NodeQL-Workshop-Admin/).
 
 ## Signing
 
