@@ -1136,7 +1136,12 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           translationControllerProvider.overrideWith(
-            (_) => _ReadyTranslationController(),
+            (_) => _ReadyTranslationController(locale: const Locale('de')),
+          ),
+          sqlModeProvider.overrideWith(
+            (_) => SqlModeController.session(
+              initialMode: SqlAbstractionMode.advanced,
+            ),
           ),
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
@@ -1177,6 +1182,31 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final search = find.byType(TextField).first;
+      final paletteJoin = find.byKey(
+        const ValueKey('palette-draggable-sqlJoin'),
+      );
+      await tester.enterText(search, 'join');
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: paletteJoin, matching: find.text('JOIN')),
+        findsOneWidget,
+      );
+      expect(find.text('JOIN'), findsNWidgets(2));
+
+      await container
+          .read(sqlModeProvider.notifier)
+          .setMode(SqlAbstractionMode.simple);
+      await tester.enterText(search, 'tabellen verbinden');
+      await tester.pumpAndSettle();
+      final simpleTitle = find.text('Tabellen verbinden');
+      expect(
+        find.descendant(of: paletteJoin, matching: simpleTitle),
+        findsOneWidget,
+      );
+      expect(simpleTitle, findsNWidgets(2));
+      expect(find.text('JOIN'), findsNothing);
+
       Future<void> choose(String key, String option) async {
         await tester.tap(find.byKey(ValueKey('inline-slot-${join.id}-$key')));
         await tester.pumpAndSettle();
@@ -1193,6 +1223,7 @@ void main() {
       await choose('right_column', 'orders.customer_id');
       await tester.tap(find.byKey(ValueKey('join-outcome-${join.id}')));
       await tester.pumpAndSettle();
+      expect(find.text('Welche Zeilen sollen bleiben?'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('join-kind-LEFT')));
       await tester.pumpAndSettle();
       expect(join.inputs['join_type'], 'LEFT');
@@ -1411,7 +1442,7 @@ class _WorkshopTranslationController extends _ReadyTranslationController {
 }
 
 class _ReadyTranslationController extends TranslationController {
-  _ReadyTranslationController()
+  _ReadyTranslationController({Locale locale = const Locale('en')})
     : super(
         _WidgetTestTranslationRepository(),
         appVersion: () async => '1.0.0',
@@ -1486,10 +1517,11 @@ class _ReadyTranslationController extends TranslationController {
       'runtime.copySql': 'Copy SQLite',
       'runtime.noResults': 'No results',
     };
-    state = const TranslationState(
+    state = TranslationState(
+      locale: locale,
       loading: false,
       catalog: TranslationCatalog(
-        locale: 'en',
+        locale: locale.languageCode,
         messages: messages,
         englishMessages: messages,
       ),

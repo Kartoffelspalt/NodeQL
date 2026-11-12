@@ -5709,6 +5709,8 @@ class _PaletteState extends State<_Palette> {
                         description: block.description,
                         color: block.color,
                         node: _templateNode(block.type, block.defaults),
+                        languageCode: widget.localeCode,
+                        mode: widget.mode,
                         width: tileWidth,
                         guided: block.type == widget.guidedBlockType,
                         guidedLabel: block.type == widget.guidedBlockType
@@ -5733,7 +5735,9 @@ class _PaletteState extends State<_Palette> {
 
   List<_PaletteItem> _blocksForCategory(SqlPaletteCategory category) {
     String lbl(BlockType type) =>
-        sqlLabelFor(type, widget.mode, const {}, widget.localeCode);
+        isJoinType(type) && widget.mode == SqlAbstractionMode.simple
+        ? joinNodeTitle(joinStrings(widget.localeCode), widget.mode)
+        : sqlLabelFor(type, widget.mode, const {}, widget.localeCode);
     _PaletteItem native(BlockType type) => _PaletteItem(
       key: type.name,
       type: type,
@@ -5970,7 +5974,7 @@ class _PaletteState extends State<_Palette> {
             ? 'Begrenzt die Ergebniszahl und kann vorherige Zeilen überspringen.'
             : 'Limits the result count and can skip preceding rows.';
       case BlockType.sqlJoin:
-        return joinStrings(widget.localeCode).joinPaletteDescription;
+        return joinStrings(localeCode).joinPaletteDescription;
       case BlockType.sqlInnerJoin:
         return de
             ? 'Gibt nur Zeilen zurück, bei denen beide Tabellen passende Werte haben.'
@@ -6482,6 +6486,8 @@ class _PaletteCard extends StatelessWidget {
     required this.description,
     required this.color,
     required this.node,
+    required this.languageCode,
+    required this.mode,
     required this.width,
     this.guided = false,
     this.guidedLabel,
@@ -6495,6 +6501,8 @@ class _PaletteCard extends StatelessWidget {
   final String description;
   final Color color;
   final BlockNode node;
+  final String languageCode;
+  final SqlAbstractionMode mode;
   final double width;
   final bool guided;
   final String? guidedLabel;
@@ -6508,7 +6516,6 @@ class _PaletteCard extends StatelessWidget {
     final isJoin = isJoinType(node.type);
     final blockHeight = isJoin ? 64.0 : baseHeightForBlock(node);
     final previewWidth = _palettePreviewWidth(label, width);
-    final languageCode = Localizations.localeOf(context).languageCode;
     final strings = joinStrings(languageCode);
     final Widget block = isJoin
         ? IgnorePointer(
@@ -6530,6 +6537,7 @@ class _PaletteCard extends StatelessWidget {
                       node: node,
                       sourceTable: '…',
                       languageCode: languageCode,
+                      mode: mode,
                       slotBuilder: (key, width) => Container(
                         width: width,
                         height: key == 'table' ? 26 : 30,
@@ -8639,6 +8647,7 @@ class _NodeView extends ConsumerWidget {
                         ? null
                         : sourceTables.join(' + '),
                     languageCode: localeCode,
+                    mode: mode,
                     slotBuilder: slot,
                     onChooseKind: node.type == BlockType.sqlJoin
                         ? () async {

@@ -1,7 +1,7 @@
 name: nodeql
 description: Local-first visual SQLite learning and development desktop application.
 publish_to: 'none'
-version: 0.5.2+522
+version: 0.5.3+524
 
 environment:
   sdk: ^3.9.0
