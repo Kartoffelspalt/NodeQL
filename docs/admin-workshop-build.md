@@ -47,7 +47,22 @@ Versionshinweise, sobald der Release veröffentlicht ist.
    Vorschauen. Mit **Weiter bearbeiten** werden die Werkzeuge und der
    Node-Aufbau vor dem Test wiederhergestellt.
 
-Eigene gespeicherte Workshops stehen oben im Studio.
+In der Bibliothek lassen sich Workshops nach Titel, Beschreibung und
+Schritttiteln suchen, nach Herkunft filtern und nach Titel oder Schrittzahl
+sortieren. Offizielle Vorlagen sind schreibgeschützt. Über **Als Entwurf
+kopieren** entsteht eine unabhängige Fassung für den eigenen Unterricht.
+Ein Entwurf lässt sich schon mit einem Titel speichern, auch wenn noch keine
+Aufgabe fertig ist. Beim Verlassen eines geänderten Entwurfs oder Schritts
+fragt das Studio nach, bevor Änderungen verloren gehen.
+
+**Workshop prüfen** zeigt, welche Fehler die Vorschau, den Katalogexport
+oder die Weitergabe blockieren. Bei einem Problem in einem bestimmten Schritt
+kannst du in der Prüfung des Entwurfs direkt zu diesem Schritt wechseln. Die
+Vorschau startet am Anfang und verändert keinen gespeicherten Lernfortschritt.
+
+**Datei importieren** zeigt die enthaltenen Workshops vor dem Speichern an.
+Bestätigte Workshops landen gemeinsam als neue Entwürfe mit eigenen IDs in
+der Bibliothek. Vorhandene Entwürfe und Vorlagen bleiben dabei erhalten.
 
 Beispiel für den Einstieg ist ein Workshop mit dem Namen *Kunden nach Stadt
 filtern*. Der erste Schritt kann *Kunden anzeigen* heißen und die Aufgabe
@@ -81,7 +96,10 @@ Desktop-App mit Unterstützung für interaktive Schritte.
 
 ## Den offiziellen Katalog veröffentlichen
 
-Mit **Katalog exportieren** eine Datei namens `workshops.json` speichern.
+Mit **Katalog exportieren** die gewünschten Workshops auswählen und die Datei
+als `workshops.json` speichern. Entwürfe mit inhaltlichen Fehlern sind nicht
+auswählbar. Der offizielle Katalog kann auch Übungen enthalten, die sich wegen
+der strengeren Regeln nicht als Download oder Unterrichtscode verteilen lassen.
 Die geprüfte Datei als `assets/workshops/workshops.json` in das Hauptprojekt
 übernehmen und normal testen.
 

@@ -984,6 +984,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                                             paletteWidth:
                                                                 72.0 +
                                                                 paletteWidth,
+                                                            columnLinkManagerTopInset:
+                                                                _workspaceTabsHeight,
                                                             diagnostics:
                                                                 nodeDiagnostics,
                                                             onSaveProject: () =>
@@ -3067,6 +3069,7 @@ class _WorkshopWorkspaceViewState
   double? _practicePanelHeight;
   TutorialPracticeSession? _practice;
   AuthoredLearningPath? _authoredPath;
+  bool _authoredPreview = false;
   int _authoredStepIndex = 0;
   int _authoredNodeIndex = 0;
   bool _authoredNodeInserted = false;
@@ -3443,6 +3446,7 @@ class _WorkshopWorkspaceViewState
                                             focusNode: _workspaceFocus,
                                             transform: _transform,
                                             paletteWidth: 72.0 + paletteWidth,
+                                            showColumnLinkManager: !authoring,
                                             diagnostics: diagnostics,
                                             learningPathCallouts: authoring
                                                 ? const []
@@ -3480,20 +3484,23 @@ class _WorkshopWorkspaceViewState
                           bottom: 0,
                           end: 0,
                           width: creationWidth,
-                          child: Offstage(
-                            offstage: !authoring,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: BorderDirectional(
-                                  start: BorderSide(
-                                    color: Theme.of(context).dividerColor,
+                          child: ExcludeFocus(
+                            excluding: !authoring,
+                            child: Offstage(
+                              offstage: !authoring,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: BorderDirectional(
+                                    start: BorderSide(
+                                      color: Theme.of(context).dividerColor,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: adminPanelBuilder(
-                                context,
-                                ref,
-                                _tryCreatedWorkshop,
+                                child: adminPanelBuilder(
+                                  context,
+                                  ref,
+                                  _tryCreatedWorkshop,
+                                ),
                               ),
                             ),
                           ),
@@ -3528,7 +3535,7 @@ class _WorkshopWorkspaceViewState
         .toJsonString();
     _creationMode ??= ref.read(sqlModeProvider);
     _creationTransform ??= _transform.value.clone();
-    await _startAuthoredPath(path, restart: true);
+    await _startAuthoredPath(path, preview: true);
     if (mounted) ref.read(workshopAuthoringProvider.notifier).state = false;
   }
 
@@ -3673,6 +3680,7 @@ class _WorkshopWorkspaceViewState
     if (!mounted) return;
     setState(() {
       _authoredPath = null;
+      _authoredPreview = false;
       _authoredNodeIds = const <String, String>{};
       _activeCategory = _categoryForPracticeStep(definition.steps[stepIndex]);
       _practice = TutorialPracticeSession(
@@ -3772,20 +3780,24 @@ class _WorkshopWorkspaceViewState
   Future<void> _startAuthoredPath(
     AuthoredLearningPath path, {
     bool restart = false,
+    bool preview = false,
   }) async {
     if (path.steps.isEmpty) return;
     _saveAuthoredProgress();
-    final tutorial = ref.read(tutorialControllerProvider.notifier);
-    await tutorial.initialize();
-    if (!mounted) return;
-    final progress = ref
-        .read(tutorialControllerProvider)
-        .workshopProgressFor(path.id);
+    var progress = const NodeQlWorkshopProgress();
+    if (!preview) {
+      await ref.read(tutorialControllerProvider.notifier).initialize();
+      if (!mounted) return;
+      progress = ref
+          .read(tutorialControllerProvider)
+          .workshopProgressFor(path.id);
+    }
     final repeat = progress.isCompleteFor(path.steps.map((step) => step.id));
     final savedStepIndex = path.steps.indexWhere(
       (step) => step.id == progress.currentStepId,
     );
     var resume =
+        !preview &&
         !restart &&
         !repeat &&
         savedStepIndex >= 0 &&
@@ -3828,6 +3840,7 @@ class _WorkshopWorkspaceViewState
     setState(() {
       _practice = null;
       _authoredPath = path;
+      _authoredPreview = preview;
       _authoredStepIndex = stepIndex;
       _authoredNodeIndex = nodeIndex < 0 ? step.nodes.length : nodeIndex;
       _authoredNodeIds = _withAuthoredStartNode(
@@ -4001,7 +4014,7 @@ class _WorkshopWorkspaceViewState
 
   void _saveAuthoredProgress({bool completed = false}) {
     final path = _authoredPath;
-    if (path == null || _loadingAuthoredStep) return;
+    if (path == null || _loadingAuthoredStep || _authoredPreview) return;
     final step = path.steps[_authoredStepIndex];
     final workspace = ref.read(workspaceProvider.notifier);
     unawaited(
@@ -4195,6 +4208,7 @@ class _WorkshopWorkspaceViewState
     _authoredLoadToken++;
     setState(() {
       _authoredPath = null;
+      _authoredPreview = false;
       _authoredNodeIndex = 0;
       _authoredNodeInserted = false;
       _authoredNodeIds = const <String, String>{};
@@ -6721,6 +6735,8 @@ class _PaletteCard extends StatelessWidget {
   }
 }
 
+const _workspaceTabsHeight = 52.0;
+
 class _WorkspaceTabsBar extends ConsumerWidget {
   const _WorkspaceTabsBar({required this.catalog});
 
@@ -6784,7 +6800,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
       gap: 4,
     );
     return Container(
-      height: 52,
+      height: _workspaceTabsHeight,
       padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
       decoration: BoxDecoration(
         color: colors.panel,
@@ -7109,6 +7125,8 @@ class _WorkspaceCanvas extends ConsumerWidget {
     required this.paletteWidth,
     required this.diagnostics,
     required this.onSaveProject,
+    this.showColumnLinkManager = true,
+    this.columnLinkManagerTopInset = 0,
     this.learningPathCallouts = const <LearningPathNodeCallout>[],
     this.learningPathNodeIds = const <String, String>{},
     this.learningPathHighlights = const <String>{},
@@ -7122,6 +7140,8 @@ class _WorkspaceCanvas extends ConsumerWidget {
   final double paletteWidth;
   final Map<String, _SimpleNodeDiagnostic> diagnostics;
   final Future<void> Function() onSaveProject;
+  final bool showColumnLinkManager;
+  final double columnLinkManagerTopInset;
   final List<LearningPathNodeCallout> learningPathCallouts;
   final Map<String, String> learningPathNodeIds;
   final Set<String> learningPathHighlights;
@@ -7272,6 +7292,53 @@ class _WorkspaceCanvas extends ConsumerWidget {
                 ),
               ),
             ),
+            if (showColumnLinkManager && selectedColumnLink != null)
+              Positioned.fill(
+                top: columnLinkManagerTopInset,
+                child: Consumer(
+                  builder: (context, ref, child) {
+                    final viewport = ref.watch(
+                      workspaceProvider.select(
+                        (state) => (pan: state.pan, scale: state.scale),
+                      ),
+                    );
+                    final source = selectedColumnLink.source;
+                    final target = selectedColumnLink.target;
+                    final nodes = Rect.fromPoints(
+                      Offset(
+                        source.position.dx + controller.nodeWidth(source),
+                        math.min(source.position.dy, target.position.dy),
+                      ),
+                      Offset(
+                        target.position.dx,
+                        math.max(
+                          source.position.dy + controller.blockHeight(source),
+                          target.position.dy + controller.blockHeight(target),
+                        ),
+                      ),
+                    );
+                    final anchor = Rect.fromPoints(
+                      nodes.topLeft * viewport.scale + viewport.pan,
+                      nodes.bottomRight * viewport.scale + viewport.pan,
+                    ).translate(0, -columnLinkManagerTopInset);
+                    return CustomSingleChildLayout(
+                      delegate: _ColumnLinkManagerLayout(anchor),
+                      child: child,
+                    );
+                  },
+                  child: SingleChildScrollView(
+                    child: _ColumnLinkManagerCard(
+                      link: selectedColumnLink,
+                      catalog: ref.watch(translationControllerProvider).catalog,
+                      mode: ref.watch(sqlModeProvider),
+                      sourceColor: ropeColors.source,
+                      targetColor: ropeColors.target,
+                      onClose: controller.clearColumnLinkSelection,
+                      onDelete: controller.deleteSelectedColumnLink,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -7535,6 +7602,32 @@ class _LearningPathCanvasCallout extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _ColumnLinkManagerLayout extends SingleChildLayoutDelegate {
+  const _ColumnLinkManagerLayout(this.anchor);
+
+  static const _margin = 8.0;
+  final Rect anchor;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      constraints.loosen().deflate(const EdgeInsets.all(_margin));
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final left = anchor.center.dx - childSize.width / 2;
+    final below = anchor.bottom + _margin;
+    final above = anchor.top - _margin - childSize.height;
+    final maxLeft = math.max(_margin, size.width - childSize.width - _margin);
+    final maxTop = math.max(_margin, size.height - childSize.height - _margin);
+    final top = below > maxTop && above >= _margin ? above : below;
+    return Offset(left.clamp(_margin, maxLeft), top.clamp(_margin, maxTop));
+  }
+
+  @override
+  bool shouldRelayout(_ColumnLinkManagerLayout oldDelegate) =>
+      anchor != oldDelegate.anchor;
 }
 
 class _ColumnLinkManagerCard extends StatelessWidget {
@@ -12529,14 +12622,6 @@ class _FloatingRuntimeWindowsState
   @override
   Widget build(BuildContext context) {
     final controller = ref.read(workbenchLayoutProvider.notifier);
-    final workspaceController = ref.read(workspaceProvider.notifier);
-    final selectedColumnLinkTargetId = ref.watch(
-      workspaceProvider.select((state) => state.selectedColumnLinkTargetId),
-    );
-    final selectedColumnLink = selectedColumnLinkTargetId == null
-        ? null
-        : workspaceController.selectedColumnLink();
-    final ropeColors = _RopeHighlightColors.of(context);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -12730,20 +12815,6 @@ class _FloatingRuntimeWindowsState
                 child: const IgnorePointer(child: _RuntimeDragGhost()),
               ),
             ],
-            if (!widget.customMode && selectedColumnLink != null)
-              Positioned(
-                top: 64,
-                left: 12,
-                child: _ColumnLinkManagerCard(
-                  link: selectedColumnLink,
-                  catalog: widget.catalog,
-                  mode: widget.mode,
-                  sourceColor: ropeColors.source,
-                  targetColor: ropeColors.target,
-                  onClose: workspaceController.clearColumnLinkSelection,
-                  onDelete: workspaceController.deleteSelectedColumnLink,
-                ),
-              ),
           ],
         );
       },

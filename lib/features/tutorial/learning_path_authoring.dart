@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math';
+
 import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:flutter/foundation.dart';
@@ -371,8 +373,7 @@ class LearningPathLibraryController
         state = LearningPathLibraryState(loading: false, paths: _mergedPaths());
         return;
       }
-      final decoded = jsonDecode(await file.readAsString());
-      _localPaths = decodeLearningPathBundle(decoded);
+      _localPaths = decodeLearningPathDraftBundle(await file.readAsString());
       state = LearningPathLibraryState(loading: false, paths: _mergedPaths());
     } on Object catch (error) {
       state = LearningPathLibraryState(loading: false, error: '$error');
@@ -380,10 +381,9 @@ class LearningPathLibraryController
   }
 
   Future<void> save(AuthoredLearningPath path) async {
-    _ensureLocalDraftsEnabled();
-    if (state.loading) await initialize();
-    if (!_isValidPath(path)) {
-      throw ArgumentError('A learning path needs an id, title and one step.');
+    await _ensureWritable();
+    if (!_isValidDraft(path)) {
+      throw ArgumentError('A learning path draft needs an id and title.');
     }
     await _persist(
       () => [
@@ -395,8 +395,7 @@ class LearningPathLibraryController
   }
 
   Future<void> delete(String id) async {
-    _ensureLocalDraftsEnabled();
-    if (state.loading) await initialize();
+    await _ensureWritable();
     await _persist(
       () => [
         for (final path in _localPaths)
@@ -405,13 +404,25 @@ class LearningPathLibraryController
     );
   }
 
-  Future<void> importBundle(String source) async {
-    _ensureLocalDraftsEnabled();
-    if (state.loading) await initialize();
-    final imported = decodeLearningPathBundle(jsonDecode(source));
-    for (final path in imported) {
-      await save(path);
-    }
+  Future<void> importBundle(String source) => addDrafts([
+    for (final path in decodeLearningPathDraftBundle(source))
+      copyLearningPath(path),
+  ]);
+
+  /// Adds a batch in one write. Existing drafts and templates are never replaced.
+  Future<void> addDrafts(List<AuthoredLearningPath> drafts) async {
+    if (drafts.isEmpty) return;
+    await _ensureWritable();
+    final incoming = List<AuthoredLearningPath>.of(drafts);
+    await _persist(() {
+      final ids = {for (final path in _mergedPaths()) path.id};
+      for (final draft in incoming) {
+        if (!_isValidDraft(draft) || !ids.add(draft.id)) {
+          throw ArgumentError('Drafts must have unique ids and titles.');
+        }
+      }
+      return [..._localPaths, ...incoming];
+    });
   }
 
   String exportBundle() => encodeLearningPathBundle(state.paths);
@@ -447,13 +458,18 @@ class LearningPathLibraryController
   }
 
   static bool _isValidPath(AuthoredLearningPath path) =>
-      path.id.trim().isNotEmpty &&
-      path.title.trim().isNotEmpty &&
-      path.steps.isNotEmpty;
+      _isValidDraft(path) && path.steps.isNotEmpty;
 
-  void _ensureLocalDraftsEnabled() {
+  static bool _isValidDraft(AuthoredLearningPath path) =>
+      path.id.trim().isNotEmpty && path.title.trim().isNotEmpty;
+
+  Future<void> _ensureWritable() async {
     if (_storageFile == null) {
       throw StateError('Published workshop libraries are read-only.');
+    }
+    await initialize();
+    if (state.error != null) {
+      throw StateError('The existing workshop library could not be read.');
     }
   }
 
@@ -508,6 +524,63 @@ List<AuthoredLearningPath> decodeLearningPathBundle(Object? decoded) {
       .toList(growable: false);
 }
 
+/// Reads a teacher library or import without silently dropping entire drafts.
+List<AuthoredLearningPath> decodeLearningPathDraftBundle(String source) {
+  final decoded = jsonDecode(source);
+  if (decoded is! Map ||
+      decoded['schemaVersion'] is! int ||
+      (decoded['schemaVersion'] != 1 && decoded['schemaVersion'] != 2) ||
+      decoded['paths'] is! List) {
+    throw const FormatException('Expected a NodeQL workshop bundle.');
+  }
+  final paths = <AuthoredLearningPath>[];
+  final ids = <String>{};
+  for (final item in decoded['paths'] as List) {
+    if (item is! Map<String, dynamic> ||
+        item['id'] is! String ||
+        item['steps'] is! List ||
+        (item['steps'] as List).any((step) => !_hasDraftStepShape(step))) {
+      throw const FormatException('Invalid workshop entry.');
+    }
+    final path = AuthoredLearningPath.fromJson(item);
+    if (!LearningPathLibraryController._isValidDraft(path) ||
+        !ids.add(path.id)) {
+      throw const FormatException('Missing or duplicate workshop identity.');
+    }
+    paths.add(path);
+  }
+  return List.unmodifiable(paths);
+}
+
+bool _hasDraftStepShape(Object? step) {
+  if (step is! Map<String, dynamic>) return false;
+  for (final key in ['nodes', 'callouts', 'requirements']) {
+    final entries = step[key];
+    if (entries == null) continue;
+    if (entries is! List ||
+        entries.any((entry) => entry is! Map<String, dynamic>)) {
+      return false;
+    }
+  }
+  final nodes = step['nodes'] as List? ?? const [];
+  return nodes.every(
+    (node) => BlockType.values.any((type) => type.name == node['type']),
+  );
+}
+
+/// Workshop ids identify progress and drafts; step and node refs are internal.
+AuthoredLearningPath copyLearningPath(
+  AuthoredLearningPath path, {
+  String? title,
+}) => AuthoredLearningPath(
+  id: learningPathId(title ?? path.title),
+  title: title ?? path.title,
+  description: path.description,
+  titleTranslations: title == null ? path.titleTranslations : const {},
+  descriptionTranslations: path.descriptionTranslations,
+  steps: path.steps,
+);
+
 Map<String, dynamic> learningPathNodeDefaults(BlockNode node) {
   final cloned = jsonDecode(jsonEncode(node.inputs));
   final defaults = Map<String, dynamic>.from(cloned as Map);
@@ -522,6 +595,8 @@ String learningPathId(String title) {
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
       .replaceAll(RegExp(r'^-+|-+$'), '');
-  final suffix = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
-  return '${slug.isEmpty ? 'learning-path' : slug}-$suffix';
+  final time = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+  final random = Random.secure().nextInt(1 << 31).toRadixString(36);
+  final prefix = slug.isEmpty ? 'learning-path' : slug;
+  return '${prefix.length > 64 ? prefix.substring(0, 64) : prefix}-$time-$random';
 }

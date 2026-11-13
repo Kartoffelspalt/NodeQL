@@ -1,12 +1,21 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_reporters.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
 import 'package:nodeql/features/tutorial/learning_path_interaction_editor.dart';
+import 'package:nodeql/features/tutorial/learning_path_review.dart';
+import 'package:nodeql/features/tutorial/learning_path_studio_library.dart';
+
 import 'package:nodeql/features/workbench/presentation/engine/sql_labels.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
+
+part 'learning_path_studio_dialogs.dart';
 
 class LearningPathStudioPanel extends StatefulWidget {
   const LearningPathStudioPanel({
@@ -16,10 +25,12 @@ class LearningPathStudioPanel extends StatefulWidget {
     required this.onSave,
     required this.onDelete,
     this.initialDraft,
+    this.draftIds,
     this.workspaceMode = LearningPathMode.simple,
     required this.onStart,
     this.onHighlightsChanged,
     this.onImport,
+    this.onImportSave,
     this.onExport,
     this.onExportRemote,
     this.onShareClassroom,
@@ -28,6 +39,7 @@ class LearningPathStudioPanel extends StatefulWidget {
 
   final TranslationCatalog catalog;
   final List<AuthoredLearningPath> paths;
+  final Set<String>? draftIds;
   final List<BlockNode> workspaceNodes;
   final LearningPathMode workspaceMode;
   final AuthoredLearningPath? initialDraft;
@@ -35,7 +47,10 @@ class LearningPathStudioPanel extends StatefulWidget {
   final ValueChanged<Set<String>>? onHighlightsChanged;
   final Future<void> Function(AuthoredLearningPath path) onSave;
   final Future<void> Function(String id) onDelete;
+
+  /// Selects and reads a bundle; it does not change the library.
   final Future<List<AuthoredLearningPath>> Function()? onImport;
+  final Future<void> Function(List<AuthoredLearningPath> drafts)? onImportSave;
   final Future<void> Function(List<AuthoredLearningPath> paths)? onExport;
   final Future<void> Function(AuthoredLearningPath path)? onExportRemote;
   final ValueChanged<AuthoredLearningPath>? onShareClassroom;
@@ -47,202 +62,106 @@ class LearningPathStudioPanel extends StatefulWidget {
 
 class _LearningPathStudioPanelState extends State<LearningPathStudioPanel> {
   late List<AuthoredLearningPath> _paths;
+  Set<String>? _draftIds;
   AuthoredLearningPath? _editing;
-  String? _pendingDelete;
+  bool _libraryBusy = false;
+  final _reviews = Expando<LearningPathReview>();
 
   TranslationCatalog get catalog => widget.catalog;
 
   @override
   void initState() {
     super.initState();
-    _paths = List<AuthoredLearningPath>.of(widget.paths);
+    _paths = List.of(widget.paths);
+    _draftIds = widget.draftIds?.toSet();
     _editing = widget.initialDraft;
   }
 
   @override
+  void didUpdateWidget(covariant LearningPathStudioPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(widget.paths, oldWidget.paths) ||
+        !setEquals(widget.draftIds, oldWidget.draftIds)) {
+      _paths = List.of(widget.paths);
+      _draftIds = widget.draftIds?.toSet();
+    }
+  }
+
+  LearningPathReview _review(AuthoredLearningPath path) =>
+      _reviews[path] ??= reviewLearningPath(path);
+
+  @override
   Widget build(BuildContext context) {
+    final editing = _editing;
     return Material(
       key: const ValueKey('workshop-creation-panel'),
       color: Theme.of(context).colorScheme.surface,
-      child: _editing == null ? _buildLibrary() : _buildEditor(_editing),
-    );
-  }
-
-  Widget _buildLibrary() {
-    return Column(
-      children: [
-        _StudioHeader(
-          title: catalog.text('tutorial.studio.title'),
-          subtitle: catalog.text('tutorial.studio.subtitle'),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                FilledButton.icon(
-                  key: const ValueKey('learning-path-create'),
-                  onPressed: () => setState(() => _editing = _emptyPath()),
-                  icon: const Icon(Icons.add),
-                  label: Text(catalog.text('tutorial.studio.create')),
-                ),
-                if (widget.onImport != null)
-                  TextButton.icon(
-                    onPressed: _import,
-                    icon: const Icon(Icons.file_open_outlined),
-                    label: Text(catalog.text('tutorial.studio.import')),
-                  ),
-                if (widget.onExport != null && _paths.isNotEmpty)
-                  TextButton.icon(
-                    onPressed: () => widget.onExport!(_paths),
-                    icon: const Icon(Icons.publish_outlined),
-                    label: Text(catalog.text('tutorial.studio.export')),
-                  ),
-              ],
+      child: IndexedStack(
+        index: editing == null ? 0 : 1,
+        sizing: StackFit.expand,
+        children: [
+          ExcludeFocus(
+            excluding: editing != null,
+            child: LearningPathStudioLibrary(
+              catalog: catalog,
+              paths: _paths,
+              draftIds: _draftIds,
+              busy: _libraryBusy,
+              reviewFor: _review,
+              onCreate: () => setState(() => _editing = _emptyPath()),
+              onEdit: (path) => setState(() => _editing = path),
+              onPreview: (path) =>
+                  _runLibraryAction('previewFailed', () => _preview(path)),
+              onDuplicate: (path) =>
+                  _runLibraryAction('copyFailed', () => _duplicate(path)),
+              onDelete: (path) =>
+                  _runLibraryAction('deleteFailed', () => _delete(path)),
+              onImport: widget.onImport == null
+                  ? null
+                  : () => _runLibraryAction('importFailed', _import),
+              onExportCatalog: widget.onExport == null
+                  ? null
+                  : () => _runLibraryAction('exportFailed', _exportCatalog),
+              onShareClassroom: widget.onShareClassroom == null
+                  ? null
+                  : (path) => _runLibraryAction(
+                      'shareFailed',
+                      () => _distribute(path, () async {
+                        widget.onShareClassroom!(path);
+                      }),
+                    ),
+              onExportDownload: widget.onExportRemote == null
+                  ? null
+                  : (path) => _runLibraryAction(
+                      'exportFailed',
+                      () =>
+                          _distribute(path, () => widget.onExportRemote!(path)),
+                    ),
+              onCheck: (path) =>
+                  _showWorkshopReview(context, catalog, path, _review(path)),
             ),
           ),
-        ),
-        Expanded(
-          child: _paths.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(36),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.route_outlined, size: 52),
-                        const SizedBox(height: 14),
-                        Text(
-                          catalog.text('tutorial.studio.emptyTitle'),
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          catalog.text('tutorial.studio.emptyBody'),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: _paths.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (_, index) => _buildPathCard(_paths[index]),
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPathCard(AuthoredLearningPath path) {
-    final title = path.titleFor(catalog.locale);
-    final description = path.descriptionFor(catalog.locale);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const CircleAvatar(child: Icon(Icons.timeline_rounded)),
-              title: Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: Text(
-                '${description.isEmpty ? '' : '$description\n'}'
-                '${path.steps.length} ${catalog.text('tutorial.studio.steps')} · '
-                '${path.calloutCount} ${catalog.text('tutorial.studio.callouts')}',
-              ),
+          if (editing != null)
+            _LearningPathEditor(
+              key: ValueKey(editing.id),
+              catalog: catalog,
+              initialPath: editing,
+              workspaceNodes: widget.workspaceNodes,
+              workspaceMode: widget.workspaceMode,
+              onHighlightsChanged: widget.onHighlightsChanged,
+              onCancel: () => setState(() => _editing = null),
+              onSave: (next) async {
+                await widget.onSave(next);
+                if (!mounted) return;
+                setState(() {
+                  _recordDrafts([next]);
+                  _editing = next;
+                });
+              },
+              onPreview: (path) => _preview(path),
             ),
-            if (_pendingDelete == path.id) ...[
-              Text(
-                catalog.text('tutorial.studio.deleteBody', {'title': title}),
-              ),
-              Wrap(
-                spacing: 8,
-                children: [
-                  TextButton(
-                    onPressed: () => setState(() => _pendingDelete = null),
-                    child: Text(catalog.text('tutorial.studio.cancel')),
-                  ),
-                  TextButton(
-                    onPressed: () => _delete(path),
-                    child: Text(catalog.text('tutorial.studio.deleteConfirm')),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: () => setState(() => _editing = path),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: Text(catalog.text('tutorial.studio.edit')),
-                ),
-                TextButton.icon(
-                  onPressed: () => widget.onStart(path),
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: Text(catalog.text('tutorial.studio.start')),
-                ),
-                if (widget.onShareClassroom != null)
-                  TextButton.icon(
-                    onPressed: () => widget.onShareClassroom!(path),
-                    icon: const Icon(Icons.share_outlined),
-                    label: Text(catalog.text('tutorial.classroom.share')),
-                  ),
-                if (widget.onExportRemote != null)
-                  IconButton(
-                    tooltip: catalog.text('tutorial.download.export'),
-                    onPressed: () => _exportRemote(path),
-                    icon: const Icon(Icons.save_alt_rounded),
-                  ),
-                IconButton(
-                  tooltip: catalog.text('tutorial.studio.delete'),
-                  onPressed: () => setState(() => _pendingDelete = path.id),
-                  icon: const Icon(Icons.delete_outline),
-                ),
-              ],
-            ),
-          ],
-        ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildEditor(AuthoredLearningPath? path) {
-    return _LearningPathEditor(
-      key: ValueKey(path?.id ?? 'new'),
-      catalog: catalog,
-      initialPath: path!,
-      workspaceNodes: widget.workspaceNodes,
-      workspaceMode: widget.workspaceMode,
-      onHighlightsChanged: widget.onHighlightsChanged,
-      onCancel: () => setState(() => _editing = null),
-      onSave: (next, tryWorkshop) async {
-        await widget.onSave(next);
-        if (!mounted) return;
-        setState(() {
-          _paths = [
-            next,
-            for (final existing in _paths)
-              if (existing.id != next.id) existing,
-          ];
-          _editing = next;
-        });
-        if (tryWorkshop) await widget.onStart(next);
-      },
     );
   }
 
@@ -250,29 +169,109 @@ class _LearningPathStudioPanelState extends State<LearningPathStudioPanel> {
     id: learningPathId('learning-path'),
     title: '',
     description: '',
-    steps: const <LearningPathStep>[],
+    steps: const [],
   );
+
+  void _recordDrafts(List<AuthoredLearningPath> drafts) {
+    final ids = drafts.map((draft) => draft.id).toSet();
+    _paths = [...drafts, ..._paths.where((path) => !ids.contains(path.id))];
+    _draftIds?.addAll(ids);
+  }
+
+  Future<void> _saveNewDrafts(List<AuthoredLearningPath> drafts) async {
+    final saveAll = widget.onImportSave;
+    if (saveAll != null) {
+      await saveAll(drafts);
+      if (mounted) setState(() => _recordDrafts(drafts));
+    } else {
+      for (final draft in drafts) {
+        await widget.onSave(draft);
+        if (mounted) setState(() => _recordDrafts([draft]));
+      }
+    }
+  }
+
+  Future<void> _duplicate(AuthoredLearningPath path) async {
+    final title = catalog.text('tutorial.studio.copyTitle', {
+      'title': path.titleFor(catalog.locale),
+    });
+    final copy = copyLearningPath(path, title: title);
+    await _saveNewDrafts([copy]);
+    if (mounted) setState(() => _editing = copy);
+  }
 
   Future<void> _delete(AuthoredLearningPath path) async {
     await widget.onDelete(path.id);
     if (!mounted) return;
-    setState(() => _paths.removeWhere((item) => item.id == path.id));
+    setState(() {
+      // A draft created by an older Studio can shadow a bundled template.
+      final stillPresent =
+          widget.draftIds?.contains(path.id) == false &&
+          widget.paths.any((item) => item.id == path.id && item != path);
+      if (!stillPresent) _paths.removeWhere((item) => item.id == path.id);
+      _draftIds?.remove(path.id);
+    });
   }
 
   Future<void> _import() async {
-    final paths = await widget.onImport?.call();
-    if (paths == null || !mounted) return;
-    setState(() => _paths = List<AuthoredLearningPath>.of(paths));
+    final paths = await widget.onImport!.call();
+    if (!mounted || paths.isEmpty) return;
+    final accepted = await _confirmWorkshopImport(context, catalog, paths);
+    if (!mounted || !accepted) return;
+    final drafts = paths.map(copyLearningPath).toList(growable: false);
+    await _saveNewDrafts(drafts);
+    if (mounted) {
+      _showStudioMessage(context, catalog, 'imported', {
+        'count': drafts.length,
+      });
+    }
   }
 
-  Future<void> _exportRemote(AuthoredLearningPath path) async {
+  Future<void> _exportCatalog() async {
+    final selection = await _selectCatalogPaths(
+      context,
+      catalog,
+      _paths,
+      _review,
+    );
+    if (!mounted || selection == null) return;
+    await widget.onExport!(selection);
+  }
+
+  Future<void> _preview(AuthoredLearningPath path) async {
+    final review = _review(path);
+    if (!review.canPreview) {
+      await _showWorkshopReview(context, catalog, path, review);
+      return;
+    }
+    await widget.onStart(path);
+  }
+
+  Future<void> _distribute(
+    AuthoredLearningPath path,
+    Future<void> Function() action,
+  ) async {
+    final review = _review(path);
+    if (!review.canShare) {
+      await _showWorkshopReview(context, catalog, path, review);
+      return;
+    }
+    await action();
+  }
+
+  Future<void> _runLibraryAction(
+    String failureKey,
+    Future<void> Function() action,
+  ) async {
+    if (_libraryBusy) return;
+    setState(() => _libraryBusy = true);
     try {
-      await widget.onExportRemote!(path);
-    } on FormatException {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(catalog.text('tutorial.download.exportError'))),
-      );
+      await action();
+    } catch (error, stack) {
+      debugPrint('Workshop Studio ($failureKey): $error\n$stack');
+      if (mounted) _showStudioMessage(context, catalog, failureKey);
+    } finally {
+      if (mounted) setState(() => _libraryBusy = false);
     }
   }
 }
@@ -286,6 +285,7 @@ class _LearningPathEditor extends StatefulWidget {
     required this.onHighlightsChanged,
     required this.onCancel,
     required this.onSave,
+    required this.onPreview,
     super.key,
   });
 
@@ -295,8 +295,8 @@ class _LearningPathEditor extends StatefulWidget {
   final LearningPathMode workspaceMode;
   final ValueChanged<Set<String>>? onHighlightsChanged;
   final VoidCallback onCancel;
-  final Future<void> Function(AuthoredLearningPath path, bool tryWorkshop)
-  onSave;
+  final Future<void> Function(AuthoredLearningPath path) onSave;
+  final Future<void> Function(AuthoredLearningPath path) onPreview;
 
   @override
   State<_LearningPathEditor> createState() => _LearningPathEditorState();
@@ -309,6 +309,7 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
   int? _editingStep;
   bool _saving = false;
   bool _saveFailed = false;
+  bool _previewFailed = false;
 
   TranslationCatalog get catalog => widget.catalog;
 
@@ -357,20 +358,42 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
       );
     }
     final hasName = _title.text.trim().isNotEmpty;
-    final canSave = !_saving && hasName && _steps.isNotEmpty;
+    final canSave = !_saving && hasName;
     final message = _saveFailed
         ? 'tutorial.studio.saveFailed'
+        : _previewFailed
+        ? 'tutorial.studio.previewFailed'
         : !hasName
         ? 'tutorial.studio.needsTitle'
         : _steps.isEmpty
         ? 'tutorial.studio.needsStep'
         : null;
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          if (canSave) _save(tryWorkshop: false);
+        },
+        const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
+          if (canSave) _save(tryWorkshop: false);
+        },
+      },
+      child: FocusScope(
+        child: _buildForm(hasName: hasName, canSave: canSave, message: message),
+      ),
+    );
+  }
+
+  Widget _buildForm({
+    required bool hasName,
+    required bool canSave,
+    required String? message,
+  }) {
     return Column(
       children: [
         _StudioHeader(
           title: catalog.text('tutorial.studio.editorTitle'),
           subtitle: catalog.text('tutorial.studio.editorSubtitle'),
-          onBack: _saving ? null : widget.onCancel,
+          onBack: _saving ? null : _leave,
         ),
         Expanded(
           child: ListView(
@@ -402,6 +425,7 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
                     controller: _description,
                     enabled: !_saving,
                     maxLines: 2,
+                    onChanged: (_) => setState(() => _saveFailed = false),
                     decoration: InputDecoration(
                       labelText: catalog.text(
                         'tutorial.studio.descriptionLabel',
@@ -449,6 +473,12 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
                     icon: const Icon(Icons.add),
                     label: Text(catalog.text('tutorial.studio.addStep')),
                   ),
+                  TextButton.icon(
+                    key: const ValueKey('learning-path-review'),
+                    onPressed: _saving ? null : _checkDraft,
+                    icon: const Icon(Icons.fact_check_outlined),
+                    label: Text(catalog.text('tutorial.studio.checkWorkshop')),
+                  ),
                 ],
               ),
             ],
@@ -464,7 +494,7 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
                   catalog.text(message),
                   textAlign: TextAlign.end,
                   style: TextStyle(
-                    color: _saveFailed
+                    color: _saveFailed || _previewFailed
                         ? Theme.of(context).colorScheme.error
                         : Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -481,7 +511,9 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
                   ),
                   FilledButton.icon(
                     key: const ValueKey('learning-path-try'),
-                    onPressed: canSave ? () => _save(tryWorkshop: true) : null,
+                    onPressed: canSave && _steps.isNotEmpty
+                        ? () => _save(tryWorkshop: true)
+                        : null,
                     icon: _saving
                         ? const SizedBox.square(
                             dimension: 16,
@@ -501,6 +533,28 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
 
   void _openStep([int? index]) {
     setState(() => _editingStep = index ?? _steps.length);
+  }
+
+  Future<void> _checkDraft() async {
+    final draft = _draft();
+    final index = await _showWorkshopReview(
+      context,
+      catalog,
+      draft,
+      reviewLearningPath(draft),
+      canEditSteps: true,
+    );
+    if (mounted && index != null) _openStep(index);
+  }
+
+  Future<void> _leave() async {
+    final initial = widget.initialPath;
+    final changed =
+        _title.text.trim() != initial.title ||
+        _description.text.trim() != initial.description ||
+        !listEquals(_steps, initial.steps);
+    if (changed && !await _confirmDiscard(context, catalog)) return;
+    if (mounted) widget.onCancel();
   }
 
   void _move(int from, int to) {
@@ -530,21 +584,44 @@ class _LearningPathEditorState extends State<_LearningPathEditor> {
 
   Future<void> _save({required bool tryWorkshop}) async {
     final draft = _draft();
-    if (_saving || draft.title.isEmpty || draft.steps.isEmpty) return;
+    if (_saving || draft.title.isEmpty) return;
     setState(() {
       _saving = true;
       _saveFailed = false;
+      _previewFailed = false;
     });
+    var saved = false;
     try {
-      await widget.onSave(draft, tryWorkshop);
-      if (mounted) setState(() => _saving = false);
-    } on Exception {
+      await widget.onSave(draft);
+      saved = true;
+      if (!mounted) return;
+      if (tryWorkshop) {
+        final review = reviewLearningPath(draft);
+        if (review.canPreview) {
+          await widget.onPreview(draft);
+        } else {
+          final index = await _showWorkshopReview(
+            context,
+            catalog,
+            draft,
+            review,
+            canEditSteps: true,
+          );
+          if (mounted && index != null) _openStep(index);
+        }
+      } else {
+        _showStudioMessage(context, catalog, 'draftSaved');
+      }
+    } catch (error, stack) {
+      debugPrint('Workshop Studio (save): $error\n$stack');
       if (mounted) {
         setState(() {
-          _saving = false;
-          _saveFailed = true;
+          _saveFailed = !saved;
+          _previewFailed = saved;
         });
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 }
@@ -588,6 +665,7 @@ class _LearningPathStepEditorState extends State<_LearningPathStepEditor> {
   late final List<LearningPathNodeCallout> _callouts;
   late final Set<String> _highlights;
   late List<LearningPathRequirement> _requirements;
+  late final String _initialForm;
   bool _editingRule = false;
   String? _targetRef;
   LearningPathCalloutSide _side = LearningPathCalloutSide.right;
@@ -624,6 +702,7 @@ class _LearningPathStepEditorState extends State<_LearningPathStepEditor> {
               .toList() ??
           _workspaceTemplates(),
     );
+    _initialForm = _formSnapshot();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         widget.onHighlightsChanged?.call(
@@ -667,10 +746,40 @@ class _LearningPathStepEditorState extends State<_LearningPathStepEditor> {
   Iterable<LearningPathRequirement> get _selectedRequirements =>
       _requirements.where((rule) => rule.refs.every(_isInteractionRef));
 
+  String _formSnapshot() => jsonEncode([
+    _title.text,
+    _instruction.text,
+    _hint.text,
+    _calloutTitle.text,
+    _calloutBody.text,
+    [
+      for (final node in _nodes)
+        if (_selectedRefs.contains(node.ref)) node.toJson(),
+    ],
+    _callouts.map((callout) => callout.toJson()).toList(),
+    _highlights.toList(),
+    _requirements.map((rule) => rule.toJson()).toList(),
+  ]);
+
+  Future<void> _leaveStep() async {
+    if ((_editingRule || _initialForm != _formSnapshot()) &&
+        !await _confirmDiscard(context, catalog)) {
+      return;
+    }
+    if (mounted) widget.onCancel();
+  }
+
   void _selectNodes(List<LearningPathNodeTemplate> nodes) {
-    _nodes = nodes;
-    _selectedRefs = nodes.map((node) => node.ref).toSet();
-    _targetRef = nodes.firstOrNull?.ref;
+    final refs = <String>{};
+    _nodes = [
+      for (final node in nodes)
+        if (node.ref.trim().isNotEmpty &&
+            node.ref != _startNode?.ref &&
+            refs.add(node.ref))
+          node,
+    ];
+    _selectedRefs = refs;
+    _targetRef = _nodes.firstOrNull?.ref;
   }
 
   void _toggleNode(LearningPathNodeTemplate node, bool selected) {
@@ -726,7 +835,7 @@ class _LearningPathStepEditorState extends State<_LearningPathStepEditor> {
             'number': widget.stepNumber,
           }),
           subtitle: catalog.text('tutorial.studio.stepHelp'),
-          onBack: widget.onCancel,
+          onBack: _leaveStep,
         ),
         Expanded(
           child: ListView(
@@ -868,7 +977,7 @@ class _LearningPathStepEditorState extends State<_LearningPathStepEditor> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
-                onPressed: widget.onCancel,
+                onPressed: _leaveStep,
                 child: Text(catalog.text('tutorial.studio.cancel')),
               ),
               const SizedBox(width: 8),

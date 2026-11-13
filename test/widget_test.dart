@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -792,50 +793,82 @@ void main() {
     );
 
     final workspaceController = container.read(workspaceProvider.notifier);
-    workspaceController.addTemplate(
+    final select = workspaceController.addTemplate(
       BlockType.sqlSelect,
-      workspaceController.suggestedTemplatePosition(BlockType.sqlSelect),
+      const Offset(120, 140),
+      autoSnap: false,
     );
-    workspaceController.addTemplate(
+    final order = workspaceController.addTemplate(
       BlockType.sqlOrderBy,
-      workspaceController.suggestedTemplatePosition(BlockType.sqlOrderBy),
-    );
-    final select = workspaceController.allBlocks().firstWhere(
-      (node) => node.type == BlockType.sqlSelect,
-    );
-    final order = workspaceController.allBlocks().firstWhere(
-      (node) => node.type == BlockType.sqlOrderBy,
+      const Offset(480, 230),
+      autoSnap: false,
     );
     expect(
       workspaceController.connectColumnSource(select.id, order.id),
       isTrue,
     );
-    expect(workspaceController.selectColumnLink(order.id), isTrue);
     await tester.pump();
-    final sourceShape = tester
-        .widgetList<BlockShape>(find.byType(BlockShape))
-        .firstWhere((shape) => shape.node.id == select.id);
-    final targetShape = tester
-        .widgetList<BlockShape>(find.byType(BlockShape))
-        .firstWhere((shape) => shape.node.id == order.id);
+    final source = find.byWidgetPredicate(
+      (widget) => widget is BlockShape && widget.node.id == select.id,
+    );
+    final target = find.byWidgetPredicate(
+      (widget) => widget is BlockShape && widget.node.id == order.id,
+    );
+    final ropeMidpoint =
+        (tester.getRect(source).centerRight +
+            tester.getRect(target).centerLeft) /
+        2;
+    await tester.tapAt(ropeMidpoint, kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    final sourceShape = tester.widget<BlockShape>(source);
+    final targetShape = tester.widget<BlockShape>(target);
     expect(sourceShape.isSelected, isTrue);
     expect(sourceShape.selectedOutlineColor, const Color(0xFF8ADFFF));
     expect(sourceShape.selectedOutlineHaloColor, const Color(0xD9FFFFFF));
     expect(targetShape.isSelected, isTrue);
     expect(targetShape.selectedOutlineColor, const Color(0xFFFFC078));
     expect(targetShape.selectedOutlineHaloColor, const Color(0xD9FFFFFF));
-    expect(
-      find.byKey(const ValueKey<String>('column-link-manager')),
-      findsOneWidget,
+    final manager = find.byKey(const ValueKey<String>('column-link-manager'));
+    expect(manager, findsOneWidget);
+    final initialCard = tester.getRect(manager);
+    expect(initialCard.top, greaterThan(tester.getRect(source).bottom));
+    expect(initialCard.top, greaterThan(tester.getRect(target).bottom));
+    expect(initialCard.center.dx, closeTo(ropeMidpoint.dx, 1));
+
+    const pan = Offset(32, 24);
+    workspaceController.panBy(pan);
+    await tester.pump();
+    expect(tester.getRect(manager), initialCard.shift(pan));
+
+    workspaceController.setScale(1.2);
+    await tester.pump();
+    final zoomedCard = tester.getRect(manager);
+    expect(zoomedCard.size, initialCard.size);
+    expect(zoomedCard.top, greaterThan(tester.getRect(target).bottom));
+    expect(zoomedCard.top, greaterThan(initialCard.top + pan.dy));
+
+    workspaceController.setScale(1);
+    workspaceController.panBy(-pan);
+    await tester.pump();
+
+    final canvas = tester.getRect(
+      find.byKey(const ValueKey<String>('workspace-canvas')),
     );
+    final down = Offset(0, canvas.bottom - tester.getRect(target).bottom - 16);
+    workspaceController.panBy(down);
+    await tester.pump();
+    expect(
+      tester.getRect(manager).bottom,
+      lessThan(tester.getRect(source).top),
+    );
+
+    workspaceController.panBy(-down);
+    await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey<String>('column-link-manager-close')),
     );
     await tester.pump();
-    expect(
-      find.byKey(const ValueKey<String>('column-link-manager')),
-      findsNothing,
-    );
+    expect(manager, findsNothing);
     workspaceController.selectColumnLink(order.id);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('column-link-delete')));
