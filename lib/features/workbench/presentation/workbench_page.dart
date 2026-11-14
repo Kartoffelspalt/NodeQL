@@ -8077,10 +8077,15 @@ class _PointerWorkspaceLayerState
       behavior: HitTestBehavior.opaque,
       onPointerSignal: (event) {
         if (event is! PointerScrollEvent) return;
-        if (event.kind == PointerDeviceKind.trackpad) return;
-        final workspace = ref.read(workspaceProvider);
-        final factor = (1 - event.scrollDelta.dy * 0.001).clamp(0.8, 1.2);
-        engine.zoomAt(event.localPosition, workspace.scale * factor);
+        GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+          if (event.kind == PointerDeviceKind.trackpad) {
+            _queuePanUpdate(-event.scrollDelta);
+            return;
+          }
+          final workspace = ref.read(workspaceProvider);
+          final factor = (1 - event.scrollDelta.dy * 0.001).clamp(0.8, 1.2);
+          engine.zoomAt(event.localPosition, workspace.scale * factor);
+        });
       },
       onPointerPanZoomStart: (event) {
         widget.focusNode.requestFocus();
@@ -8089,9 +8094,7 @@ class _PointerWorkspaceLayerState
       onPointerPanZoomUpdate: (event) {
         final startScale =
             _panZoomStartScale ?? ref.read(workspaceProvider).scale;
-        if ((event.scale - 1.0).abs() > 0.001) {
-          engine.zoomAt(event.localPosition, startScale * event.scale);
-        }
+        engine.zoomAt(event.localPosition, startScale * event.scale);
         if (event.panDelta.distanceSquared > 0) {
           engine.panBy(event.panDelta);
         }
@@ -8278,20 +8281,21 @@ class _PointerWorkspaceLayerState
             : MouseCursor.defer,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          trackpadScrollCausesScale: true,
-          trackpadScrollToScaleFactor: const Offset(0.001, 0.001),
           onScaleStart: (details) {
+            // Trackpad gestures are already handled by onPointerPanZoom.
+            if (details.kind == PointerDeviceKind.trackpad) return;
             widget.focusNode.requestFocus();
             _scaleGestureStartScale = ref.read(workspaceProvider).scale;
           },
           onScaleUpdate: (details) {
+            final startScale = _scaleGestureStartScale;
+            if (startScale == null) return;
+
             final pointerCount = details.pointerCount;
             final isZooming =
                 pointerCount > 1 || (details.scale - 1).abs() > 0.001;
             if (!isZooming) return;
 
-            final startScale =
-                _scaleGestureStartScale ?? ref.read(workspaceProvider).scale;
             engine.zoomAt(details.localFocalPoint, startScale * details.scale);
             if (details.focalPointDelta.distanceSquared > 0) {
               engine.panBy(details.focalPointDelta);

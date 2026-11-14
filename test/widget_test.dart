@@ -1087,6 +1087,82 @@ void main() {
     expect(find.byKey(const ValueKey<String>('run-sqlite')), findsNothing);
   });
 
+  testWidgets('trackpad swipes move the workspace without zooming', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _ReadyTranslationController(),
+          ),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
+        ],
+        child: const NodeQlApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final canvas = find.byKey(const ValueKey<String>('workspace-canvas'));
+    final container = ProviderScope.containerOf(tester.element(canvas));
+    final focalPoint = tester.getCenter(canvas);
+    final trackpad = await tester.createGesture(
+      kind: PointerDeviceKind.trackpad,
+    );
+    container.read(workspaceProvider.notifier).setScale(1.25);
+    await tester.pump();
+    final initial = container.read(workspaceProvider);
+
+    await trackpad.panZoomStart(focalPoint);
+    for (final pan in [const Offset(80, 48), const Offset(-40, -60)]) {
+      await trackpad.panZoomUpdate(focalPoint, pan: pan);
+      await tester.pump();
+      final workspace = container.read(workspaceProvider);
+      expect(workspace.scale, initial.scale);
+      expect(workspace.pan, initial.pan + pan);
+    }
+    await trackpad.panZoomEnd();
+
+    const scroll = Offset(-25, 35);
+    final beforeScroll = container.read(workspaceProvider);
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        kind: PointerDeviceKind.trackpad,
+        position: focalPoint,
+        scrollDelta: scroll,
+      ),
+    );
+    await tester.pump();
+    expect(container.read(workspaceProvider).scale, initial.scale);
+    expect(container.read(workspaceProvider).pan, beforeScroll.pan - scroll);
+
+    await trackpad.panZoomStart(focalPoint);
+    await trackpad.panZoomUpdate(focalPoint, scale: 1.2);
+    await trackpad.panZoomUpdate(focalPoint, scale: 1.4);
+    await tester.pump();
+    expect(container.read(workspaceProvider).scale, closeTo(1.75, 0.001));
+    await trackpad.panZoomUpdate(focalPoint, scale: 1);
+    await tester.pump();
+    expect(container.read(workspaceProvider).scale, initial.scale);
+    await trackpad.panZoomEnd();
+
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        kind: PointerDeviceKind.mouse,
+        position: focalPoint,
+        scrollDelta: const Offset(0, 120),
+      ),
+    );
+    expect(container.read(workspaceProvider).scale, lessThan(initial.scale));
+  });
+
   testWidgets('deletes a workspace tab after confirmation', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
