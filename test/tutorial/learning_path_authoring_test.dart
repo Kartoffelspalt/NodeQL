@@ -245,4 +245,62 @@ void main() {
       throwsStateError,
     );
   });
+
+  test('a colliding batch never inserts a partial draft import', () async {
+    final directory = await Directory.systemTemp.createTemp('nodeql-import-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/paths.json');
+    const original = AuthoredLearningPath(
+      id: 'draft',
+      title: 'Existing draft',
+      description: '',
+      steps: [],
+    );
+    final controller = LearningPathLibraryController(
+      storageFile: () async => file,
+      bundledPaths: () async => const [],
+    );
+    addTearDown(controller.dispose);
+    await controller.save(original);
+    final existing = await file.readAsString();
+    final copy = copyLearningPath(original);
+    await expectLater(
+      controller.addDrafts([copy, original]),
+      throwsArgumentError,
+    );
+    expect(controller.drafts, [original]);
+    expect(await file.readAsString(), existing);
+
+    await controller.addDrafts([copy]);
+    expect(
+      decodeLearningPathDraftBundle(await file.readAsString()).map((p) => p.id),
+      [original.id, copy.id],
+    );
+  });
+
+  test('a malformed draft library cannot be overwritten or deleted', () async {
+    final directory = await Directory.systemTemp.createTemp('nodeql-corrupt-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/paths.json');
+    const invalidSource = '{"schemaVersion":2,"paths":[null]}';
+    await file.writeAsString(invalidSource);
+    final controller = LearningPathLibraryController(
+      storageFile: () async => file,
+      bundledPaths: () async => const [],
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    expect(controller.state.error, isNotNull);
+
+    const draft = AuthoredLearningPath(
+      id: 'new',
+      title: 'New draft',
+      description: '',
+      steps: [],
+    );
+    await expectLater(controller.save(draft), throwsStateError);
+    await expectLater(controller.delete('new'), throwsStateError);
+    await expectLater(controller.addDrafts([draft]), throwsStateError);
+    expect(await file.readAsString(), invalidSource);
+  });
 }

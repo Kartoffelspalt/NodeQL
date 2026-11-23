@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nodeql/engine/block/block_node.dart';
 import 'package:nodeql/engine/block/block_syntax.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/localization/generated/app_localizations.dart';
 
 AppLocalizations joinStrings(String languageCode) {
@@ -10,6 +11,9 @@ AppLocalizations joinStrings(String languageCode) {
   );
   return lookupAppLocalizations(locale);
 }
+
+String joinNodeTitle(AppLocalizations strings, SqlAbstractionMode mode) =>
+    mode == SqlAbstractionMode.simple ? strings.joinConnectTables : 'JOIN';
 
 String joinOutcomeTitle(AppLocalizations strings, String kind) =>
     switch (kind) {
@@ -40,6 +44,7 @@ class JoinNodeContent extends StatelessWidget {
     required this.node,
     required this.sourceTable,
     required this.languageCode,
+    required this.mode,
     required this.slotBuilder,
     this.onChooseKind,
     super.key,
@@ -51,6 +56,7 @@ class JoinNodeContent extends StatelessWidget {
   final BlockNode node;
   final String? sourceTable;
   final String languageCode;
+  final SqlAbstractionMode mode;
   final Widget Function(String inputKey, double width) slotBuilder;
   final VoidCallback? onChooseKind;
 
@@ -81,7 +87,15 @@ class JoinNodeContent extends StatelessWidget {
                       Tooltip(
                         message:
                             '${strings.joinConnectTables}\n${strings.joinExistingData}: ${sourceTable ?? strings.joinConnectSource}',
-                        child: const Text('JOIN'),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: tableWidth),
+                          child: Text(
+                            joinNodeTitle(strings, mode),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(height: 1.1),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 6),
                       slotBuilder('table', tableWidth),
@@ -100,16 +114,19 @@ class JoinNodeContent extends StatelessWidget {
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 6,
-                                  vertical: 4,
+                                  vertical: 3,
                                 ),
                                 child: Row(
                                   children: [
                                     Expanded(
                                       child: Text(
                                         joinOutcomeTitle(strings, kind),
-                                        maxLines: 1,
+                                        maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: white.copyWith(fontSize: 11),
+                                        style: white.copyWith(
+                                          fontSize: 11,
+                                          height: 1.1,
+                                        ),
                                       ),
                                     ),
                                     if (onChooseKind != null)

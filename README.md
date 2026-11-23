@@ -17,10 +17,6 @@ A browser preview can also be built from source. See
 [Web preview](docs/WEB_PREVIEW.md) for build instructions and session-storage
 limitations.
 
-> **Latest release:** [NodeQL v0.4.3](CHANGELOG.md) adds visual
-> SQLite functions, column aliases, fullscreen and exportable result tables,
-> a refined workspace, and fullscreen settings.
-
 Teachers can create and share guided SQLite exercises with the
 [NodeQL Workshop Admin](https://kartoffelspalt.github.io/NodeQL-Workshop-Admin/).
 The release page provides downloads and teaching materials.
@@ -125,7 +121,7 @@ The repository demonstrates the public catalog format and SDK example plugins.
 
 Requirements:
 
-- Flutter `3.44.1`
+- Flutter `3.44.9`
 - Dart compatible with SDK `^3.9.0`
 - Native Flutter desktop build dependencies for the target platform
 

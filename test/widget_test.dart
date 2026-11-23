@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -792,50 +793,82 @@ void main() {
     );
 
     final workspaceController = container.read(workspaceProvider.notifier);
-    workspaceController.addTemplate(
+    final select = workspaceController.addTemplate(
       BlockType.sqlSelect,
-      workspaceController.suggestedTemplatePosition(BlockType.sqlSelect),
+      const Offset(120, 140),
+      autoSnap: false,
     );
-    workspaceController.addTemplate(
+    final order = workspaceController.addTemplate(
       BlockType.sqlOrderBy,
-      workspaceController.suggestedTemplatePosition(BlockType.sqlOrderBy),
-    );
-    final select = workspaceController.allBlocks().firstWhere(
-      (node) => node.type == BlockType.sqlSelect,
-    );
-    final order = workspaceController.allBlocks().firstWhere(
-      (node) => node.type == BlockType.sqlOrderBy,
+      const Offset(480, 230),
+      autoSnap: false,
     );
     expect(
       workspaceController.connectColumnSource(select.id, order.id),
       isTrue,
     );
-    expect(workspaceController.selectColumnLink(order.id), isTrue);
     await tester.pump();
-    final sourceShape = tester
-        .widgetList<BlockShape>(find.byType(BlockShape))
-        .firstWhere((shape) => shape.node.id == select.id);
-    final targetShape = tester
-        .widgetList<BlockShape>(find.byType(BlockShape))
-        .firstWhere((shape) => shape.node.id == order.id);
+    final source = find.byWidgetPredicate(
+      (widget) => widget is BlockShape && widget.node.id == select.id,
+    );
+    final target = find.byWidgetPredicate(
+      (widget) => widget is BlockShape && widget.node.id == order.id,
+    );
+    final ropeMidpoint =
+        (tester.getRect(source).centerRight +
+            tester.getRect(target).centerLeft) /
+        2;
+    await tester.tapAt(ropeMidpoint, kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    final sourceShape = tester.widget<BlockShape>(source);
+    final targetShape = tester.widget<BlockShape>(target);
     expect(sourceShape.isSelected, isTrue);
     expect(sourceShape.selectedOutlineColor, const Color(0xFF8ADFFF));
     expect(sourceShape.selectedOutlineHaloColor, const Color(0xD9FFFFFF));
     expect(targetShape.isSelected, isTrue);
     expect(targetShape.selectedOutlineColor, const Color(0xFFFFC078));
     expect(targetShape.selectedOutlineHaloColor, const Color(0xD9FFFFFF));
-    expect(
-      find.byKey(const ValueKey<String>('column-link-manager')),
-      findsOneWidget,
+    final manager = find.byKey(const ValueKey<String>('column-link-manager'));
+    expect(manager, findsOneWidget);
+    final initialCard = tester.getRect(manager);
+    expect(initialCard.top, greaterThan(tester.getRect(source).bottom));
+    expect(initialCard.top, greaterThan(tester.getRect(target).bottom));
+    expect(initialCard.center.dx, closeTo(ropeMidpoint.dx, 1));
+
+    const pan = Offset(32, 24);
+    workspaceController.panBy(pan);
+    await tester.pump();
+    expect(tester.getRect(manager), initialCard.shift(pan));
+
+    workspaceController.setScale(1.2);
+    await tester.pump();
+    final zoomedCard = tester.getRect(manager);
+    expect(zoomedCard.size, initialCard.size);
+    expect(zoomedCard.top, greaterThan(tester.getRect(target).bottom));
+    expect(zoomedCard.top, greaterThan(initialCard.top + pan.dy));
+
+    workspaceController.setScale(1);
+    workspaceController.panBy(-pan);
+    await tester.pump();
+
+    final canvas = tester.getRect(
+      find.byKey(const ValueKey<String>('workspace-canvas')),
     );
+    final down = Offset(0, canvas.bottom - tester.getRect(target).bottom - 16);
+    workspaceController.panBy(down);
+    await tester.pump();
+    expect(
+      tester.getRect(manager).bottom,
+      lessThan(tester.getRect(source).top),
+    );
+
+    workspaceController.panBy(-down);
+    await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey<String>('column-link-manager-close')),
     );
     await tester.pump();
-    expect(
-      find.byKey(const ValueKey<String>('column-link-manager')),
-      findsNothing,
-    );
+    expect(manager, findsNothing);
     workspaceController.selectColumnLink(order.id);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('column-link-delete')));
@@ -1054,6 +1087,82 @@ void main() {
     expect(find.byKey(const ValueKey<String>('run-sqlite')), findsNothing);
   });
 
+  testWidgets('trackpad swipes move the workspace without zooming', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          translationControllerProvider.overrideWith(
+            (_) => _ReadyTranslationController(),
+          ),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
+        ],
+        child: const NodeQlApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final canvas = find.byKey(const ValueKey<String>('workspace-canvas'));
+    final container = ProviderScope.containerOf(tester.element(canvas));
+    final focalPoint = tester.getCenter(canvas);
+    final trackpad = await tester.createGesture(
+      kind: PointerDeviceKind.trackpad,
+    );
+    container.read(workspaceProvider.notifier).setScale(1.25);
+    await tester.pump();
+    final initial = container.read(workspaceProvider);
+
+    await trackpad.panZoomStart(focalPoint);
+    for (final pan in [const Offset(80, 48), const Offset(-40, -60)]) {
+      await trackpad.panZoomUpdate(focalPoint, pan: pan);
+      await tester.pump();
+      final workspace = container.read(workspaceProvider);
+      expect(workspace.scale, initial.scale);
+      expect(workspace.pan, initial.pan + pan);
+    }
+    await trackpad.panZoomEnd();
+
+    const scroll = Offset(-25, 35);
+    final beforeScroll = container.read(workspaceProvider);
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        kind: PointerDeviceKind.trackpad,
+        position: focalPoint,
+        scrollDelta: scroll,
+      ),
+    );
+    await tester.pump();
+    expect(container.read(workspaceProvider).scale, initial.scale);
+    expect(container.read(workspaceProvider).pan, beforeScroll.pan - scroll);
+
+    await trackpad.panZoomStart(focalPoint);
+    await trackpad.panZoomUpdate(focalPoint, scale: 1.2);
+    await trackpad.panZoomUpdate(focalPoint, scale: 1.4);
+    await tester.pump();
+    expect(container.read(workspaceProvider).scale, closeTo(1.75, 0.001));
+    await trackpad.panZoomUpdate(focalPoint, scale: 1);
+    await tester.pump();
+    expect(container.read(workspaceProvider).scale, initial.scale);
+    await trackpad.panZoomEnd();
+
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        kind: PointerDeviceKind.mouse,
+        position: focalPoint,
+        scrollDelta: const Offset(0, 120),
+      ),
+    );
+    expect(container.read(workspaceProvider).scale, lessThan(initial.scale));
+  });
+
   testWidgets('deletes a workspace tab after confirmation', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1136,7 +1245,12 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           translationControllerProvider.overrideWith(
-            (_) => _ReadyTranslationController(),
+            (_) => _ReadyTranslationController(locale: const Locale('de')),
+          ),
+          sqlModeProvider.overrideWith(
+            (_) => SqlModeController.session(
+              initialMode: SqlAbstractionMode.advanced,
+            ),
           ),
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
@@ -1177,6 +1291,31 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final search = find.byType(TextField).first;
+      final paletteJoin = find.byKey(
+        const ValueKey('palette-draggable-sqlJoin'),
+      );
+      await tester.enterText(search, 'join');
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: paletteJoin, matching: find.text('JOIN')),
+        findsOneWidget,
+      );
+      expect(find.text('JOIN'), findsNWidgets(2));
+
+      await container
+          .read(sqlModeProvider.notifier)
+          .setMode(SqlAbstractionMode.simple);
+      await tester.enterText(search, 'tabellen verbinden');
+      await tester.pumpAndSettle();
+      final simpleTitle = find.text('Tabellen verbinden');
+      expect(
+        find.descendant(of: paletteJoin, matching: simpleTitle),
+        findsOneWidget,
+      );
+      expect(simpleTitle, findsNWidgets(2));
+      expect(find.text('JOIN'), findsNothing);
+
       Future<void> choose(String key, String option) async {
         await tester.tap(find.byKey(ValueKey('inline-slot-${join.id}-$key')));
         await tester.pumpAndSettle();
@@ -1193,6 +1332,7 @@ void main() {
       await choose('right_column', 'orders.customer_id');
       await tester.tap(find.byKey(ValueKey('join-outcome-${join.id}')));
       await tester.pumpAndSettle();
+      expect(find.text('Welche Zeilen sollen bleiben?'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('join-kind-LEFT')));
       await tester.pumpAndSettle();
       expect(join.inputs['join_type'], 'LEFT');
@@ -1411,7 +1551,7 @@ class _WorkshopTranslationController extends _ReadyTranslationController {
 }
 
 class _ReadyTranslationController extends TranslationController {
-  _ReadyTranslationController()
+  _ReadyTranslationController({Locale locale = const Locale('en')})
     : super(
         _WidgetTestTranslationRepository(),
         appVersion: () async => '1.0.0',
@@ -1486,10 +1626,11 @@ class _ReadyTranslationController extends TranslationController {
       'runtime.copySql': 'Copy SQLite',
       'runtime.noResults': 'No results',
     };
-    state = const TranslationState(
+    state = TranslationState(
+      locale: locale,
       loading: false,
       catalog: TranslationCatalog(
-        locale: 'en',
+        locale: locale.languageCode,
         messages: messages,
         englishMessages: messages,
       ),

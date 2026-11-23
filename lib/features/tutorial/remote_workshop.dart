@@ -238,11 +238,41 @@ class WorkshopLibraryFull implements Exception {
   const WorkshopLibraryFull();
 }
 
+enum WorkshopDistributionProblem {
+  bundleTooLarge,
+  tooManySteps,
+  tooManyNodes,
+  tooManyCallouts,
+  tooManyHighlights,
+  tooManyRequirements,
+  unsupportedNode,
+  unsupportedDefault,
+  invalidDefault,
+  invalidContent,
+}
+
+/// Identifies the first field that prevents a workshop from being distributed.
+class WorkshopDistributionException extends FormatException {
+  const WorkshopDistributionException(
+    this.problem,
+    super.message, {
+    this.stepIndex,
+    this.detail,
+  });
+
+  final WorkshopDistributionProblem problem;
+  final int? stepIndex;
+  final String? detail;
+}
+
 /// Strict wire format for downloads. The bundled catalog and local Studio
 /// drafts still use the backwards-compatible learning path decoder.
 AuthoredLearningPath validateRemoteWorkshopBundle(String source) {
   if (utf8.encode(source).length > _maxBundleBytes) {
-    throw const FormatException('Workshop bundle exceeds the size limit.');
+    throw const WorkshopDistributionException(
+      WorkshopDistributionProblem.bundleTooLarge,
+      'Workshop bundle exceeds the size limit.',
+    );
   }
   _checkJsonDepth(source);
   final bundle = _object(jsonDecode(source), const {'schemaVersion', 'paths'});
@@ -255,11 +285,20 @@ AuthoredLearningPath validateRemoteWorkshopBundle(String source) {
     'description',
     'steps',
   });
-  _id(path['id']);
-  _localizedText(path['title'], 160);
-  _localizedText(path['description'], 1500, requiredText: false);
+  _distributionField('id', () => _id(path['id']));
+  _distributionField('title', () => _localizedText(path['title'], 160));
+  _distributionField(
+    'description',
+    () => _localizedText(path['description'], 1500, requiredText: false),
+  );
+  final steps = _distributionList(
+    path['steps'],
+    max: 32,
+    min: 1,
+    problem: WorkshopDistributionProblem.tooManySteps,
+  );
   final stepIds = <String>{};
-  for (final raw in _list(path['steps'], max: 32, min: 1)) {
+  for (final (index, raw) in steps.indexed) {
     final step = _object(raw, {
       'id',
       'title',
@@ -270,28 +309,79 @@ AuthoredLearningPath validateRemoteWorkshopBundle(String source) {
       'callouts',
       if (version == 2) ...{'highlights', 'requirements'},
     });
-    _require(stepIds.add(_id(step['id'])));
-    _text(step['title'], 160);
-    _text(step['instruction'], 2000);
-    _text(step['hint'] ?? '', 2000, requiredText: false);
+    _distributionField(
+      'id',
+      () => _require(stepIds.add(_id(step['id']))),
+      index,
+    );
+    _distributionField('title', () => _text(step['title'], 160), index);
+    _distributionField(
+      'instruction',
+      () => _text(step['instruction'], 2000),
+      index,
+    );
+    _distributionField(
+      'hint',
+      () => _text(step['hint'] ?? '', 2000, requiredText: false),
+      index,
+    );
     _require(const {'simple', 'advanced'}.contains(step['mode'] ?? 'simple'));
     final nodeRefs = <String>{};
-    for (final raw in _list(step['nodes'] ?? [], max: 16)) {
+    final nodes = _distributionList(
+      step['nodes'] ?? [],
+      max: 16,
+      problem: WorkshopDistributionProblem.tooManyNodes,
+      stepIndex: index,
+    );
+    for (final raw in nodes) {
       final node = _object(raw, const {'ref', 'type', 'defaults'});
-      final ref = _id(node['ref']);
-      _require(nodeRefs.add(ref));
-      final inputs = _nodeInputs[node['type']];
+      final ref = _distributionField(
+        'nodes.ref',
+        () => _id(node['ref']),
+        index,
+      );
+      _distributionField('nodes.ref', () => _require(nodeRefs.add(ref)), index);
+      final type = node['type'];
+      final inputs = _nodeInputs[type];
       if (inputs == null) {
-        throw const FormatException('Unsupported node in downloaded workshop.');
+        throw WorkshopDistributionException(
+          WorkshopDistributionProblem.unsupportedNode,
+          'Unsupported node in downloaded workshop.',
+          stepIndex: index,
+          detail: type is String ? type : ref,
+        );
       }
-      final defaults = _object(node['defaults'] ?? {}, inputs.keys.toSet());
+      final defaults = _distributionField(
+        'nodes.defaults',
+        () => _object(node['defaults'] ?? {}),
+        index,
+      );
       for (final entry in defaults.entries) {
-        _require(inputs[entry.key]!(entry.value));
+        final check = inputs[entry.key];
+        final problem = check == null
+            ? WorkshopDistributionProblem.unsupportedDefault
+            : !check(entry.value)
+            ? WorkshopDistributionProblem.invalidDefault
+            : null;
+        if (problem != null) {
+          throw WorkshopDistributionException(
+            problem,
+            'Invalid workshop defaults.',
+            stepIndex: index,
+            detail: '$type.${entry.key}',
+          );
+        }
       }
     }
-    _validateStepInteractions(step, nodeRefs);
+    _validateStepInteractions(step, nodeRefs, index);
     final calloutIds = <String>{};
-    for (final raw in _list(step['callouts'] ?? [], max: 16)) {
+    final callouts = _distributionList(
+      step['callouts'] ?? [],
+      max: 16,
+      problem: WorkshopDistributionProblem.tooManyCallouts,
+      stepIndex: index,
+    );
+    for (final raw in callouts) {
       final callout = _object(raw, const {
         'id',
         'targetRef',
@@ -299,23 +389,85 @@ AuthoredLearningPath validateRemoteWorkshopBundle(String source) {
         'body',
         'side',
       });
-      _require(calloutIds.add(_id(callout['id'])));
-      _require(nodeRefs.contains(_id(callout['targetRef'])));
-      _text(callout['title'], 160);
-      _text(callout['body'], 1500);
+      _distributionField(
+        'callouts.id',
+        () => _require(calloutIds.add(_id(callout['id']))),
+        index,
+      );
+      _distributionField(
+        'callouts.targetRef',
+        () => _require(nodeRefs.contains(_id(callout['targetRef']))),
+        index,
+      );
+      _distributionField(
+        'callouts.title',
+        () => _text(callout['title'], 160),
+        index,
+      );
+      _distributionField(
+        'callouts.body',
+        () => _text(callout['body'], 1500),
+        index,
+      );
       _require(const {'left', 'right'}.contains(callout['side'] ?? 'right'));
     }
   }
   return AuthoredLearningPath.fromJson(path);
 }
 
-void _validateStepInteractions(Map<String, dynamic> step, Set<String> refs) {
-  final highlights = <String>{};
-  for (final raw in _list(step['highlights'] ?? [], max: 16)) {
-    final ref = _id(raw);
-    _require(refs.contains(ref) && highlights.add(ref));
+T _distributionField<T>(String field, T Function() validate, [int? stepIndex]) {
+  try {
+    return validate();
+  } on FormatException catch (error) {
+    throw WorkshopDistributionException(
+      WorkshopDistributionProblem.invalidContent,
+      error.message,
+      stepIndex: stepIndex,
+      detail: field,
+    );
   }
-  for (final raw in _list(step['requirements'] ?? [], max: 16)) {
+}
+
+List<Object?> _distributionList(
+  Object? value, {
+  required int max,
+  int min = 0,
+  required WorkshopDistributionProblem problem,
+  int? stepIndex,
+}) {
+  if (value is List && value.length > max) {
+    throw WorkshopDistributionException(
+      problem,
+      'Invalid workshop list.',
+      stepIndex: stepIndex,
+    );
+  }
+  return _list(value, max: max, min: min);
+}
+
+void _validateStepInteractions(
+  Map<String, dynamic> step,
+  Set<String> refs,
+  int index,
+) {
+  final highlights = <String>{};
+  for (final raw in _distributionList(
+    step['highlights'] ?? [],
+    max: 16,
+    problem: WorkshopDistributionProblem.tooManyHighlights,
+    stepIndex: index,
+  )) {
+    _distributionField('highlights', () {
+      final ref = _id(raw);
+      _require(refs.contains(ref) && highlights.add(ref));
+    }, index);
+  }
+  for (final raw in _distributionList(
+    step['requirements'] ?? [],
+    max: 16,
+    problem: WorkshopDistributionProblem.tooManyRequirements,
+    stepIndex: index,
+  )) {
     final rule = _object(raw, const {
       'action',
       'nodeRef',
@@ -329,27 +481,43 @@ void _validateStepInteractions(Map<String, dynamic> step, Set<String> refs) {
     if (action == null) {
       throw const FormatException('Unsupported workshop action.');
     }
-    _require(
-      action.needsNode
-          ? refs.contains(_id(rule['nodeRef']))
-          : !rule.containsKey('nodeRef'),
+    _distributionField(
+      'requirements.nodeRef',
+      () => _require(
+        action.needsNode
+            ? refs.contains(_id(rule['nodeRef']))
+            : !rule.containsKey('nodeRef'),
+      ),
+      index,
     );
-    _require(
-      action.needsOtherNode
-          ? refs.contains(_id(rule['otherRef'])) &&
-                rule['nodeRef'] != rule['otherRef']
-          : !rule.containsKey('otherRef'),
+    _distributionField(
+      'requirements.otherRef',
+      () => _require(
+        action.needsOtherNode
+            ? refs.contains(_id(rule['otherRef'])) &&
+                  rule['nodeRef'] != rule['otherRef']
+            : !rule.containsKey('otherRef'),
+      ),
+      index,
     );
     final input = rule['input'];
-    _require(
-      action.needsInput
-          ? input is String &&
-                RegExp(r'^[A-Za-z][A-Za-z0-9_]{0,63}$').hasMatch(input)
-          : !rule.containsKey('input'),
+    _distributionField(
+      'requirements.input',
+      () => _require(
+        action.needsInput
+            ? input is String &&
+                  RegExp(r'^[A-Za-z][A-Za-z0-9_]{0,63}$').hasMatch(input)
+            : !rule.containsKey('input'),
+      ),
+      index,
     );
     if (rule.containsKey('value')) {
       _require(action == LearningPathAction.enterInput);
-      _text(rule['value'], 512);
+      _distributionField(
+        'requirements.value',
+        () => _text(rule['value'], 512),
+        index,
+      );
     }
   }
 }
@@ -373,8 +541,9 @@ void _checkJsonDepth(String source) {
   }
 }
 
-Map<String, dynamic> _object(Object? value, Set<String> keys) {
-  if (value is Map<String, dynamic> && value.keys.every(keys.contains)) {
+Map<String, dynamic> _object(Object? value, [Set<String>? keys]) {
+  if (value is Map<String, dynamic> &&
+      (keys == null || value.keys.every(keys.contains))) {
     return value;
   }
   throw const FormatException('Invalid workshop fields.');

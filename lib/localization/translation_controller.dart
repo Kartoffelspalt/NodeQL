@@ -400,6 +400,112 @@ const builtInMessages = <String, Map<String, String>>{
     'tutorial.studio.dockedHelp':
         'Links Nodes bauen, rechts die Schritte erstellen.',
     'tutorial.studio.title': 'Workshop Studio',
+    'tutorial.studio.search': 'Workshops suchen',
+    'tutorial.studio.clearSearch': 'Suche leeren',
+    'tutorial.studio.filterAll': 'Alle ({count})',
+    'tutorial.studio.filterDrafts': 'Entwürfe ({count})',
+    'tutorial.studio.filterOfficial': 'Offiziell ({count})',
+    'tutorial.studio.draftBadge': 'Lokaler Entwurf',
+    'tutorial.studio.officialBadge': 'Offizielle Vorlage',
+    'tutorial.studio.sort': 'Workshops sortieren',
+    'tutorial.studio.sortLibrary': 'Bibliotheksreihenfolge',
+    'tutorial.studio.sortTitle': 'Name A–Z',
+    'tutorial.studio.sortSteps': 'Meiste Schritte zuerst',
+    'tutorial.studio.noMatches':
+        'Keine Workshops passen zur Suche oder zum Filter.',
+    'tutorial.studio.resetFilters': 'Filter zurücksetzen',
+    'tutorial.studio.duplicate': 'Als Entwurf kopieren',
+    'tutorial.studio.copyTitle': 'Kopie von {title}',
+    'tutorial.studio.moreActions': 'Weitere Workshop-Aktionen',
+    'tutorial.studio.readyToShare': 'Bereit zum Teilen',
+    'tutorial.studio.needsReview': 'Prüfung nötig',
+    'tutorial.studio.checkWorkshop': 'Workshop prüfen',
+    'tutorial.studio.unsavedTitle': 'Ungespeicherte Änderungen verwerfen?',
+    'tutorial.studio.unsavedBody':
+        'Deine Änderungen seit dem letzten Speichern gehen verloren.',
+    'tutorial.studio.discard': 'Änderungen verwerfen',
+    'tutorial.studio.draftSaved': 'Entwurf gespeichert.',
+    'tutorial.studio.previewFailed':
+        'Die Workshop-Vorschau konnte nicht gestartet werden.',
+    'tutorial.studio.copyFailed':
+        'Die Workshop-Kopie konnte nicht gespeichert werden.',
+    'tutorial.studio.deleteFailed': 'Der Entwurf konnte nicht gelöscht werden.',
+    'tutorial.studio.importFailed':
+        'Die Datei konnte nicht importiert werden. Prüfe, ob es ein gültiges NodeQL-Workshop-Bundle ist, und versuche es erneut.',
+    'tutorial.studio.exportFailed':
+        'Die Workshop-Datei konnte nicht exportiert werden. Prüfe den Speicherort und versuche es erneut.',
+    'tutorial.studio.shareFailed':
+        'Die Freigabe für den Unterricht konnte nicht geöffnet werden.',
+    'tutorial.studio.libraryLoadFailed':
+        'Die Workshop-Bibliothek konnte nicht geöffnet werden. Deine Dateien wurden nicht verändert.',
+    'tutorial.studio.importPreview': 'Workshop-Import prüfen',
+    'tutorial.studio.importBody':
+        'Diese Datei enthält {count} Workshops. Sie werden als neue lokale Entwürfe mit eigenen IDs hinzugefügt.',
+    'tutorial.studio.importMore': 'Und {count} weitere',
+    'tutorial.studio.importConfirm': 'Als Entwürfe importieren',
+    'tutorial.studio.imported': 'Importierte Workshops: {count}',
+    'tutorial.studio.catalogBody':
+        'Wähle die Workshops für die Katalogdatei aus.',
+    'tutorial.studio.catalogBlocked':
+        'Workshops mit inhaltlichen Fehlern sind nicht auswählbar. Details findest du unter „Workshop prüfen“.',
+    'tutorial.studio.catalogConfirm': 'Auswahl exportieren',
+    'tutorial.studio.review.ready':
+        'Der Workshop lässt sich ausprobieren und erfüllt die Regeln für Unterrichtsfreigabe und Download.',
+    'tutorial.studio.review.previewOnly':
+        'Du kannst den Workshop lokal ausprobieren. Behebe die folgenden Punkte, bevor du ihn mit der Klasse teilst.',
+    'tutorial.studio.review.blocked':
+        'Behebe die folgenden Punkte vor der Vorschau oder Freigabe. Du kannst den Workshop als Entwurf behalten.',
+    'tutorial.studio.review.missingPathId':
+        'Der Workshop hat keine ID. Erstelle eine Kopie, um eine neue ID zu vergeben.',
+    'tutorial.studio.review.missingTitle': 'Gib dem Workshop einen Namen.',
+    'tutorial.studio.review.missingSteps':
+        'Füge mindestens einen Schritt hinzu.',
+    'tutorial.studio.review.missingStepId':
+        'Dieser Schritt hat keine ID. Lege den Schritt neu an.',
+    'tutorial.studio.review.duplicateStepId':
+        'Zwei Schritte verwenden dieselbe ID. Lege diesen Schritt neu an.',
+    'tutorial.studio.review.missingStepTitle':
+        'Gib diesem Schritt einen Titel.',
+    'tutorial.studio.review.missingInstruction':
+        'Schreibe eine Aufgabe für diesen Schritt.',
+    'tutorial.studio.review.missingNodeRef':
+        'Ein Übungs-Node hat keine Referenz. Übernimm die Nodes erneut.',
+    'tutorial.studio.review.duplicateNodeRef':
+        'Eine Node-Referenz wird mehrfach verwendet. Übernimm die Nodes erneut oder passe die Auswahl an.',
+    'tutorial.studio.review.invalidHighlight':
+        'Eine Markierung verweist auf einen fehlenden Node. Passe die Markierungen an.',
+    'tutorial.studio.review.invalidCallout':
+        'Eine Node-Beschriftung ist unvollständig oder verweist auf einen fehlenden Node. Überarbeite sie.',
+    'tutorial.studio.review.invalidRequirementTarget':
+        'Eine Prüfung verweist auf einen fehlenden Node. Wähle ein verfügbares Ziel.',
+    'tutorial.studio.review.invalidRequirementInput':
+        'Eine Prüfung verweist auf ein fehlendes Eingabefeld. Wähle ein Feld am Ziel-Node.',
+    'tutorial.studio.review.incompatibleRequirementNodes':
+        'Die ausgewählten Nodes können diese Prüfung nicht erfüllen. Passe die Prüfung oder ihre Ziele an.',
+    'tutorial.studio.review.conflictingRequirements':
+        'Zwei Prüfungen widersprechen sich. Ändere oder entferne eine davon.',
+    'tutorial.studio.review.distributionRejected':
+        'Dieser Workshop erfüllt die Regeln für die Freigabe nicht.',
+    'tutorial.studio.distribution.bundleTooLarge':
+        'Die Freigabedatei überschreitet 256 KiB. Kürze oder teile den Workshop.',
+    'tutorial.studio.distribution.tooManySteps':
+        'Geteilte Workshops dürfen bis zu 32 Schritte enthalten. Teile den Workshop in kleinere Abschnitte.',
+    'tutorial.studio.distribution.tooManyNodes':
+        'Reduziere die Übungs-Nodes in diesem Schritt auf höchstens 16.',
+    'tutorial.studio.distribution.tooManyCallouts':
+        'Reduziere die Node-Beschriftungen in diesem Schritt auf höchstens 16.',
+    'tutorial.studio.distribution.tooManyHighlights':
+        'Reduziere die Markierungen in diesem Schritt.',
+    'tutorial.studio.distribution.tooManyRequirements':
+        'Reduziere die Prüfungen in diesem Schritt.',
+    'tutorial.studio.distribution.unsupportedNode':
+        'Ersetze diesen Node durch einen Node für geteilte Leseübungen.',
+    'tutorial.studio.distribution.unsupportedDefault':
+        'Entferne die nicht unterstützte Voreinstellung oder wähle einen erlaubten Wert.',
+    'tutorial.studio.distribution.invalidDefault':
+        'Wähle eine gültige Voreinstellung für dieses Eingabefeld.',
+    'tutorial.studio.distribution.invalidContent':
+        'Prüfe das angegebene Feld. Es erfüllt die Regeln für die Freigabe nicht.',
     'tutorial.studio.adminBadge': 'Workshop Studio',
     'tutorial.studio.subtitle': 'Erstelle Übungen für deine Klasse.',
     'tutorial.studio.emptyTitle': 'Dein erster Workshop',

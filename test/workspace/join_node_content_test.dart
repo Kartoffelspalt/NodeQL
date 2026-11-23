@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nodeql/engine/block/block_node.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/join_node_content.dart';
 import 'package:nodeql/localization/generated/app_localizations.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -36,6 +37,7 @@ void main() {
                       node: node,
                       sourceTable: 'customers AS c + orders AS o',
                       languageCode: locale.languageCode,
+                      mode: SqlAbstractionMode.simple,
                       onChooseKind: () {},
                       slotBuilder: (key, width) => SizedBox(
                         width: width,
@@ -77,6 +79,7 @@ void main() {
                   node: _join('INNER')..inputs.addAll(inputs),
                   sourceTable: 'customers',
                   languageCode: 'en',
+                  mode: SqlAbstractionMode.advanced,
                   slotBuilder: (key, width) {
                     slots.add(key);
                     return SizedBox(width: width, height: 26, child: Text(key));

@@ -15,6 +15,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   response. The updater now awaits the app's exit decision and confirms that
   the installation helper has started before closing NodeQL.
 
+## [0.5.4]
+
+### Changed
+
+- Localized JOIN labels in Simple Mode, including palette previews, while
+  preserving SQL terminology in Advanced Mode.
+- Improved the shared Workshop Admin components with library search, filters,
+  sorting, template copies, draft saving, import previews, and catalog selection.
+- Added workshop review with step-specific validation and protected unsaved edits.
+- Updated `go_router` to 18.1.4 and `file_picker` to 13.3.3.
+- Updated the CI SDK to Flutter 3.44.9 for Xcode 27 compatibility and aligned
+  dependency lockfiles. CI, translation validation, and desktop release builds
+  now enforce those lockfiles.
+
+### Fixed
+
+- Two-finger trackpad navigation no longer changes the workspace zoom level or
+  applies movement twice.
+- Positioned the column-connection manager beside the selected connection and
+  kept it inside the canvas during navigation.
+- Workshop authoring previews no longer overwrite saved learner progress.
+- Workshop imports create independent drafts without replacing existing content.
+
 ## [0.5.2]
 
 ### Added

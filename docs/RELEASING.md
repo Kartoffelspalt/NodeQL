@@ -21,7 +21,8 @@ x64. Web, Android, and iOS are not release targets yet.
 2. Set `version: X.Y.Z+BUILD` in `pubspec.yaml`. Choose a build number
    higher than those in earlier Sparkle-enabled builds, including local
    builds that use the production update feed.
-3. Run the full local verification commands from `CONTRIBUTING.md`.
+3. Use the CI SDK and run the full local verification commands from
+   `CONTRIBUTING.md`, including the dependency checks below.
 4. Increase both the release version and build number, then merge the change
    into `master`.
 
@@ -61,6 +62,22 @@ release version. Keep increasing the build number across release versions so
 existing installations can detect updates. A newer release version with a
 reset or unchanged build number still fails validation. See
 [Sparkle's internal build numbers documentation](https://sparkle-project.org/documentation/publishing/#internal-build-numbers).
+
+## SDK and dependency checks
+
+CI, localization validation, and desktop release builds use Flutter
+`3.44.9`. This patch includes the framework architecture-verification fix
+needed by Xcode 27. Resolve dependency updates with that SDK and commit both
+`pubspec.lock` and `tools/onboarding_studio/pubspec.lock`. Lockfiles
+generated with a newer Flutter SDK can select packages that the CI SDK
+cannot use.
+
+The workflows install dependencies with `flutter pub get --enforce-lockfile`
+so every job uses the reviewed dependency versions. Before opening the
+release PR, run that command in the repository root and in
+`tools/onboarding_studio`. If dependency constraints have changed, first
+run `flutter pub get` with Flutter `3.44.9`, review the lockfile changes,
+and repeat the enforced check.
 
 ## Synchronizing dev after a merge
 
