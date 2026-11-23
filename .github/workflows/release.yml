@@ -25,7 +25,7 @@ permissions:
   pull-requests: read
 
 env:
-  FLUTTER_VERSION: '3.44.1'
+  FLUTTER_VERSION: '3.44.9'
   TRANSLATION_MANIFEST_URL: https://kartoffelspalt.github.io/NodeQL/translations/translation-manifest.json
   TRANSLATION_CONTRIBUTION_URL: https://github.com/Kartoffelspalt/NodeQL/blob/master/docs/localization/README.md
 
@@ -142,7 +142,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - run: flutter gen-l10n
       - run: dart format --output=none --set-exit-if-changed lib test tool
       - run: flutter analyze
@@ -169,7 +169,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - name: Scope cache to translation configuration
         id: cache-scope
         shell: bash
@@ -270,7 +270,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libsqlite3-dev ninja-build
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - name: Build Linux bundle
         run: >
           flutter build linux --release
@@ -400,7 +400,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - name: Import Apple Developer ID certificate
         if: >-
           ${{
@@ -578,7 +578,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - name: Build Windows bundle
         run: >
           flutter build windows --release

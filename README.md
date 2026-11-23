@@ -121,7 +121,7 @@ The repository demonstrates the public catalog format and SDK example plugins.
 
 Requirements:
 
-- Flutter `3.44.1`
+- Flutter `3.44.9`
 - Dart compatible with SDK `^3.9.0`
 - Native Flutter desktop build dependencies for the target platform
 

@@ -17,13 +17,13 @@ jobs:
         run: python3 -m unittest discover -s test/tool -p '*_test.py'
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.1'
+          flutter-version: '3.44.9'
           channel: stable
           cache: true
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - name: Install Onboarding Studio dependencies
         working-directory: tools/onboarding_studio
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - run: flutter gen-l10n
       - run: dart format --output=none --set-exit-if-changed lib test tool
       - name: Check Onboarding Studio formatting
