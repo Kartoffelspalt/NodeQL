@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/core/app/nodeql_app.dart';
+import 'package:nodeql/features/workbench/demo/web_demo_project.dart';
 import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
 import 'package:nodeql/features/onboarding/onboarding_flow.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
@@ -18,6 +19,11 @@ import 'package:nodeql/features/workbench/presentation/workbench_page.dart';
 import 'package:nodeql/localization/translation_controller.dart';
 import 'package:url_launcher/link.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
+import 'package:nodeql/features/workbench/presentation/engine/sql_to_nodes_compiler.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
+import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +40,20 @@ void main() {
         ),
       );
       final response = await http.get(Uri.base.resolve('/$key'));
+      if (response.statusCode == 404 &&
+          key == 'assets/translations/translation-manifest.json') {
+        // A source checkout can contain only the English translation asset.
+        return ByteData.sublistView(
+          utf8.encode(
+            jsonEncode({
+              'schemaVersion': 1,
+              'generatedAt': '2026-01-01T00:00:00Z',
+              'minimumAppVersion': '0.0.0',
+              'languages': <Object>[],
+            }),
+          ),
+        );
+      }
       return response.statusCode == 200
           ? ByteData.sublistView(response.bodyBytes)
           : null;
@@ -45,6 +65,11 @@ void main() {
       'flutter/assets',
       null,
     );
+  });
+  setUp(() async {
+    final support = await getApplicationSupportDirectory();
+    await support.delete(recursive: true);
+    await support.create(recursive: true);
   });
 
   test(
@@ -115,7 +140,7 @@ void main() {
     },
   );
   testWidgets(
-    'web preview explains desktop-only features before linking to GitHub',
+    'web preview shows the loaded demo before explaining desktop-only features',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -125,9 +150,6 @@ void main() {
         await container
             .read(translationControllerProvider.notifier)
             .initialize();
-        final onboarding = container.read(onboardingLaunchProvider.notifier);
-        await onboarding.initialize();
-        await onboarding.markSeen();
       });
       await tester.pumpWidget(
         UncontrolledProviderScope(
@@ -135,11 +157,44 @@ void main() {
           child: const NodeQlApp(),
         ),
       );
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 100)),
-      );
-      await tester.pumpAndSettle();
+      await _settleWebStartup(tester, container);
       expect(find.byType(WorkbenchPage), findsOneWidget);
+      expect(find.byType(NodeQlOnboardingOverlay), findsNothing);
+      expect(find.text('nodeql_demo.db'), findsOneWidget);
+      expect(find.text('Top Math scores'), findsOneWidget);
+      expect(container.read(sqlModeProvider), SqlAbstractionMode.simple);
+      expect(
+        container.read(sqlRuntimeProvider).schemas.map((table) => table.name),
+        unorderedEquals(['students', 'scores']),
+      );
+      expect(
+        container.read(workspaceTabsProvider).activeTab.name,
+        'Top Math scores',
+      );
+      final demoSql = const SqlCompiler().compileWorkspace(
+        container.read(workspaceProvider).roots,
+      );
+      expect(demoSql.warnings, isEmpty);
+      expect(demoSql.sql, webDemoQuery.trim().replaceAll(RegExp(r'\s+'), ' '));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(container.read(sqlRuntimeProvider).lastRows, [
+        {'name': 'Alice', 'city': 'Berlin', 'score': '97'},
+        {'name': 'Ben', 'city': 'Chemnitz', 'score': '94'},
+        {'name': 'Clara', 'city': 'Leipzig', 'score': '91'},
+      ]);
+      for (final name in ['Alice', 'Ben', 'Clara']) {
+        expect(find.text(name), findsOneWidget);
+      }
+      final workspace = container.read(workspaceProvider.notifier);
+      for (final node in workspace.allBlocks()) {
+        if (node.next case final next?) {
+          expect(
+            next.position.dy,
+            node.position.dy + workspace.blockHeight(node),
+          );
+        }
+      }
       Future<void> expectDesktopNotice(
         String buttonKey, {
         String message = 'This feature is only available in the desktop app.',
@@ -246,4 +301,70 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+
+  testWidgets('web demo preserves a restored project and chosen mode', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final support = directoryAt('/support');
+    final databasePath = '${support.path}/custom.db';
+    final database = sqlite3.open(databasePath);
+    database.execute(
+      "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('My project');",
+    );
+    database.close();
+    final query = SqlToNodesCompiler().compile('SELECT body FROM notes;');
+    fileAt('${support.path}/nodeql_autosave_default.nodeql').writeAsStringSync(
+      jsonEncode({
+        'format': 'nodeql_project_v2',
+        'workspace': {
+          'roots': query.roots.map((root) => root.toJson()).toList(),
+        },
+        'runtime': {'dbPath': databasePath},
+      }),
+    );
+    fileAt(
+      '${support.path}/nodeql_sql_mode.json',
+    ).writeAsStringSync(jsonEncode({'mode': 'advanced'}));
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.runAsync(() async {
+      await container.read(translationControllerProvider.notifier).initialize();
+      await container.read(onboardingLaunchProvider.notifier).markSeen();
+    });
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const NodeQlApp()),
+    );
+    await _settleWebStartup(tester, container);
+    expect(container.read(sqlRuntimeProvider).dbPath, databasePath);
+    expect(container.read(sqlRuntimeProvider).lastRows, [
+      {'body': 'My project'},
+    ]);
+    expect(container.read(sqlModeProvider), SqlAbstractionMode.advanced);
+    expect(
+      const SqlCompiler()
+          .compileWorkspace(container.read(workspaceProvider).roots)
+          .sql,
+      'SELECT body FROM notes;',
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+}
+
+Future<void> _settleWebStartup(
+  WidgetTester tester,
+  ProviderContainer container,
+) async {
+  for (var attempt = 0; attempt < 50; attempt++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    if (container.read(sqlRuntimeProvider).dbPath != null) break;
+  }
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pumpAndSettle();
 }

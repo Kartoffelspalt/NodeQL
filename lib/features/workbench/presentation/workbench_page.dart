@@ -16,6 +16,7 @@ import 'package:nodeql/engine/plugins/plugin_manifest.dart';
 import 'package:nodeql/engine/plugins/plugin_repository.dart';
 import 'package:nodeql/data/project/project_file_upgrade_service.dart';
 import 'package:nodeql/data/project/project_file_paths.dart';
+import 'package:nodeql/features/workbench/demo/web_demo_project.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_backwards_compiler.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_auto_execution_guard.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
@@ -520,7 +521,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _initializeFirstRunOnboarding() async {
-    if (ref.read(workshopAdminPanelProvider) != null) return;
+    // The web demo opens on an example that visitors can try immediately.
+    if (kIsWeb || ref.read(workshopAdminPanelProvider) != null) return;
     final controller = ref.read(onboardingLaunchProvider.notifier);
     await controller.initialize();
     if (!mounted || !ref.read(onboardingLaunchProvider).shouldShow) return;
@@ -665,7 +667,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final translationState = ref.watch(translationControllerProvider);
     final catalog = translationState.catalog;
     final locale = translationState.locale;
-    if (_workshopMode || ref.watch(workshopAdminPanelProvider) != null) {
+    if (!kIsWeb &&
+        (_workshopMode || ref.watch(workshopAdminPanelProvider) != null)) {
       return _WorkshopProviderScope(onExit: _exitWorkshop);
     }
     // Keep this shell reactive to workspace edits; autosave itself is driven
@@ -774,6 +777,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                           .setLocaleTag(code),
                       onPickDb: () =>
                           ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
+                      mountedDatabaseName: kIsWeb && runtime.dbPath != null
+                          ? p.basename(runtime.dbPath!)
+                          : null,
                       canBrowseDb: runtime.dbPath != null,
                       onBrowseDb: () => unawaited(_openDatabaseBrowser()),
                       onExecuteGuarded: () {
@@ -1140,7 +1146,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       _queuedLivePreviewSql = null;
       return;
     }
-    if (_livePreviewDatabasePath != databasePath) {
+    final databaseChanged = _livePreviewDatabasePath != databasePath;
+    if (databaseChanged) {
       _livePreviewDatabasePath = databasePath;
       _lastLivePreviewSql = '';
       _queuedLivePreviewSql = null;
@@ -1150,7 +1157,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       return;
     }
     _livePreviewDebounce?.cancel();
-    _livePreviewDebounce = Timer(const Duration(milliseconds: 420), () {
+    final delay = kIsWeb && databaseChanged
+        ? Duration.zero
+        : const Duration(milliseconds: 420);
+    _livePreviewDebounce = Timer(delay, () {
       unawaited(_executeLivePreview(normalizedSql, databasePath));
     });
   }
@@ -1237,10 +1247,46 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _initializeAutosave() async {
     try {
-      await _restoreAutosave();
+      final restored = await _restoreAutosave();
+      if (kIsWeb && !restored && mounted) {
+        await _loadWebDemoProject();
+      }
     } finally {
       if (mounted) _autosaveReady = true;
     }
+  }
+
+  Future<void> _loadWebDemoProject() async {
+    final support = await getApplicationSupportDirectory();
+    if (!mounted) return;
+    final databasePath = createWebDemoDatabase(
+      directoryPath: p.join(support.path, 'web_demo'),
+    );
+    final query = SqlToNodesCompiler().compile(webDemoQuery);
+    final workspace = ref.read(workspaceProvider.notifier);
+    workspace.loadFromJsonString(
+      jsonEncode(<String, dynamic>{
+        'roots': query.roots.map((root) => root.toJson()).toList(),
+        'scale': 1,
+        'pan': <String, double>{'dx': 0, 'dy': 0},
+      }),
+    );
+    final demoRoot = ref.read(workspaceProvider).roots.single;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(ref.read(workspaceProvider).roots.firstOrNull, demoRoot)) {
+        return;
+      }
+      workspace.applyRenderMetricsToLayout();
+    });
+    ref
+        .read(workspaceTabsProvider.notifier)
+        .resetToCurrentWorkspace(name: 'Top Math scores');
+    _activeProjectName = 'NodeQL Demo';
+    await ref
+        .read(sqlRuntimeProvider.notifier)
+        .attachDatabasePath(databasePath);
+    if (mounted) await _writeAutosave();
   }
 
   void _scheduleAutosave() {
@@ -1277,7 +1323,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     }
   }
 
-  Future<void> _restoreAutosave() async {
+  Future<bool> _restoreAutosave() async {
     await _loadProjectRegistry();
     await _syncRecentProjectsToNativeMenu();
     final active = _recentProjects
@@ -1296,7 +1342,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
           );
           if (source != null && source.trim().isNotEmpty) {
             await _loadProjectPayload(source, projectPath: activeProjectPath);
-            return;
+            return true;
           }
         } catch (_) {}
       }
@@ -1323,12 +1369,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     : (await legacyScratchQlSqpAutosave.exists()
                           ? legacyScratchQlSqpAutosave
                           : null)));
-    if (sourceFile == null) return;
+    if (sourceFile == null) return false;
 
     final source = await _readBoundedProjectSource(sourceFile);
-    if (source == null || source.trim().isEmpty) return;
+    if (source == null || source.trim().isEmpty) return false;
     await _loadProjectPayload(source);
     await _syncRecentProjectsToNativeMenu();
+    return true;
   }
 
   Future<void> _newProject(BuildContext context) async {
@@ -2466,6 +2513,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   }
 
   Future<void> _syncRecentProjectsToNativeMenu() async {
+    if (kIsWeb) return;
     try {
       await _menuChannel.invokeMethod<void>('setRecentProjects', {
         'items': _recentProjects
@@ -4963,6 +5011,7 @@ class _TopBar extends StatelessWidget {
     required this.localeCode,
     required this.onLocale,
     required this.onPickDb,
+    this.mountedDatabaseName,
     required this.canBrowseDb,
     required this.onBrowseDb,
     required this.onExecuteGuarded,
@@ -4983,6 +5032,7 @@ class _TopBar extends StatelessWidget {
   final String localeCode;
   final ValueChanged<String> onLocale;
   final VoidCallback onPickDb;
+  final String? mountedDatabaseName;
   final bool canBrowseDb;
   final VoidCallback onBrowseDb;
   final VoidCallback onExecuteGuarded;
@@ -5042,18 +5092,35 @@ class _TopBar extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        NodeQlBrutalPressable(
-                          child: OutlinedButton.icon(
-                            onPressed: onPickDb,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: workbenchColors.topBarForeground,
-                              side: BorderSide(
-                                color: workbenchColors.border,
-                                width: surfaceStyle.borderWidth,
+                        Tooltip(
+                          message: catalog.text('toolbar.mountDatabase'),
+                          child: NodeQlBrutalPressable(
+                            child: OutlinedButton.icon(
+                              onPressed: onPickDb,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor:
+                                    workbenchColors.topBarForeground,
+                                side: BorderSide(
+                                  color: workbenchColors.border,
+                                  width: surfaceStyle.borderWidth,
+                                ),
+                              ),
+                              icon: const Icon(
+                                Icons.storage_outlined,
+                                size: 18,
+                              ),
+                              label: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 160,
+                                ),
+                                child: Text(
+                                  mountedDatabaseName ??
+                                      catalog.text('toolbar.mountDatabase'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
-                            icon: const Icon(Icons.storage_outlined, size: 18),
-                            label: Text(catalog.text('toolbar.mountDatabase')),
                           ),
                         ),
                         const SizedBox(width: NodeQlDesign.space2),

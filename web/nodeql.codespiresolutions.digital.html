@@ -177,7 +177,7 @@ footer h4{margin:0 0 6px;color:var(--fg);font-size:13px}
 <p class="sub">This small, self-contained browser demo shows how query blocks form SQLite. It uses sample data and a limited set of query blocks; download NodeQL to explore the full desktop app.</p>
 <div class="dm">
 <div class="bar"><i></i><i></i><i></i><em>Browser preview — sample database</em><span class="sv">● Sample data</span></div>
-<div class="dm-tools"><div id="dmPre"></div><div class="seg"><button data-m="simple">Simple</button><button data-m="adv" class="on">Advanced</button></div></div>
+<div class="dm-tools"><div id="dmPre"></div><div class="seg"><button data-m="simple" class="on">Simple</button><button data-m="adv">Advanced</button></div></div>
 <div class="dm-main">
 <div><input id="dmQ" placeholder="⌕ Search query blocks…"><div id="dmTabs"></div><div id="dmList"></div></div>
 <div id="dmCan"></div>
@@ -286,10 +286,10 @@ var SL={'SELECT':'Show','FROM':'from table','JOIN':'join with','WHERE':'filter r
 var DEF={'SELECT':'name, grade','FROM':'students','JOIN':'scores ON students.id = scores.student_id','WHERE':"grade = 'A'",'GROUP BY':'grade','HAVING':'COUNT(*) > 1','ORDER BY':'name ASC','LIMIT':'5'};
 var CATS={'Query Language':ORD};
 var COL={'Query Language':'--dql'};
-var PRE={'Top Math scores':[['SELECT','name, score'],['FROM','students'],['JOIN',DEF.JOIN],['WHERE',"subject = 'Math'"],['ORDER BY','score DESC'],['LIMIT','3']],
+var PRE={'Top Math scores':[['SELECT','students.name, students.city, scores.score'],['FROM','students'],['JOIN',DEF.JOIN],['WHERE',"scores.subject = 'Math'"],['ORDER BY','scores.score DESC'],['LIMIT','3']],
 'Average per subject':[['SELECT','subject, AVG(score) AS avg_score'],['FROM','scores'],['GROUP BY','subject'],['ORDER BY','avg_score DESC']],
 'Students per city':[['SELECT','city, COUNT(*) AS students'],['FROM','students'],['GROUP BY','city'],['HAVING','COUNT(*) > 1']]};
-var st={m:'adv',cat:'Query Language',b:[{k:'SELECT',v:'name, grade'},{k:'FROM',v:'students'},{k:'WHERE',v:"grade = 'A'"},{k:'ORDER BY',v:'name ASC'}]};
+var st={m:'simple',cat:'Query Language',b:PRE['Top Math scores'].map(function(x){return{k:x[0],v:x[1]}})};
 var mt;function msg(t){$('dmMsg').textContent=t;clearTimeout(mt);mt=setTimeout(function(){$('dmMsg').textContent=''},2600)}
 function g(k){var b=st.b.filter(function(x){return x.k==k})[0];return b&&b.v.trim()?b.v.trim():null}
 function sql(){return ORD.filter(g).map(function(k){return k+' '+g(k)}).join('\n')}

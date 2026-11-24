@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -31,6 +31,32 @@
 
   <title>NodeQL</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    body { margin: 0; background: #10141e; }
+    #nodeql-startup {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: #e8edfc;
+      background: #10141e;
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+    #nodeql-startup h1 { margin: 0 0 8px; font-size: 28px; }
+    #nodeql-startup p { margin: 0 0 16px; }
+    #nodeql-startup progress { width: 100%; accent-color: #6296ff; }
+    #nodeql-startup button {
+      padding: 8px 16px;
+      border: 0;
+      border-radius: 8px;
+      background: #c5d9ff;
+      color: #10141e;
+      font: inherit;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
   <!--
@@ -41,6 +67,17 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <main id="nodeql-startup">
+    <div>
+      <h1>NodeQL</h1>
+      <p id="nodeql-startup-status" role="status">Loading the sample database and query…</p>
+      <progress id="nodeql-startup-progress" aria-label="Loading NodeQL"></progress>
+      <button id="nodeql-startup-retry" type="button" hidden>Reload demo</button>
+      <noscript>Enable JavaScript to run the interactive demo.</noscript>
+    </div>
+  </main>
+  <script>
+    {{flutter_bootstrap_js}}
+  </script>
 </body>
 </html>

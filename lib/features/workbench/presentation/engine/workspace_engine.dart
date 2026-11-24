@@ -1050,6 +1050,12 @@ class WorkspaceController extends StateNotifier<WorkspaceState> {
     }
   }
 
+  /// Realigns connected blocks once their rendered sizes are available.
+  void applyRenderMetricsToLayout() {
+    _relayoutAll();
+    _touch();
+  }
+
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
 

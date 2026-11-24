@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:nodeql/core/platform/storage.dart';
 
 import 'package:flutter_riverpod/legacy.dart';
@@ -14,7 +15,7 @@ final sqlModeProvider =
 class SqlModeController extends StateNotifier<SqlAbstractionMode> {
   SqlModeController({Future<File> Function()? storageFile})
     : _storageFile = storageFile ?? _defaultStorageFile,
-      super(SqlAbstractionMode.advanced) {
+      super(kIsWeb ? SqlAbstractionMode.simple : SqlAbstractionMode.advanced) {
     initialize();
   }
 
