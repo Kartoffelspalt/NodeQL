@@ -13,12 +13,11 @@ class PluginDataSourceClient {
     PluginDataSourceDefinition source, {
     Map<String, String> secrets = const <String, String>{},
   }) async {
-    final response = await _client
-        .get(
-          source.baseUrl.resolve(source.schemaPath),
-          headers: _headers(source, secrets),
-        )
-        .timeout(const Duration(seconds: 20));
+    final request =
+        http.Request('GET', source.resolveEndpoint(source.schemaPath))
+          ..followRedirects = false
+          ..headers.addAll(_headers(source, secrets));
+    final response = await _send(request).timeout(const Duration(seconds: 20));
     return _decodeResponse(response, operation: 'schema');
   }
 
@@ -28,20 +27,23 @@ class PluginDataSourceClient {
     Map<String, Object?> parameters = const <String, Object?>{},
     Map<String, String> secrets = const <String, String>{},
   }) async {
-    final response = await _client
-        .post(
-          source.baseUrl.resolve(source.queryPath),
-          headers: <String, String>{
+    final request =
+        http.Request('POST', source.resolveEndpoint(source.queryPath))
+          ..followRedirects = false
+          ..headers.addAll(<String, String>{
             ..._headers(source, secrets),
             'content-type': 'application/json',
-          },
-          body: jsonEncode(<String, Object?>{
+          })
+          ..body = jsonEncode(<String, Object?>{
             'query': query,
             'parameters': parameters,
-          }),
-        )
-        .timeout(const Duration(seconds: 30));
+          });
+    final response = await _send(request).timeout(const Duration(seconds: 30));
     return _decodeResponse(response, operation: 'query');
+  }
+
+  Future<http.Response> _send(http.Request request) async {
+    return http.Response.fromStream(await _client.send(request));
   }
 
   Map<String, String> _headers(

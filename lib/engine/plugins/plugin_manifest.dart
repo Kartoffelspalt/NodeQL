@@ -35,6 +35,20 @@ class PluginDataSourceDefinition {
   String descriptionFor(String languageCode) =>
       _localized(description, languageCode, nameFor(languageCode));
 
+  Uri resolveEndpoint(String path) {
+    final endpoint = baseUrl.resolve(
+      _validateEndpointPath(path, 'Data-source endpoint'),
+    );
+    if (!_isAllowedPluginUri(baseUrl) ||
+        !_isAllowedPluginUri(endpoint) ||
+        endpoint.origin != baseUrl.origin) {
+      throw const FormatException(
+        'Data-source endpoints must use the permitted base URL origin.',
+      );
+    }
+    return endpoint;
+  }
+
   factory PluginDataSourceDefinition.fromJson(
     Map<String, dynamic> json, {
     required Set<String> allowedHosts,
@@ -584,7 +598,12 @@ String _validateSecretName(String value) {
 
 String _validateEndpointPath(String value, String field) {
   final path = value.trim();
-  if (!path.startsWith('/') || path.contains('://')) {
+  final reference = Uri.tryParse(path);
+  if (!path.startsWith('/') ||
+      path.contains('://') ||
+      reference == null ||
+      reference.hasScheme ||
+      reference.hasAuthority) {
     throw FormatException('$field must be an absolute URL path.');
   }
   return path;

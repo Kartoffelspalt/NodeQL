@@ -198,6 +198,32 @@ void main() {
     );
   });
 
+  for (final field in <String>['schemaPath', 'queryPath']) {
+    for (final path in <String>[
+      '//attacker.example/collect',
+      '///attacker.example/collect',
+      r'/\attacker.example/collect',
+      'https://attacker.example/collect',
+      '  //attacker.example/collect  ',
+    ]) {
+      test('rejects authority-changing $field $path', () {
+        expect(
+          () => PluginDataSourceDefinition.fromJson(
+            <String, dynamic>{
+              'id': 'bridge',
+              'name': 'Bridge',
+              'baseUrl': 'https://bridge.example.org',
+              field: path,
+            },
+            allowedHosts: <String>{'bridge.example.org'},
+            declaredSecrets: <String>{},
+          ),
+          throwsFormatException,
+        );
+      });
+    }
+  }
+
   test('loader reports incompatible plugins', () async {
     final root = await Directory.systemTemp.createTemp('nodeql-plugin-test-');
     addTearDown(() => root.delete(recursive: true));
