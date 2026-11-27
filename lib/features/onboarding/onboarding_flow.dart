@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:nodeql/localization/translation_catalog.dart';
 
 /// Stable IDs shared by exported Onboarding Studio files and the NodeQL UI.
 enum OnboardingTarget {
@@ -96,54 +97,40 @@ class OnboardingDefinition {
   }
 }
 
-OnboardingDefinition defaultNodeQlOnboarding(Locale locale) {
-  final german = locale.languageCode == 'de';
-  String text(String de, String en) => german ? de : en;
+OnboardingDefinition defaultNodeQlOnboarding(TranslationCatalog catalog) {
   return OnboardingDefinition(
-    name: text('Erste Schritte', 'Getting started'),
+    name: catalog.text('onboarding.title'),
     steps: [
       OnboardingStep(
         id: 'find-nodes',
         target: OnboardingTarget.nodePalette,
-        title: text('Nodes auswählen', 'Choose nodes'),
-        message: text(
-          'In der Node-Leiste findest du Bausteine für Abfragen, Filter und Datenänderungen.',
-          'The node palette contains building blocks for queries, filters, and data changes.',
-        ),
+        title: catalog.text('onboarding.nodes.title'),
+        message: catalog.text('onboarding.nodes.message'),
         placement: OnboardingTooltipPlacement.bottom,
       ),
       OnboardingStep(
         id: 'build-query',
         target: OnboardingTarget.workspace,
-        title: text('Nodes verbinden', 'Connect nodes'),
-        message: text(
-          'Ziehe Nodes auf die Arbeitsfläche und verbinde sie zu einer ausführbaren Abfrage.',
-          'Drag nodes onto the workspace and connect them into an executable query.',
-        ),
+        title: catalog.text('onboarding.workspace.title'),
+        message: catalog.text('onboarding.workspace.message'),
         placement: OnboardingTooltipPlacement.top,
       ),
       OnboardingStep(
         id: 'use-tools',
         target: OnboardingTarget.databaseTools,
-        title: text('Datenbank-Tools verwenden', 'Use database tools'),
-        message: text(
+        title: catalog.text('onboarding.database.title'),
+        message: catalog.text(
           kIsWeb
-              ? 'Binde eine SQLite-Datei ein und führe deine generierte Abfrage aus.'
-              : 'Binde eine SQLite-Datei ein, prüfe Tabellen und führe deine generierte Abfrage aus.',
-          kIsWeb
-              ? 'Mount a SQLite file and run the generated query.'
-              : 'Mount a SQLite file, inspect its tables, and run the generated query.',
+              ? 'onboarding.database.webMessage'
+              : 'onboarding.database.message',
         ),
         placement: OnboardingTooltipPlacement.bottom,
       ),
       OnboardingStep(
         id: 'learn-in-workshop',
         target: OnboardingTarget.workshop,
-        title: text('Im Workshop üben', 'Practice in the workshop'),
-        message: text(
-          'Der Workshop erklärt NodeQL mit kleinen Übungen, ohne dein Projekt zu verändern.',
-          'The workshop teaches NodeQL with short exercises without changing your project.',
-        ),
+        title: catalog.text('onboarding.workshop.title'),
+        message: catalog.text('onboarding.workshop.message'),
         placement: OnboardingTooltipPlacement.bottom,
       ),
     ],
@@ -159,6 +146,7 @@ class NodeQlOnboardingOverlay extends StatelessWidget {
     required this.targetRectFor,
     required this.onNext,
     required this.onSkip,
+    required this.catalog,
     super.key,
   });
 
@@ -167,6 +155,7 @@ class NodeQlOnboardingOverlay extends StatelessWidget {
   final Rect? Function(OnboardingTarget target) targetRectFor;
   final VoidCallback onNext;
   final VoidCallback onSkip;
+  final TranslationCatalog catalog;
 
   @override
   Widget build(BuildContext context) {
@@ -203,6 +192,7 @@ class NodeQlOnboardingOverlay extends StatelessWidget {
                 totalSteps: definition.steps.length,
                 onNext: onNext,
                 onSkip: onSkip,
+                catalog: catalog,
               ),
             ),
           ],
@@ -249,6 +239,7 @@ class _OnboardingTooltip extends StatelessWidget {
     required this.totalSteps,
     required this.onNext,
     required this.onSkip,
+    required this.catalog,
   });
 
   final OnboardingStep step;
@@ -256,10 +247,10 @@ class _OnboardingTooltip extends StatelessWidget {
   final int totalSteps;
   final VoidCallback onNext;
   final VoidCallback onSkip;
+  final TranslationCatalog catalog;
 
   @override
   Widget build(BuildContext context) {
-    final german = Localizations.localeOf(context).languageCode == 'de';
     return Material(
       color: Theme.of(context).colorScheme.surface,
       elevation: 16,
@@ -292,16 +283,18 @@ class _OnboardingTooltip extends StatelessWidget {
                 TextButton(
                   key: const ValueKey<String>('onboarding-skip'),
                   onPressed: onSkip,
-                  child: Text(german ? 'Überspringen' : 'Skip'),
+                  child: Text(catalog.text('onboarding.skip')),
                 ),
                 const Spacer(),
                 FilledButton(
                   key: const ValueKey<String>('onboarding-next'),
                   onPressed: onNext,
                   child: Text(
-                    currentStep == totalSteps
-                        ? (german ? 'Fertig' : 'Done')
-                        : (german ? 'Weiter' : 'Next'),
+                    catalog.text(
+                      currentStep == totalSteps
+                          ? 'onboarding.done'
+                          : 'onboarding.next',
+                    ),
                   ),
                 ),
               ],

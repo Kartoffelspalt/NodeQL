@@ -43,6 +43,18 @@ class TranslationState {
   final bool syncing;
   final String? error;
 
+  List<SupportedLanguage> get languageChoices => [
+    ...supportedLanguages,
+    for (final package in installed.values)
+      if (!supportedLanguages.any(
+        (language) => language.code == package.locale,
+      ))
+        SupportedLanguage(
+          package.locale,
+          translationNativeName(package.locale),
+        ),
+  ];
+
   TranslationState copyWith({
     Locale? locale,
     TranslationCatalog? catalog,
@@ -154,6 +166,11 @@ class TranslationController extends StateNotifier<TranslationState> {
       }
       state = state.copyWith(
         available: manifest.languages,
+        catalog: _catalogFor(
+          state.locale,
+          state.installed,
+          available: manifest.languages,
+        ),
         syncing: false,
         clearError: true,
       );
@@ -202,8 +219,9 @@ class TranslationController extends StateNotifier<TranslationState> {
 
   TranslationCatalog _catalogFor(
     Locale locale,
-    Map<String, TranslationPackage> installed,
-  ) {
+    Map<String, TranslationPackage> installed, {
+    List<TranslationLanguage>? available,
+  }) {
     final exact = installed[_localeTag(locale)];
     final language = installed[locale.languageCode];
     final package = exact ?? language;
@@ -217,7 +235,7 @@ class TranslationController extends StateNotifier<TranslationState> {
           ? (isRtlTranslation(locale.languageCode)
                 ? TranslationDirection.rtl
                 : TranslationDirection.ltr)
-          : state.available
+          : (available ?? state.available)
                     .where((item) => item.locale == package.locale)
                     .firstOrNull
                     ?.direction ??
@@ -287,6 +305,31 @@ String _localeTag(Locale locale) => locale.countryCode == null
 
 const builtInMessages = <String, Map<String, String>>{
   'de': {
+    'licenses.title': 'Lizenzen',
+    'licenses.loadFailed':
+        'Die Lizenzen konnten nicht geladen werden. Bitte versuche es erneut.',
+    'licenses.retry': 'Erneut versuchen',
+    'onboarding.title': 'Erste Schritte',
+    'onboarding.nodes.title': 'Nodes auswählen',
+    'onboarding.nodes.message':
+        'In der Node-Leiste findest du Bausteine für Abfragen, Filter und Datenänderungen.',
+    'onboarding.workspace.title': 'Nodes verbinden',
+    'onboarding.workspace.message':
+        'Ziehe Nodes auf die Arbeitsfläche und verbinde sie zu einer ausführbaren Abfrage.',
+    'onboarding.database.title': 'Datenbank-Tools verwenden',
+    'onboarding.database.message':
+        'Binde eine SQLite-Datei ein, prüfe Tabellen und führe deine generierte Abfrage aus.',
+    'onboarding.database.webMessage':
+        'Binde eine SQLite-Datei ein und führe deine generierte Abfrage aus.',
+    'onboarding.workshop.title': 'Im Workshop üben',
+    'onboarding.workshop.message':
+        'Der Workshop erklärt NodeQL mit kleinen Übungen, ohne dein Projekt zu verändern.',
+    'onboarding.skip': 'Überspringen',
+    'onboarding.next': 'Weiter',
+    'onboarding.done': 'Fertig',
+    'languages.title': 'Sprachpakete',
+    'languages.empty':
+        'Im Online-Katalog sind derzeit keine Sprachpakete verfügbar.',
     'tutorial.official.title': 'NodeQL Workshops',
     'tutorial.official.badge': 'Offiziell',
     'tutorial.official.progress':

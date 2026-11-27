@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:nodeql/core/licenses/license_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nodeql/core/platform/picked_file.dart';
 import 'package:flutter/material.dart';
@@ -58,7 +59,6 @@ import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:nodeql/localization/translation_controller.dart';
 import 'package:nodeql/localization/translation_language_metadata.dart';
 import 'package:nodeql/localization/translation_models.dart';
-import 'package:nodeql/localization/translation_repository.dart';
 import 'package:nodeql/localization/supported_languages.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
@@ -130,6 +130,7 @@ class _NodeQlAppIcon extends StatelessWidget {
 }
 
 const double _inlineLineHeight = 28;
+const double _workbenchToolbarHeight = 68;
 const double _joinFirstLineOffset = 8;
 const double _joinSecondLineOffset = 18;
 
@@ -150,7 +151,9 @@ double _measureSingleLineText(String text, TextStyle style) {
     maxLines: 1,
     textDirection: TextDirection.ltr,
   )..layout(minWidth: 0, maxWidth: 1600);
-  return painter.width;
+  final width = painter.width;
+  painter.dispose();
+  return width;
 }
 
 class _SimpleNodeDiagnostic {
@@ -467,6 +470,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   bool _databaseBrowserOpen = false;
   bool _workshopMode = false;
   OnboardingDefinition? _activeOnboarding;
+  bool _useDefaultOnboarding = false;
   int _onboardingStepIndex = 0;
   static const bool _showStartupHint = false;
 
@@ -667,6 +671,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     final translationState = ref.watch(translationControllerProvider);
     final catalog = translationState.catalog;
     final locale = translationState.locale;
+    final onboarding = _useDefaultOnboarding && _activeOnboarding != null
+        ? _availableOnboarding(defaultNodeQlOnboarding(catalog))
+        : _activeOnboarding;
     if (!kIsWeb &&
         (_workshopMode || ref.watch(workshopAdminPanelProvider) != null)) {
       return _WorkshopProviderScope(onExit: _exitWorkshop);
@@ -760,21 +767,12 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                   children: [
                     _TopBar(
                       catalog: catalog,
-                      languageChoices: <SupportedLanguage>[
-                        ...supportedLanguages,
-                        for (final package in translationState.installed.values)
-                          if (!supportedLanguages.any(
-                            (language) => language.code == package.locale,
-                          ))
-                            SupportedLanguage(
-                              package.locale,
-                              translationNativeName(package.locale),
-                            ),
-                      ],
+                      languageChoices: translationState.languageChoices,
                       localeCode: locale.toLanguageTag(),
                       onLocale: (code) => ref
                           .read(translationControllerProvider.notifier)
                           .setLocaleTag(code),
+                      onManageLanguages: () => _openLanguageManager(context),
                       onPickDb: () =>
                           ref.read(sqlRuntimeProvider.notifier).pickDatabase(),
                       mountedDatabaseName: kIsWeb && runtime.dbPath != null
@@ -872,8 +870,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                 bottom: workspaceBottomInset,
                                 child: _showCustomSqlEditor
                                     ? Padding(
-                                        padding: EdgeInsets.only(
-                                          right: ideRightInset,
+                                        padding: EdgeInsetsDirectional.only(
+                                          end: ideRightInset,
                                         ),
                                         child: _SqlIdePane(
                                           controller: _customSqlController,
@@ -914,7 +912,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                                           : 300),
                                               ),
                                               curve: Curves.easeOutQuart,
-                                              alignment: Alignment.centerLeft,
+                                              alignment: AlignmentDirectional
+                                                  .centerStart,
                                               clipBehavior: Clip.hardEdge,
                                               child: _Palette(
                                                 key: const ValueKey<String>(
@@ -948,7 +947,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                             value: layout.paletteWidth,
                                             resetValue: 250,
                                             axis: _ResizeAxis.horizontal,
-                                            deltaMultiplier: 1,
+                                            deltaMultiplier:
+                                                Directionality.of(context) ==
+                                                    TextDirection.rtl
+                                                ? -1
+                                                : 1,
                                             minValue: 200,
                                             maxValue: 520,
                                             highRefreshMode:
@@ -968,10 +971,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                                       .workspace],
                                               child: Stack(
                                                 children: [
-                                                  Positioned(
+                                                  PositionedDirectional(
                                                     top: 0,
-                                                    left: 0,
-                                                    right: workspaceRightInset,
+                                                    start: 0,
+                                                    end: workspaceRightInset,
                                                     bottom: 0,
                                                     child: Column(
                                                       children: [
@@ -1003,10 +1006,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                                       ],
                                                     ),
                                                   ),
-                                                  Positioned(
+                                                  PositionedDirectional(
                                                     top: 0,
-                                                    left: 0,
-                                                    right: workspaceRightInset,
+                                                    start: 0,
+                                                    end: workspaceRightInset,
                                                     child: _WorkspaceTabsBar(
                                                       catalog: catalog,
                                                     ),
@@ -1036,15 +1039,18 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                     ),
                   ],
                 ),
-                if (_activeOnboarding
-                    case final OnboardingDefinition onboarding)
+                if (onboarding != null)
                   Positioned.fill(
+                    top: _workbenchToolbarHeight,
                     child: NodeQlOnboardingOverlay(
                       definition: onboarding,
                       stepIndex: _onboardingStepIndex,
-                      targetRectFor: _onboardingTargetRect,
+                      targetRectFor: (target) => _onboardingTargetRect(
+                        target,
+                      )?.shift(const Offset(0, -_workbenchToolbarHeight)),
                       onNext: _advanceOnboarding,
                       onSkip: _stopOnboarding,
+                      catalog: catalog,
                     ),
                   ),
               ],
@@ -1058,8 +1064,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   void _startDefaultOnboarding() {
     setState(() {
       _activeOnboarding = _availableOnboarding(
-        defaultNodeQlOnboarding(Localizations.localeOf(context)),
+        defaultNodeQlOnboarding(
+          ref.read(translationControllerProvider).catalog,
+        ),
       );
+      _useDefaultOnboarding = true;
       _onboardingStepIndex = 0;
     });
   }
@@ -1079,6 +1088,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       if (!mounted) return;
       setState(() {
         _activeOnboarding = _availableOnboarding(definition);
+        _useDefaultOnboarding = false;
         _onboardingStepIndex = 0;
       });
     } on Object catch (error) {
@@ -1907,14 +1917,15 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Future<void> _openAbout(BuildContext context) async {
     final package = await PackageInfo.fromPlatform();
     if (!context.mounted) return;
-    showLicensePage(
-      context: context,
-      applicationName: 'NodeQL',
-      applicationVersion: '${package.version}+${package.buildNumber}',
-      applicationLegalese: 'Copyright © 2026 NodeQL contributors\nMIT License',
-      applicationIcon: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: const _NodeQlAppIcon(size: 64),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => NodeQlLicensePage(
+          applicationVersion: '${package.version}+${package.buildNumber}',
+          applicationIcon: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: const _NodeQlAppIcon(size: 64),
+          ),
+        ),
       ),
     );
   }
@@ -2077,8 +2088,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
 
   Future<void> _openLanguageManager(BuildContext context) async {
     final controller = ref.read(translationControllerProvider.notifier);
-    await controller.refreshManifest();
-    if (!context.mounted) return;
+    unawaited(controller.refreshManifest());
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => Consumer(
@@ -2096,11 +2106,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                 children: [
                   if (translations.error != null)
                     MaterialBanner(
-                      content: Text(
-                        defaultTranslationManifestUrl.isEmpty
-                            ? catalog.text('languages.notConfigured')
-                            : translations.error!,
-                      ),
+                      content: Text(translations.error!),
                       actions: [
                         TextButton(
                           onPressed: () => controller.refreshManifest(),
@@ -2117,13 +2123,25 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       child: ListView(
                         children: [
                           for (final language in supportedLanguages)
-                            ListTile(
-                              onTap: () =>
-                                  controller.setLocaleTag(language.code),
-                              leading: const Icon(Icons.translate),
-                              title: Text(language.nativeName),
-                              subtitle: Text(catalog.text('languages.builtIn')),
-                              trailing: Radio<String>(value: language.code),
+                            if (!available.any(
+                              (item) => item.locale == language.code,
+                            ))
+                              ListTile(
+                                onTap: () =>
+                                    controller.setLocaleTag(language.code),
+                                leading: const Icon(Icons.translate),
+                                title: Text(language.nativeName),
+                                subtitle: Text(
+                                  catalog.text('languages.builtIn'),
+                                ),
+                                trailing: Radio<String>(value: language.code),
+                              ),
+                          if (!translations.syncing &&
+                              translations.error == null &&
+                              available.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(catalog.text('languages.empty')),
                             ),
                           for (final package in translations.installed.values)
                             if (!supportedLanguages.any(
@@ -2154,23 +2172,23 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                                     : null,
                               ),
                           for (final language in available)
-                            if (!supportedLanguages.any(
-                              (builtIn) => builtIn.code == language.locale,
-                            ))
-                              _LanguagePackTile(
-                                language: language,
-                                installed:
-                                    translations.installed[language.locale],
-                                active:
-                                    translations.catalog.locale ==
-                                    language.locale,
-                                catalog: catalog,
-                                onInstall: () => controller.install(language),
-                                onRemove: () =>
-                                    controller.remove(language.locale),
-                                onSelect: () =>
-                                    controller.setLocaleTag(language.locale),
+                            _LanguagePackTile(
+                              language: language,
+                              installed:
+                                  translations.installed[language.locale],
+                              active:
+                                  translations.locale.toLanguageTag() ==
+                                  language.locale,
+                              builtIn: supportedLanguages.any(
+                                (item) => item.code == language.locale,
                               ),
+                              catalog: catalog,
+                              onInstall: () => controller.install(language),
+                              onRemove: () =>
+                                  controller.remove(language.locale),
+                              onSelect: () =>
+                                  controller.setLocaleTag(language.locale),
+                            ),
                         ],
                       ),
                     ),
@@ -2718,9 +2736,9 @@ class _AppleSettingsDialogState extends ConsumerState<_AppleSettingsDialog> {
                   ),
                 ],
               ),
-              Positioned(
+              PositionedDirectional(
                 top: 8,
-                right: 12,
+                end: 12,
                 child: IconButton(
                   key: const ValueKey<String>('settings-close'),
                   tooltip: _text('Einstellungen schließen', 'Close settings'),
@@ -3229,17 +3247,7 @@ class _WorkshopWorkspaceViewState
               catalog: catalog,
               authoring: authoring,
               showClose: adminPanelBuilder == null,
-              languageChoices: <SupportedLanguage>[
-                ...supportedLanguages,
-                for (final package in translationState.installed.values)
-                  if (!supportedLanguages.any(
-                    (language) => language.code == package.locale,
-                  ))
-                    SupportedLanguage(
-                      package.locale,
-                      translationNativeName(package.locale),
-                    ),
-              ],
+              languageChoices: translationState.languageChoices,
               localeCode: translationState.locale.toLanguageTag(),
               onLocale: (code) => ref
                   .read(translationControllerProvider.notifier)
@@ -3335,7 +3343,7 @@ class _WorkshopWorkspaceViewState
                                     : (layout.highRefreshMode ? 240 : 300),
                               ),
                               curve: Curves.easeOutQuart,
-                              alignment: Alignment.centerLeft,
+                              alignment: AlignmentDirectional.centerStart,
                               clipBehavior: Clip.hardEdge,
                               child: _Palette(
                                 key: ValueKey<String>(
@@ -3369,7 +3377,11 @@ class _WorkshopWorkspaceViewState
                               value: layout.paletteWidth,
                               resetValue: 250,
                               axis: _ResizeAxis.horizontal,
-                              deltaMultiplier: 1,
+                              deltaMultiplier:
+                                  Directionality.of(context) ==
+                                      TextDirection.rtl
+                                  ? -1
+                                  : 1,
                               minValue: 200,
                               maxValue: 520,
                               highRefreshMode: layout.highRefreshMode,
@@ -3381,10 +3393,10 @@ class _WorkshopWorkspaceViewState
                             Expanded(
                               child: Stack(
                                 children: [
-                                  Positioned(
+                                  PositionedDirectional(
                                     top: 0,
-                                    left: 0,
-                                    right: workspaceRightInset,
+                                    start: 0,
+                                    end: workspaceRightInset,
                                     bottom: 0,
                                     child: Column(
                                       children: [
@@ -3491,6 +3503,9 @@ class _WorkshopWorkspaceViewState
                                           ),
                                         Expanded(
                                           child: _WorkspaceCanvas(
+                                            key: const ValueKey(
+                                              'workshop-workspace-canvas',
+                                            ),
                                             focusNode: _workspaceFocus,
                                             transform: _transform,
                                             paletteWidth: 72.0 + paletteWidth,
@@ -5010,6 +5025,7 @@ class _TopBar extends StatelessWidget {
     required this.languageChoices,
     required this.localeCode,
     required this.onLocale,
+    required this.onManageLanguages,
     required this.onPickDb,
     this.mountedDatabaseName,
     required this.canBrowseDb,
@@ -5031,6 +5047,7 @@ class _TopBar extends StatelessWidget {
   final List<SupportedLanguage> languageChoices;
   final String localeCode;
   final ValueChanged<String> onLocale;
+  final VoidCallback onManageLanguages;
   final VoidCallback onPickDb;
   final String? mountedDatabaseName;
   final bool canBrowseDb;
@@ -5049,11 +5066,10 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final localeCode = Localizations.localeOf(context).languageCode;
     final workbenchColors = NodeQlWorkbenchColors.of(context);
     final surfaceStyle = NodeQlSurfaceStyle.of(context);
     return Container(
-      height: 68,
+      height: _workbenchToolbarHeight,
       padding: const EdgeInsets.symmetric(horizontal: NodeQlDesign.space4),
       decoration: BoxDecoration(
         color: workbenchColors.topBar,
@@ -5208,34 +5224,48 @@ class _TopBar extends StatelessWidget {
                         onModeChanged(selection.first),
                   ),
                   const SizedBox(width: NodeQlDesign.space2),
-                  DropdownButton<String>(
-                    value: localeCode,
-                    dropdownColor: workbenchColors.panelElevated,
-                    iconEnabledColor: workbenchColors.topBarForeground,
-                    underline: const SizedBox.shrink(),
-                    style: TextStyle(color: workbenchColors.topBarForeground),
-                    items: languageChoices
-                        .map(
-                          (l) => DropdownMenuItem(
-                            value: l.code,
-                            child: Text(
-                              l.nativeName,
-                              style: TextStyle(
-                                color: workbenchColors.topBarForeground,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) onLocale(v);
-                    },
-                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(width: NodeQlDesign.space2),
+          Row(
+            key: const ValueKey('toolbar-language-controls'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButton<String>(
+                key: const ValueKey('toolbar-language-selector'),
+                value: localeCode,
+                dropdownColor: workbenchColors.panelElevated,
+                iconEnabledColor: workbenchColors.topBarForeground,
+                underline: const SizedBox.shrink(),
+                style: TextStyle(color: workbenchColors.topBarForeground),
+                items: languageChoices
+                    .map(
+                      (l) => DropdownMenuItem(
+                        value: l.code,
+                        child: Text(
+                          l.nativeName,
+                          style: TextStyle(
+                            color: workbenchColors.topBarForeground,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) onLocale(v);
+                },
+              ),
+              IconButton(
+                key: const ValueKey('toolbar-manage-languages'),
+                tooltip: catalog.text('languages.title'),
+                color: workbenchColors.topBarForeground,
+                onPressed: onManageLanguages,
+                icon: const Icon(Icons.download_outlined),
+              ),
+            ],
+          ),
           IconButton(
             key: const ValueKey<String>('open-onboarding'),
             onPressed: onOnboarding,
@@ -5289,6 +5319,7 @@ class _LanguagePackTile extends StatelessWidget {
     required this.onInstall,
     required this.onRemove,
     required this.onSelect,
+    this.builtIn = false,
   });
 
   final TranslationLanguage language;
@@ -5298,6 +5329,7 @@ class _LanguagePackTile extends StatelessWidget {
   final VoidCallback onInstall;
   final VoidCallback onRemove;
   final VoidCallback onSelect;
+  final bool builtIn;
 
   @override
   Widget build(BuildContext context) {
@@ -5319,7 +5351,7 @@ class _LanguagePackTile extends StatelessWidget {
                 'revision': installed!.revision,
               }),
       ),
-      onTap: installed == null ? null : onSelect,
+      onTap: installed == null && !builtIn ? null : onSelect,
       trailing: Wrap(
         spacing: 4,
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -6724,13 +6756,13 @@ class _PaletteCard extends StatelessWidget {
                         width: width,
                         height: blockHeight,
                         child: FittedBox(
-                          alignment: Alignment.centerLeft,
+                          alignment: AlignmentDirectional.centerStart,
                           fit: BoxFit.scaleDown,
                           child: block,
                         ),
                       ),
-                      Positioned(
-                        right: 6,
+                      PositionedDirectional(
+                        end: 6,
                         top: 6,
                         child: Tooltip(
                           message: description,
@@ -6911,7 +6943,7 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                 final canDelete = tabsState.tabs.length > 1;
                 return Padding(
                   key: ValueKey<String>('workspace-tab-${tab.id}'),
-                  padding: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsetsDirectional.only(end: 6),
                   child: Material(
                     color: selected
                         ? Theme.of(context).colorScheme.primary
@@ -6926,7 +6958,10 @@ class _WorkspaceTabsBar extends ConsumerWidget {
                       ),
                       child: Container(
                         constraints: const BoxConstraints(minWidth: 116),
-                        padding: const EdgeInsets.only(left: 10, right: 4),
+                        padding: const EdgeInsetsDirectional.only(
+                          start: 10,
+                          end: 4,
+                        ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(
                             surfaceStyle.radiusSmall,
@@ -7219,6 +7254,21 @@ class _WorkspaceCanvas extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(workspaceProvider.notifier);
+    void refreshRenderedLayout(Object? _, Object? _) {
+      // Node sizes depend on the translated label and the chosen SQL mode.
+      // Reconnect the chain after this frame has replaced the stored metrics.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) controller.applyRenderMetricsToLayout();
+      });
+    }
+
+    ref.listen(
+      translationControllerProvider.select(
+        (state) => (state.locale, state.installed, state.catalog.direction),
+      ),
+      refreshRenderedLayout,
+    );
+    ref.listen(sqlModeProvider, refreshRenderedLayout);
     // Structural edits rebuild the list of block elements. Pointer movement is
     // intentionally excluded here: each block subscribes to its own visual
     // state below, so a drag does not rebuild and re-measure every node.
@@ -7313,6 +7363,7 @@ class _WorkspaceCanvas extends ConsumerWidget {
                     transform: transform,
                     child: RepaintBoundary(
                       child: Stack(
+                        alignment: Alignment.topLeft,
                         clipBehavior: Clip.none,
                         children: [
                           RepaintBoundary(
@@ -8642,6 +8693,7 @@ class _NodeView extends ConsumerWidget {
                         _lineOffsetForNode(visualKind, run.offset.dy),
                     child: Text(
                       run.text,
+                      textDirection: TextDirection.ltr,
                       maxLines: 1,
                       overflow: TextOverflow.visible,
                       softWrap: false,
@@ -8973,6 +9025,7 @@ class _NodeView extends ConsumerWidget {
                   ),
                   child: Text(
                     slot.display,
+                    textDirection: TextDirection.ltr,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -12448,7 +12501,7 @@ String _runtimePanelLayoutLabel(
     RuntimePanelLayoutMode.previewBottom =>
       german ? 'Output Preview unten' : 'Output preview at bottom',
     RuntimePanelLayoutMode.rightSplit =>
-      german ? 'Rechts: zwei Reihen' : 'Right: two rows',
+      german ? 'Seitlich: zwei Reihen' : 'Side panel: two rows',
   };
 }
 
@@ -12562,11 +12615,12 @@ class _FloatingRuntimeWindowsState
     final maxWidth = math.max(1.0, bounds.width - 240.0);
     final minWidth = math.min(260.0, maxWidth);
     final current = _pendingRuntimeWidth ?? layout.runtimeWidth;
-    _pendingRuntimeWidth = (current - delta.dx)
+    final direction = Directionality.of(context) == TextDirection.rtl ? -1 : 1;
+    _pendingRuntimeWidth = (current - delta.dx * direction)
         .clamp(minWidth, math.min(720.0, maxWidth))
         .toDouble();
     _updateResizeGhost(
-      physicalDelta: current - _pendingRuntimeWidth!,
+      physicalDelta: (current - _pendingRuntimeWidth!) * direction,
       label: '${_pendingRuntimeWidth!.round()} px',
     );
   }
@@ -12605,7 +12659,12 @@ class _FloatingRuntimeWindowsState
     if (renderBox is! RenderBox || overlayBox is! RenderBox) return;
 
     final localOrigin = axis == _ResizeAxis.horizontal
-        ? Offset(rect.left, rect.top)
+        ? Offset(
+            Directionality.of(context) == TextDirection.rtl
+                ? rect.right - 3
+                : rect.left,
+            rect.top,
+          )
         : Offset(rect.left, rect.top);
     _resizeGhostOrigin = renderBox.localToGlobal(
       localOrigin,
@@ -12916,7 +12975,7 @@ class _FloatingRuntimeWindowsState
     );
     final fullBottom = Rect.fromLTWH(0, lowerTop, width, bottomHeight);
 
-    return switch (mode) {
+    final panels = switch (mode) {
       RuntimePanelLayoutMode.commandBottom => (fullBottom, upperRight),
       RuntimePanelLayoutMode.previewBottom => (upperRight, fullBottom),
       RuntimePanelLayoutMode.rightSplit => () {
@@ -12941,6 +13000,10 @@ class _FloatingRuntimeWindowsState
         );
       }(),
     };
+    if (Directionality.of(context) != TextDirection.rtl) return panels;
+    Rect mirror(Rect rect) =>
+        Rect.fromLTWH(width - rect.right, rect.top, rect.width, rect.height);
+    return (mirror(panels.$1), mirror(panels.$2));
   }
 
   Rect _dragGhostRect({
@@ -13096,7 +13159,7 @@ class _RuntimeWindowResizeHandleState
             height: horizontal ? double.infinity : 8,
             child: Align(
               alignment: horizontal
-                  ? Alignment.centerLeft
+                  ? AlignmentDirectional.centerStart
                   : Alignment.topCenter,
               child: indicator,
             ),
@@ -13175,7 +13238,10 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                       onPanCancel: onHeaderDragCancel,
                       child: Container(
                         height: 38,
-                        padding: const EdgeInsets.only(left: 12, right: 4),
+                        padding: const EdgeInsetsDirectional.only(
+                          start: 12,
+                          end: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: colors.panelElevated,
                           border: Border(
@@ -13220,9 +13286,9 @@ class _FloatingRuntimeWindow extends StatelessWidget {
                   ),
                 ),
               if (onLeftResizeUpdate != null)
-                Positioned(
+                PositionedDirectional(
                   top: 0,
-                  left: 0,
+                  start: 0,
                   bottom: 0,
                   child: _RuntimeWindowResizeHandle(
                     axis: _ResizeAxis.horizontal,
@@ -13351,6 +13417,7 @@ class _SqlCommandOutputWindowState extends State<_SqlCommandOutputWindow> {
               widget.sql.isEmpty
                   ? widget.catalog.text('runtime.sqlOutput')
                   : widget.sql,
+              textDirection: widget.sql.isEmpty ? null : TextDirection.ltr,
               style: TextStyle(
                 fontFamily: 'monospace',
                 color: colors.sqlText,

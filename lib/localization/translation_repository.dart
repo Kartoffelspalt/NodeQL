@@ -11,7 +11,8 @@ import 'translation_models.dart';
 
 const defaultTranslationManifestUrl = String.fromEnvironment(
   'NODEQL_TRANSLATION_MANIFEST_URL',
-  defaultValue: '',
+  defaultValue:
+      'https://kartoffelspalt.github.io/NodeQL/translations/translation-manifest.json',
 );
 
 abstract class TranslationRepository {

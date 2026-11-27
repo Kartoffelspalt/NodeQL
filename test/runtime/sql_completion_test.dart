@@ -104,4 +104,35 @@ void main() {
     await tester.pump();
     expect(controller.text, 'SELECT * FROM kunden');
   });
+
+  testWidgets('SQL and its line numbers stay LTR in an RTL interface', (
+    tester,
+  ) async {
+    final controller = SqlHighlightingController(text: 'SELECT * FROM kunden;');
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: SqlCodeEditor(
+              controller: controller,
+              schemas: schemas,
+              onChanged: (_) {},
+              onRun: null,
+              hintText: 'SQL',
+              localModelLabel: 'Completion',
+            ),
+          ),
+        ),
+      ),
+    );
+    final field = find.byKey(const ValueKey('custom-sql-input'));
+    expect(tester.widget<TextField>(field).textDirection, TextDirection.ltr);
+    expect(
+      tester.getRect(find.text('1')).right,
+      lessThan(tester.getRect(field).left),
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

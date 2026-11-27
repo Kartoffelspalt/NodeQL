@@ -114,6 +114,45 @@ void main() {
     expect(controller.state.error, contains('2.0.0'));
   });
 
+  test('refreshes direction metadata for an already cached language', () async {
+    final controller = TranslationController(
+      _FakeTranslationRepository(
+        cached: const [
+          TranslationPackage(
+            locale: 'ku',
+            revision: 1,
+            messages: {'plain': 'Cached text'},
+          ),
+        ],
+        manifest: TranslationManifest(
+          generatedAt: DateTime.utc(2026, 11, 27),
+          minimumAppVersion: '0.1.0',
+          languages: [
+            TranslationLanguage(
+              locale: 'ku',
+              nativeName: 'Kurdish',
+              direction: TranslationDirection.rtl,
+              revision: 1,
+              completion: 100,
+              downloadUrl: Uri.https('kartoffelspalt.github.io', '/ku.json'),
+              sha256: '0' * 64,
+              size: 100,
+            ),
+          ],
+        ),
+      ),
+      settingsFile: () async => File('${temp.path}/locale.json'),
+      appVersion: () async => '1.0.0',
+    );
+    addTearDown(controller.dispose);
+    await _waitUntilReady(controller);
+    await controller.setLocaleTag('ku');
+    expect(controller.state.catalog.direction, TranslationDirection.ltr);
+    await controller.refreshManifest();
+    expect(controller.state.catalog.direction, TranslationDirection.rtl);
+    expect(controller.state.catalog.text('plain'), 'Cached text');
+  });
+
   test(
     'falls back when a selected bundled language is absent in a later release',
     () async {

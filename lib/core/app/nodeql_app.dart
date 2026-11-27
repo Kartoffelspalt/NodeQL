@@ -33,6 +33,10 @@ class NodeQlApp extends ConsumerWidget {
       ],
       theme: themeFor(theme.theme, accentColor: theme.accentColor),
       debugShowCheckedModeBanner: false,
+      builder: (context, child) => Directionality(
+        textDirection: translations.catalog.textDirection,
+        child: child!,
+      ),
       home: const WorkbenchShell(),
     );
   }

@@ -157,7 +157,9 @@ jobs:
     timeout-minutes: 60
     outputs:
       has-packs: ${{ steps.catalog.outputs.has-packs }}
-      catalog-ready: ${{ steps.generate-translations.outcome == 'success' && steps.catalog.outputs.has-packs == 'true' }}
+      # Only complete, validated packages reach the catalog. A Gemini failure
+      # for another locale must not prevent those packages from being published.
+      catalog-ready: ${{ steps.catalog.outputs.has-packs == 'true' }}
     env:
       NODEQL_TRANSLATION_MODEL: ${{ vars.NODEQL_TRANSLATION_MODEL || 'gemini-3.8-flash' }}
       NODEQL_TRANSLATION_CONCURRENCY: ${{ vars.NODEQL_TRANSLATION_CONCURRENCY || '3' }}

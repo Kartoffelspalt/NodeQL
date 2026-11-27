@@ -17,6 +17,7 @@ import 'package:nodeql/features/tutorial/tutorial_controller.dart';
 import 'package:nodeql/features/tutorial/learning_path_authoring.dart';
 import 'package:nodeql/features/tutorial/learning_path_timeline.dart';
 import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
+import 'package:nodeql/features/onboarding/onboarding_flow.dart';
 import 'package:nodeql/features/workbench/presentation/engine/plugin_registry.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_mode.dart';
 import 'package:nodeql/features/workbench/presentation/engine/sql_compiler.dart';
@@ -24,6 +25,7 @@ import 'package:nodeql/features/workbench/presentation/engine/sql_runtime.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_engine.dart';
 import 'package:nodeql/features/workbench/presentation/engine/workspace_tabs.dart';
 import 'package:nodeql/features/workbench/presentation/workbench_page.dart';
+import 'package:nodeql/features/workbench/presentation/workbench_layout_controller.dart';
 import 'package:nodeql/features/workbench/presentation/widgets/block_shape_painter.dart';
 import 'package:nodeql/localization/translation_catalog.dart';
 import 'package:nodeql/localization/translation_models.dart';
@@ -1481,17 +1483,161 @@ void main() {
     );
   });
 
-  testWidgets('opens and skips the interactive onboarding overlay', (
+  testWidgets(
+    'RTL mirrors docks and palette while keeping canvas coordinates stable',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final directory = Directory.systemTemp.createTempSync('nodeql-rtl-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        pathProvider,
+        (_) async => directory.path,
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          pathProvider,
+          null,
+        ),
+      );
+      final translations = _RtlTranslationController();
+      final container = ProviderContainer(
+        overrides: [
+          translationControllerProvider.overrideWith((_) => translations),
+          pluginPaletteProvider.overrideWith(
+            (_) => _ReadyPluginPaletteController(),
+          ),
+          onboardingLaunchProvider.overrideWith(
+            (_) => _SeenOnboardingLaunchController(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const NodeQlApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final workspace = container.read(workspaceProvider.notifier);
+      workspace.resetWithRoot();
+      await tester.pumpAndSettle();
+      final root = workspace.allBlocks().first;
+      final position = root.position;
+      final palette = find.byKey(const ValueKey('node-palette'));
+      final canvas = find.byKey(const ValueKey('workspace-canvas'));
+      final output = find.byKey(const ValueKey('sqlite-command-output-window'));
+      for (final tag in ['ar', 'en', 'ar', 'en']) {
+        await translations.setLocaleTag(tag);
+        await tester.pumpAndSettle();
+        final paletteRect = tester.getRect(palette);
+        final canvasRect = tester.getRect(canvas);
+        final outputRect = tester.getRect(output);
+        if (tag == 'ar') {
+          expect(outputRect.right, lessThanOrEqualTo(canvasRect.left + 1));
+          expect(canvasRect.right, lessThanOrEqualTo(paletteRect.left));
+        } else {
+          expect(paletteRect.right, lessThanOrEqualTo(canvasRect.left));
+          expect(canvasRect.right, lessThanOrEqualTo(outputRect.left + 1));
+        }
+        final block = find.byWidgetPredicate(
+          (widget) => widget is BlockShape && widget.node.id == root.id,
+        );
+        final blockRect = tester.getRect(block);
+        expect(blockRect.left, greaterThanOrEqualTo(canvasRect.left));
+        expect(blockRect.left, lessThan(canvasRect.right));
+        expect(root.position, position);
+        expect(tester.takeException(), isNull);
+      }
+      await translations.setLocaleTag('ar');
+      await tester.pumpAndSettle();
+      final layouts = container.read(workbenchLayoutProvider.notifier);
+      for (final mode in RuntimePanelLayoutMode.values) {
+        layouts.setRuntimePanelLayout(mode);
+        await tester.pumpAndSettle();
+        final canvasRect = tester.getRect(canvas);
+        final commandRect = tester.getRect(output);
+        if (mode == RuntimePanelLayoutMode.commandBottom) {
+          expect(commandRect.top, greaterThanOrEqualTo(canvasRect.bottom));
+        } else {
+          expect(commandRect.right, lessThanOrEqualTo(canvasRect.left + 1));
+        }
+      }
+      layouts.setRuntimePanelLayout(RuntimePanelLayoutMode.rightSplit);
+      await tester.pumpAndSettle();
+      final paletteRect = tester.getRect(palette);
+      await tester.dragFrom(
+        Offset(paletteRect.left - 4, 500),
+        const Offset(-40, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(palette).width, greaterThan(paletteRect.width));
+      final outputRect = tester.getRect(output);
+      await tester.dragFrom(
+        Offset(outputRect.right - 4, outputRect.top + 100),
+        const Offset(30, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(output).width, greaterThan(outputRect.width));
+      await tester.tap(find.byIcon(Icons.settings));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('settings-close'))).dx,
+        lessThan(100),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const ValueKey('settings-close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('open-workshop')));
+      await tester.pumpAndSettle();
+      final workshopCanvas = tester.getRect(
+        find.byKey(const ValueKey('workshop-workspace-canvas')),
+      );
+      expect(
+        tester.getRect(output).right,
+        lessThanOrEqualTo(workshopCanvas.left + 1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('switches onboarding languages and opens a pending catalog', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final directory = Directory.systemTemp.createTempSync('nodeql-onboarding-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      pathProvider,
+      (_) async => directory.path,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        pathProvider,
+        null,
+      ),
+    );
+    final settings = File('${directory.path}/locale.json');
+    final repository = _OnboardingTranslationRepository();
+    late TranslationController translations;
+    await tester.runAsync(() async {
+      translations = TranslationController(
+        repository,
+        settingsFile: () async => settings,
+        appVersion: () async => '1.0.0',
+      );
+      while (translations.state.loading) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          translationControllerProvider.overrideWith(
-            (_) => _ReadyTranslationController(),
-          ),
+          translationControllerProvider.overrideWith((_) => translations),
           pluginPaletteProvider.overrideWith(
             (_) => _ReadyPluginPaletteController(),
           ),
@@ -1508,9 +1654,97 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Choose nodes'), findsOneWidget);
+    final toolbarControls = find.byKey(
+      const ValueKey('toolbar-language-controls'),
+    );
+    final walkthrough = find.byType(NodeQlOnboardingOverlay);
+    expect(
+      find.descendant(
+        of: toolbarControls,
+        matching: find.byKey(const ValueKey('toolbar-language-selector')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: walkthrough,
+        matching: find.byType(DropdownButton<String>),
+      ),
+      findsNothing,
+    );
+    expect(
+      tester.getRect(toolbarControls).bottom,
+      lessThanOrEqualTo(tester.getRect(walkthrough).top),
+    );
+    await tester.tap(find.byKey(const ValueKey('onboarding-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('Connect nodes'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar-language-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Deutsch').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Nodes verbinden'), findsOneWidget);
+    expect(find.text('Weiter'), findsOneWidget);
+    expect(find.text('2 / 4'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar-language-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Français').last);
+    await tester.pumpAndSettle();
+    expect(translations.state.locale.toLanguageTag(), 'fr');
+    expect(find.text('Connecter les nœuds'), findsOneWidget);
+    expect(find.text('Suivant'), findsOneWidget);
+    expect(find.text('2 / 4'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar-manage-languages')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(translations.state.syncing, isTrue);
+    expect(find.text('English'), findsWidgets);
+    repository.manifest.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('offline'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Connecter les nœuds'), findsOneWidget);
+
+    repository.manifest = Completer<TranslationManifest>()
+      ..complete(
+        TranslationManifest(
+          generatedAt: DateTime.utc(2026, 11, 27),
+          minimumAppVersion: '0.1.0',
+          languages: [
+            TranslationLanguage(
+              locale: 'de',
+              nativeName: 'Deutsch',
+              direction: TranslationDirection.ltr,
+              revision: 2,
+              completion: 100,
+              downloadUrl: Uri.https('kartoffelspalt.github.io', '/de.json'),
+              sha256: '0' * 64,
+              size: 100,
+            ),
+          ],
+        ),
+      );
+    await tester.tap(find.byKey(const ValueKey('toolbar-manage-languages')));
+    await tester.pumpAndSettle();
+    expect(find.text('Deutsch'), findsOneWidget);
+    await tester.tap(find.text('Install'));
+    await tester.pumpAndSettle();
+    expect(translations.state.installed['de']?.revision, 2);
+    await tester.tap(find.text('Deutsch'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Schließen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Abfragen verbinden'), findsOneWidget);
+    expect(find.text('2 / 4'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey<String>('onboarding-skip')));
     await tester.pumpAndSettle();
-    expect(find.text('Choose nodes'), findsNothing);
+    expect(find.text('Abfragen verbinden'), findsNothing);
   });
 }
 
@@ -1662,4 +1896,77 @@ class _WidgetTestTranslationRepository implements TranslationRepository {
 
   @override
   Future<void> remove(String locale) async {}
+}
+
+class _OnboardingTranslationRepository
+    extends _WidgetTestTranslationRepository {
+  var manifest = Completer<TranslationManifest>();
+
+  @override
+  Future<TranslationManifest> fetchManifest() => manifest.future;
+
+  @override
+  Future<TranslationPackage> install(TranslationLanguage language) async =>
+      TranslationPackage(
+        locale: language.locale,
+        revision: language.revision,
+        messages: const {'onboarding.workspace.title': 'Abfragen verbinden'},
+      );
+
+  @override
+  Future<Map<String, String>> loadEnglishMessages() async =>
+      Map<String, String>.from(
+        (jsonDecode(File('assets/translations/en.json').readAsStringSync())
+                as Map<String, dynamic>)['messages']
+            as Map,
+      );
+
+  @override
+  Future<List<TranslationPackage>> loadCachedPackages() async => const [
+    TranslationPackage(
+      locale: 'fr',
+      revision: 1,
+      messages: {
+        'onboarding.workspace.title': 'Connecter les nœuds',
+        'onboarding.next': 'Suivant',
+      },
+      isBundled: true,
+    ),
+  ];
+}
+
+class _RtlTranslationController extends _ReadyTranslationController {
+  _RtlTranslationController() {
+    _messages = Map<String, String>.from(
+      (jsonDecode(File('assets/translations/en.json').readAsStringSync())
+              as Map)['messages']
+          as Map,
+    );
+    setLocaleTag('en');
+  }
+
+  late final Map<String, String> _messages;
+
+  @override
+  Future<void> setLocaleTag(String localeTag) async {
+    final rtl = localeTag == 'ar';
+    state = TranslationState(
+      locale: Locale(localeTag),
+      loading: false,
+      installed: const {
+        'ar': TranslationPackage(locale: 'ar', revision: 1, messages: {}),
+      },
+      catalog: TranslationCatalog(
+        locale: localeTag,
+        messages: rtl
+            ? const {
+                'toolbar.mountDatabase': 'تحميل قاعدة البيانات',
+                'toolbar.workshop': 'ورشة عمل',
+              }
+            : _messages,
+        englishMessages: _messages,
+        direction: rtl ? TranslationDirection.rtl : TranslationDirection.ltr,
+      ),
+    );
+  }
 }

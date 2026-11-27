@@ -35,6 +35,28 @@ void main() {
     if (await support.exists()) await support.delete(recursive: true);
   });
 
+  test('fetches the public catalog without a build-time URL override', () async {
+    final repository = FileTranslationRepository(
+      client: MockClient((request) async {
+        expect(
+          request.url.toString(),
+          'https://kartoffelspalt.github.io/NodeQL/translations/translation-manifest.json',
+        );
+        return http.Response(
+          jsonEncode({
+            'schemaVersion': 1,
+            'generatedAt': '2026-11-27T12:00:00Z',
+            'minimumAppVersion': '0.1.0',
+            'languages': <Object>[],
+          }),
+          200,
+        );
+      }),
+    );
+
+    expect((await repository.fetchManifest()).languages, isEmpty);
+  });
+
   test(
     'loads bundled release languages offline before a cache exists',
     () async {

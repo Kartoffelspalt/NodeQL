@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nodeql/core/app/nodeql_app.dart';
+import 'package:nodeql/core/licenses/license_repository.dart';
 import 'package:nodeql/features/workbench/demo/web_demo_project.dart';
 import 'package:nodeql/features/onboarding/onboarding_launch_controller.dart';
 import 'package:nodeql/features/onboarding/onboarding_flow.dart';
@@ -39,6 +40,11 @@ void main() {
           message.lengthInBytes,
         ),
       );
+      if (key == 'NOTICES') {
+        return ByteData.sublistView(
+          utf8.encode('web-package\n\nWeb license notice.'),
+        );
+      }
       final response = await http.get(Uri.base.resolve('/$key'));
       if (response.statusCode == 404 &&
           key == 'assets/translations/translation-manifest.json') {
@@ -71,6 +77,16 @@ void main() {
     await support.delete(recursive: true);
     await support.create(recursive: true);
   });
+
+  test(
+    'browser licenses decode the uncompressed notices and reuse the cache',
+    () async {
+      final repository = BundledLicenseRepository();
+      final notices = await repository.load();
+      expect(notices['web-package'], ['Web license notice.']);
+      expect(identical(await repository.load(), notices), isTrue);
+    },
+  );
 
   test(
     'browser SQLite uses the same files as imports and project storage',
@@ -242,10 +258,29 @@ void main() {
         find.byType(NodeQlOnboardingOverlay),
       );
       expect(onboarding.definition.steps, hasLength(3));
+      await tester.tap(find.byKey(const ValueKey('toolbar-language-selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Deutsch').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<NodeQlOnboardingOverlay>(
+              find.byType(NodeQlOnboardingOverlay),
+            )
+            .definition
+            .steps
+            .first
+            .title,
+        'Nodes auswählen',
+      );
       expect(
         onboarding.definition.steps.map((step) => step.target),
         isNot(contains(OnboardingTarget.workshop)),
       );
+      await tester.tap(find.byKey(const ValueKey('toolbar-language-selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('English').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('onboarding-skip')));
       await tester.pumpAndSettle();
 

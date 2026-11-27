@@ -8,6 +8,14 @@ English and the current partial German catalog are available in development
 builds. Desktop releases also bundle complete AI-generated language packages
 when available.
 
+The language selector in the top toolbar uses these same built-in and installed
+languages and stays accessible during onboarding. Changing the language updates
+the current step and saves the app language. The adjacent download button opens
+the language manager to install more packages. Onboarding strings are part of
+the runtime catalog, so new release
+language packs include them; older packages fall back to English for missing
+strings.
+
 ## AI translations during GitHub releases
 
 The `Desktop Release` workflow attempts language pack generation with
@@ -62,9 +70,10 @@ the pull request workflow below and are included in the next release.
 
 When completed packs are available, the release includes
 `nodeql-translations-X.Y.Z.tar.gz` with those packs and their SHA-256 manifest.
-After a release with successful generation, the reusable `Publish translations`
-workflow deploys that catalog to GitHub Pages. Configure Pages with **GitHub
-Actions** as its source. If Pages deployment fails, rerun the failed job while
+After a release with complete validated packs, the reusable `Publish translations`
+workflow deploys that catalog to GitHub Pages, including when generation of
+another language failed or was skipped. Incomplete packs are excluded. Configure
+Pages with **GitHub Actions** as its source. If Pages deployment fails, rerun the failed job while
 the release's `translation-packages` artifact is retained.
 
 ### Local preview and testing
@@ -130,8 +139,12 @@ offensive, misleading, or technically invalid translations.
 
 ## Publishing downloads
 
-Reviewed packages can be published as static files with GitHub Pages. Build
-NodeQL with the public manifest and this contribution guide:
+Reviewed packages can be published as static files with GitHub Pages. All builds
+use the public catalog at
+`https://kartoffelspalt.github.io/NodeQL/translations/translation-manifest.json`
+by default, including local runs. The language manager opens immediately and
+keeps built-in and installed languages selectable while it loads the online
+catalog. To override the catalog URL or contribution guide, build NodeQL with:
 
 ```bash
 flutter build macos \

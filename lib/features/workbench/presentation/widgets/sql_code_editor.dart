@@ -455,6 +455,7 @@ class _SqlCodeEditorState extends State<SqlCodeEditor> {
         children: [
           Expanded(
             child: Row(
+              textDirection: TextDirection.ltr,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Container(
@@ -500,6 +501,7 @@ class _SqlCodeEditorState extends State<SqlCodeEditor> {
                     onKeyEvent: _onKey,
                     child: TextField(
                       key: const ValueKey<String>('custom-sql-input'),
+                      textDirection: TextDirection.ltr,
                       controller: widget.controller,
                       focusNode: _focusNode,
                       scrollController: _verticalScroll,
